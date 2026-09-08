@@ -1,12 +1,12 @@
 """
-Blender AI Agent — Phase 1 + Phase 2 (Step 2.4)
+Blender AI Agent — Phase 1 + Phase 2 (Step 2.7)
 ==================================================
 """
 
 bl_info = {
     "name": "Blender AI Agent",
     "author": "You",
-    "version": (0, 2, 0),
+    "version": (0, 5, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > AI Agent",
     "description": "Deterministic tool system for the Blender AI Agent project.",
@@ -25,6 +25,21 @@ from .tools.object_tools import (
     DuplicateObjectTool,
     RenameObjectTool,
     TransformObjectTool,
+)
+from .tools.material_tools import (
+    CreateMaterialTool,
+    AssignMaterialTool,
+    ModifyMaterialTool,
+)
+from .tools.modifier_tools import (
+    AddModifierTool,
+    RemoveModifierTool,
+    ConfigureModifierTool,
+)
+from .tools.camera_tools import (
+    CreateCameraTool,
+    SetCameraTool,
+    RenderPreviewTool,
 )
 from .ui.panel import AIAgentPanel, AIAGENT_OT_inspect_scene
 
@@ -55,12 +70,27 @@ def _register_tools() -> None:
     inspector = SceneInspector(bridge)
     registry.register(SceneInspectTool(inspector))
 
-    # Object tools — Step 2.4 (complete set)
+    # Object tools — Step 2.4
     registry.register(CreateObjectTool(bridge))
     registry.register(DeleteObjectTool(bridge))
     registry.register(DuplicateObjectTool(bridge))
     registry.register(RenameObjectTool(bridge))
     registry.register(TransformObjectTool(bridge))
+
+    # Material tools — Step 2.5
+    registry.register(CreateMaterialTool(bridge))
+    registry.register(AssignMaterialTool(bridge))
+    registry.register(ModifyMaterialTool(bridge))
+
+    # Modifier tools — Step 2.6
+    registry.register(AddModifierTool(bridge))
+    registry.register(RemoveModifierTool(bridge))
+    registry.register(ConfigureModifierTool(bridge))
+
+    # Camera / Render tools — Step 2.7
+    registry.register(CreateCameraTool(bridge))
+    registry.register(SetCameraTool(bridge))
+    registry.register(RenderPreviewTool(bridge))
 
 
 classes = (

@@ -2,10 +2,6 @@
 BlenderBridge
 =============
 Hinglish: Ye class Blender ke saare raw `bpy` calls ko encapsulate karti hai.
-
-OOP Principle: ENCAPSULATION
-- Poore project mein kahin bhi directly `bpy.data`, `bpy.ops`, `bpy.context`
-  nahi likhenge (sirf yahan, is file ke andar).
 """
 
 import bpy
@@ -36,7 +32,6 @@ class BlenderBridge:
     # Object level — write
     # ---------------------------------------------------------
     def create_object(self, name: str, object_type: str = "MESH", primitive: str = "CUBE", location=None):
-        """Naya object banata hai. Phase 2 mein `location` bhi accept karta hai."""
         if object_type == "MESH" and primitive == "CUBE":
             bpy.ops.mesh.primitive_cube_add()
         elif object_type == "MESH" and primitive == "SPHERE":
@@ -53,7 +48,6 @@ class BlenderBridge:
         return obj
 
     def delete_object(self, name: str) -> bool:
-        """Naam se object delete karta hai. Success/failure bool return karta hai."""
         obj = self.get_object(name)
         if obj is None:
             return False
@@ -61,11 +55,6 @@ class BlenderBridge:
         return True
 
     def duplicate_object(self, name: str, new_name: str = None):
-        """
-        Object ko duplicate karta hai. Agar new_name diya hai toh
-        naye object ka naam wahi set hoga, warna Blender ka default
-        naming (Cube.001) use hoga.
-        """
         obj = self.get_object(name)
         if obj is None:
             return None
@@ -82,7 +71,6 @@ class BlenderBridge:
         return new_obj
 
     def rename_object(self, old_name: str, new_name: str):
-        """Object ka naam change karta hai. Nahi mila toh None."""
         obj = self.get_object(old_name)
         if obj is None:
             return None
@@ -90,10 +78,6 @@ class BlenderBridge:
         return obj
 
     def transform_object(self, name: str, location=None, rotation=None, scale=None):
-        """
-        Object ki location/rotation/scale update karta hai. Sirf
-        diye gaye fields update honge, baaki jaise the waise rahenge.
-        """
         obj = self.get_object(name)
         if obj is None:
             return None
@@ -106,3 +90,137 @@ class BlenderBridge:
             obj.scale = scale
 
         return obj
+
+    # ---------------------------------------------------------
+    # Material level — Step 2.5
+    # ---------------------------------------------------------
+    def get_material(self, name: str):
+        return bpy.data.materials.get(name)
+
+    def create_material(self, name: str, color=None):
+        material = bpy.data.materials.new(name=name)
+        material.use_nodes = True
+
+        if color is not None:
+            self._set_material_base_color(material, color)
+
+        return material
+
+    def assign_material(self, object_name: str, material_name: str):
+        obj = self.get_object(object_name)
+        material = self.get_material(material_name)
+
+        if obj is None or material is None:
+            return False
+
+        if obj.data.materials:
+            obj.data.materials[0] = material
+        else:
+            obj.data.materials.append(material)
+
+        return True
+
+    def modify_material(self, name: str, color=None, roughness=None, metallic=None):
+        material = self.get_material(name)
+        if material is None:
+            return None
+
+        if color is not None:
+            self._set_material_base_color(material, color)
+
+        bsdf = self._get_principled_bsdf(material)
+        if bsdf is not None:
+            if roughness is not None:
+                bsdf.inputs["Roughness"].default_value = roughness
+            if metallic is not None:
+                bsdf.inputs["Metallic"].default_value = metallic
+
+        return material
+
+    def _get_principled_bsdf(self, material):
+        if not material.use_nodes:
+            return None
+        for node in material.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                return node
+        return None
+
+    def _set_material_base_color(self, material, color):
+        bsdf = self._get_principled_bsdf(material)
+        if bsdf is not None:
+            rgba = list(color) + [1.0] if len(color) == 3 else list(color)
+            bsdf.inputs["Base Color"].default_value = rgba
+
+    # ---------------------------------------------------------
+    # Modifier level — Step 2.6
+    # ---------------------------------------------------------
+    def add_modifier(self, object_name: str, modifier_name: str, modifier_type: str = "BEVEL"):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+
+        modifier = obj.modifiers.new(name=modifier_name, type=modifier_type)
+        return modifier
+
+    def remove_modifier(self, object_name: str, modifier_name: str) -> bool:
+        obj = self.get_object(object_name)
+        if obj is None:
+            return False
+
+        modifier = obj.modifiers.get(modifier_name)
+        if modifier is None:
+            return False
+
+        obj.modifiers.remove(modifier)
+        return True
+
+    def configure_modifier(self, object_name: str, modifier_name: str, properties: dict):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+
+        modifier = obj.modifiers.get(modifier_name)
+        if modifier is None:
+            return None
+
+        for key, value in properties.items():
+            if hasattr(modifier, key):
+                setattr(modifier, key, value)
+
+        return modifier
+
+    # ---------------------------------------------------------
+    # Camera / Render level — Step 2.7
+    # ---------------------------------------------------------
+    def create_camera(self, name: str, location=None, rotation=None):
+        """Naya camera object banata hai scene mein."""
+        camera_data = bpy.data.cameras.new(name=f"{name}_data")
+        camera_obj = bpy.data.objects.new(name=name, object_data=camera_data)
+        bpy.context.collection.objects.link(camera_obj)
+
+        if location is not None:
+            camera_obj.location = location
+        if rotation is not None:
+            camera_obj.rotation_euler = rotation
+
+        return camera_obj
+
+    def set_active_camera(self, name: str) -> bool:
+        """Scene ka active/render camera set karta hai."""
+        obj = self.get_object(name)
+        if obj is None or obj.type != 'CAMERA':
+            return False
+
+        self.get_scene().camera = obj
+        return True
+
+    def render_preview(self, filepath: str) -> str:
+        """
+        Current scene ka render leta hai aur diye gaye filepath pe
+        save karta hai. Path wapas return karta hai — future mein
+        Vision system (Phase 5) isi image ko "dekhega".
+        """
+        scene = self.get_scene()
+        scene.render.filepath = filepath
+        bpy.ops.render.render(write_still=True)
+        return filepath
