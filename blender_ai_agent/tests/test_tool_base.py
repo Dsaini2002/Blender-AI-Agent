@@ -56,6 +56,46 @@ class TestToolBase(unittest.TestCase):
 
         self.assertEqual(GoodTool().permission, Permission.SAFE_WRITE)
 
+    def test_validate_converts_dict_to_typed_input(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class SimpleInput:
+            name: str
+
+        class TypedTool(Tool):
+            name = "typed.tool"
+            input_model = SimpleInput
+
+            def run(self, validated_input):
+                return ToolResult.ok({"received_name": validated_input.name})
+
+        tool = TypedTool()
+        result = tool.execute({"name": "Cube"})
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["received_name"], "Cube")
+
+    def test_validate_missing_field_fails_gracefully(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class SimpleInput:
+            name: str
+
+        class TypedTool(Tool):
+            name = "typed.tool"
+            input_model = SimpleInput
+
+            def run(self, validated_input):
+                return ToolResult.ok()
+
+        tool = TypedTool()
+        result = tool.execute({})  # 'name' missing
+
+        self.assertFalse(result.success)
+        self.assertIn("Invalid input", result.error)
+
 
 if __name__ == "__main__":
     unittest.main()

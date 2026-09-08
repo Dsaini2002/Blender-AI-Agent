@@ -63,14 +63,15 @@ class Tool(ABC, Generic[TInput]):
 
     def validate(self, input_data: Dict[str, Any]) -> TInput:
         """
-        Hinglish: Raw dict (jo future mein LLM/UI se aayega) ko typed
-        input object mein convert karta hai.
+        Hinglish: Raw dict ko typed input object mein convert karta hai.
 
         Agar input_model set nahi hai (jaise scene.inspect), toh raw
         dict hi wapas kar dete hain — backward compatible.
 
-        Zaroori fields missing hone par ValueError — "fail fast,
-        fail clear" principle.
+        Agar input_model set hai, dataclass construct karte waqt:
+          - Missing/extra fields -> TypeError -> humara ValueError
+          - __post_init__ ke andar wale checks -> ValueError seedha propagate
+        Dono cases mein caller (execute()) ko clean ValueError milta hai.
         """
         if self.input_model is None:
             return input_data  # type: ignore
@@ -79,6 +80,8 @@ class Tool(ABC, Generic[TInput]):
             return self.input_model(**(input_data or {}))
         except TypeError as exc:
             raise ValueError(f"Invalid input for tool '{self.name}': {exc}") from exc
+        except ValueError:
+            raise  # __post_init__ ka apna ValueError hai, waisa hi propagate karo
 
     @abstractmethod
     def run(self, validated_input: TInput) -> ToolResult:
