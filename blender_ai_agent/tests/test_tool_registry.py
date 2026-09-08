@@ -2,15 +2,15 @@ from . import _bpy_stub  # noqa: F401
 
 import unittest
 
-from blender_ai_agent.tools.base import Tool
+from blender_ai_agent.tools.base import Tool, ToolResult
 from blender_ai_agent.tools.registry import ToolRegistry
 
 
 class DummyTool(Tool):
     name = "dummy.tool"
 
-    def execute(self, input_data=None):
-        return {"result": "dummy"}
+    def run(self, validated_input):
+        return ToolResult.ok({"result": "dummy"})
 
 
 class TestToolRegistry(unittest.TestCase):
