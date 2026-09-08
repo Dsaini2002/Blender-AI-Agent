@@ -232,4 +232,4 @@ class FakeBridge:
     def render_preview(self, filepath):
         # Real file save nahi karte tests mein — bas path record karte hain
         self._last_render_path = filepath
-        return filepath
+        return filepath 
