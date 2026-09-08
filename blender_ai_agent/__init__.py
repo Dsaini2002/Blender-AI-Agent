@@ -1,16 +1,15 @@
 """
-Blender AI Agent — Phase 1: Blender Foundation (V1)
-=====================================================
-No LLM, no Agent, no Vision — sirf deterministic scene understanding.
+Blender AI Agent — Phase 1 + Phase 2 (Step 2.4)
+==================================================
 """
 
 bl_info = {
     "name": "Blender AI Agent",
     "author": "You",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > AI Agent",
-    "description": "Phase 1 deterministic foundation for the Blender AI Agent project.",
+    "description": "Deterministic tool system for the Blender AI Agent project.",
     "category": "Object",
 }
 
@@ -20,6 +19,13 @@ from .bridge.blender_bridge import BlenderBridge
 from .inspectors.scene_inspector import SceneInspector
 from .tools.registry import ToolRegistry
 from .tools.scene_tools import SceneInspectTool
+from .tools.object_tools import (
+    CreateObjectTool,
+    DeleteObjectTool,
+    DuplicateObjectTool,
+    RenameObjectTool,
+    TransformObjectTool,
+)
 from .ui.panel import AIAgentPanel, AIAGENT_OT_inspect_scene
 
 _bridge: BlenderBridge = None
@@ -41,14 +47,20 @@ def get_registry() -> ToolRegistry:
 
 
 def _register_tools() -> None:
+    """Composition Root — saare tools yahin assemble hote hain."""
     registry = get_registry()
     bridge = get_bridge()
 
-    # Dependency chain yahan explicitly assemble hoti hai — ise
-    # "Composition Root" kehte hain: poore app mein sirf ek jagah
-    # jahan sab dependencies jodi jaati hain.
+    # Scene tools
     inspector = SceneInspector(bridge)
     registry.register(SceneInspectTool(inspector))
+
+    # Object tools — Step 2.4 (complete set)
+    registry.register(CreateObjectTool(bridge))
+    registry.register(DeleteObjectTool(bridge))
+    registry.register(DuplicateObjectTool(bridge))
+    registry.register(RenameObjectTool(bridge))
+    registry.register(TransformObjectTool(bridge))
 
 
 classes = (
@@ -61,7 +73,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     _register_tools()
-    print("[Blender AI Agent] Phase 1 addon registered. Tools:", get_registry().list_tools())
+    print("[Blender AI Agent] Registered. Tools:", get_registry().list_tools())
 
 
 def unregister():
