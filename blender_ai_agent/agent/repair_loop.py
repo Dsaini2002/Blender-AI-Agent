@@ -165,7 +165,16 @@ class RepairableExecutionLoop:
             repairs_done += 1
 
     def _validate(self, tool_call: ToolCall, result: ToolResult) -> ToolResult:
-        """Hinglish: Agar is tool ke liye validator registered hai, scene ko cross-check karo."""
+        """
+        Hinglish: Agar is tool ke liye validator registered hai, scene
+        ko cross-check karo. Ye SCENE-level validators (Phase 4) ke
+        liye hai — jaise ObjectExistsValidator.
+
+        Vision-based validation (VisualValidator, Step 5.12) alag hai
+        aur explicitly `validate_visually()` se call hoti hai, kyunki
+        wo image capture (expensive) maangti hai — har tool call ke
+        baad automatically nahi chalani chahiye.
+        """
         validator = self._validators.get(tool_call.tool_name)
         if validator is None:
             return result  # koi validator nahi — ToolResult.success pe hi bharosa karte hain
@@ -176,6 +185,21 @@ class RepairableExecutionLoop:
 
         error = classify_validation_error(validation.reasons)
         return ToolResult.fail(error.message)
+
+    def validate_visually(self, filepath: str, expected: dict, vision_context_manager, visual_validator):
+        """
+        Hinglish: Step 5.12 — Vision + Reliability integration.
+
+        Agent explicitly ye call karega jab visual confirmation
+        chahiye ho (jaise "make sure it's nicely framed"). Ye
+        Reliability ke error-classification/repair pattern follow
+        karta hai, lekin VISUAL validation ke liye.
+
+        Return: ValidationResult (agent/caller decide karega repair
+        chahiye ya nahi, jaisa normal tool validation ke saath hota hai).
+        """
+        context = vision_context_manager.build_context(filepath=filepath)
+        return visual_validator.validate(context.visual_observation, expected)
 
     def _build_request(self, state: ConversationState) -> ModelRequest:
         tool_definitions = self._tool_caller.get_tool_definitions()
