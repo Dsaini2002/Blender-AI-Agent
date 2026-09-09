@@ -43,9 +43,19 @@ class VisionObserveTool(Tool):
             context={"source": validated_input.source},
         )
 
-        return ToolResult.ok({
+        result_data = {
             "description": observation.description,
             "objects_detected": observation.objects_detected,
             "issues": observation.issues,
             "confidence": observation.confidence,
-        })
+        }
+
+        if observation.is_low_confidence:
+            # Hinglish: Tool FAIL nahi karta — data wahi return hota hai,
+            # lekin "low_confidence" flag add ho jaata hai. Caller
+            # (Agent/RepairableExecutionLoop) decide karega destructive
+            # action lena hai ya nahi — Step 5.17 human-in-the-loop
+            # philosophy ke hisaab se.
+            result_data["low_confidence_warning"] = True
+
+        return ToolResult.ok(result_data)
