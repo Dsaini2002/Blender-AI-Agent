@@ -258,3 +258,44 @@ BlenderBridge → Blender
 | Tests, docs, git history, GitHub push | ✅ |
 
 **Known limitation:** the panel currently wires to a `MockProvider` with no scripted responses (`get_copilot_controller()` in the root `__init__.py`) — a real LLM provider (OpenAI/Anthropic) needs to be plugged in before the chat is usable inside real Blender with real natural-language input. Swapping it in is a one-line change, by design (Open/Closed Principle — `ModelProvider` abstraction from Phase 3).
+
+### ✅ Phase 7 — Memory & Skills
+
+The agent can now remember useful context across tasks and execute high-level, parameterized, multi-tool workflows — without ever treating memory as a replacement for the scene's source of truth.
+
+> Memory ka matlab har conversation save karna nahi hai — useful information store karni hai.
+                     USER
+                       ↓
+                    AGENT
+                       ↓
+          ┌────────────┴────────────┐
+          ↓                         ↓
+     Memory System             Skill System
+          ↓                         ↓
+  MemoryContextBuilder        SkillRegistry
+          ↓                         ↓
+          └────────────┬────────────┘
+                       ↓
+          MemorySkillOrchestrator
+                       ↓
+                Tools (via ToolCaller)
+                       ↓
+                   Blender
+
+| Component | File | Responsibility |
+|---|---|---|
+| `Memory`, `UserPreference`, `ProjectMemory`, `TaskMemory` | `memory/models.py` | Typed memory records — polymorphic subclasses per category |
+| `MemoryStore` (ABC) + `InMemoryStore` | `memory/store.py` | Storage abstraction — the Agent is never coupled to a specific backend (JSON/SQLite/vector DB can plug in later) |
+| `MemoryManager` | `memory/manager.py` | The single interface the Agent uses: `remember()` / `recall()` / `forget()` |
+| `MemoryRetriever` | `memory/retriever.py` | Scores every memory against a query and returns only what's relevant, not everything stored |
+| `MemoryPolicy` | `memory/policies.py` | Decides what should be stored, retrieved, or expired — secrets (API keys, passwords, tokens) are never stored |
+| `MemoryContextBuilder` | `memory/context.py` | Turns relevant memories into a compact, categorized summary instead of raw dumps |
+| `Skill` (ABC) + `SkillResult` | `skills/base.py` | A reusable, multi-tool workflow — high-level, parameterized, and never touches `bpy` directly |
+| `SkillRegistry` | `skills/registry.py` | Name-based lookup plus `find_best_match()` for skill selection, mirroring `ToolRegistry` |
+| `ProductShowcaseSkill` | `skills/builtins/product_showcase.py` | A working example skill: create → material → assign → camera, entirely through existing tools |
+| `SkillValidator` | `skills/validation.py` | Reuses Phase 4's `Validator`s to confirm a skill's steps actually happened in the scene, not just that the skill reported success |
+| `MemorySkillOrchestrator` | `memory/orchestrator.py` | The key integration point: retrieves relevant memory, selects a matching skill, and merges the two into a personalized execution |
+
+**Skill permissions:** every skill exposes `required_permissions()`, so a skill involving `object.delete` (or any `DESTRUCTIVE` tool) can be flagged for confirmation before it runs — skills never get unrestricted access by default.
+
+**Scene remains the source of truth:** memory can help resolve references ("move it") and personalize workflows, but it never substitutes for `scene.inspect` — exactly the same principle carried forward from Phase 1.
