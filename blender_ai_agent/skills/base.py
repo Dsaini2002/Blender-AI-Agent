@@ -49,6 +49,27 @@ class Skill(ABC):
         name_words = self.name.replace("_", " ").replace(".", " ").lower().split()
         matches = sum(1 for word in name_words if word in task_lower)
         return matches / len(name_words) if name_words else 0.0
+    def required_permissions(self, tool_registry) -> list:
+        """
+        Hinglish: Step 7.24 — Skill khud automatically unrestricted
+        access nahi paati. Ye method batata hai ki is skill ke andar
+        kaunsi permissions involve hain — caller (Agent/UI) isse
+        confirmation flow (Phase 6 ConfirmationManager) mein use kar
+        sakta hai.
+
+        Default implementation empty list deta hai — concrete skills
+        isko override karke apne tool names list karengi.
+        """
+        return []
+
+    def has_destructive_operations(self, tool_registry) -> bool:
+        """Hinglish: Quick check — is skill mein koi DESTRUCTIVE tool hai?"""
+        from ..tools.base import Permission
+        for tool_name in self.required_permissions(tool_registry):
+            tool = tool_registry.get(tool_name)
+            if tool.permission == Permission.DESTRUCTIVE:
+                return True
+        return False
 
     @abstractmethod
     def execute(self, context: Dict[str, Any]) -> SkillResult:

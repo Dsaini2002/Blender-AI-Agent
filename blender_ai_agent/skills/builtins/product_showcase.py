@@ -41,6 +41,8 @@ class ProductShowcaseSkill(Skill):
             primitive=context.get("primitive", "CUBE"),
             material_color=context.get("material_color"),
         )
+    
+
 
         steps_completed = []
 
@@ -81,7 +83,9 @@ class ProductShowcaseSkill(Skill):
             data={"object": params.object_name, "material": material_name},
             steps_completed=steps_completed,
         )
-
+    def required_permissions(self, tool_registry) -> list:
+        return ["object.create", "material.create", "material.assign", "camera.create"]
+    
     @staticmethod
     def _make_call(tool_name: str, arguments: Dict[str, Any]):
         from ...agent.models import ToolCall
