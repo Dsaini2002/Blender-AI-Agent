@@ -1,15 +1,15 @@
 """
-Blender AI Agent — Phase 1 + Phase 2 (Step 2.7)
-==================================================
+Blender AI Agent — Phase 1 through Phase 6
+==============================================
 """
 
 bl_info = {
     "name": "Blender AI Agent",
     "author": "You",
-    "version": (0, 5, 0),
+    "version": (0, 6, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > AI Agent",
-    "description": "Deterministic tool system for the Blender AI Agent project.",
+    "description": "Deterministic tool system + reliable, vision-aware AI Copilot for Blender.",
     "category": "Object",
 }
 
@@ -41,10 +41,11 @@ from .tools.camera_tools import (
     SetCameraTool,
     RenderPreviewTool,
 )
-from .ui.panel import AIAgentPanel, AIAGENT_OT_inspect_scene
+from .ui.panel import AIAgentPanel, AIAGENT_OT_inspect_scene, AIAGENT_OT_copilot_submit
 
 _bridge: BlenderBridge = None
 _registry: ToolRegistry = None
+_copilot_controller = None
 
 
 def get_bridge() -> BlenderBridge:
@@ -93,8 +94,57 @@ def _register_tools() -> None:
     registry.register(RenderPreviewTool(bridge))
 
 
+def get_copilot_controller():
+    """
+    Hinglish: CopilotController ka single, shared instance —
+    Agent (RepairableExecutionLoop) ke saath already wired.
+    Lazy imports isliye taaki root __init__.py load hote waqt
+    agent/reliability/observability/copilot packages sirf tab
+    import hon jab copilot actually use ho — circular import se bhi bachate hain.
+    """
+    global _copilot_controller
+    if _copilot_controller is None:
+        from .agent.repair_loop import RepairableExecutionLoop
+        from .agent.context import ContextManager
+        from .agent.planner import Planner
+        from .agent.tool_caller import ToolCaller
+        from .copilot.controller import CopilotController
+        from .observability.logger import Logger
+        from .providers.mock_provider import MockProvider
+        from .reliability.recovery import RecoveryManager
+
+        bridge = get_bridge()
+        registry = get_registry()
+
+        tool_caller = ToolCaller(registry)
+        context_manager = ContextManager(registry.get("scene.inspect"))
+        planner = Planner()
+        recovery = RecoveryManager(tool_caller)
+        logger = Logger()
+
+        # Hinglish: Abhi MockProvider — real OpenAI/Anthropic provider
+        # baad mein yahan sirf ek line badal ke plug hoga (Open/Closed
+        # Principle — baaki kuch chhedna nahi padega).
+        provider = MockProvider(responses=[])
+
+        agent = RepairableExecutionLoop(
+            model_provider=provider,
+            tool_caller=tool_caller,
+            context_manager=context_manager,
+            planner=planner,
+            bridge=bridge,
+            recovery_manager=recovery,
+            logger=logger,
+        )
+
+        _copilot_controller = CopilotController(agent)
+
+    return _copilot_controller
+
+
 classes = (
     AIAGENT_OT_inspect_scene,
+    AIAGENT_OT_copilot_submit,
     AIAgentPanel,
 )
 
@@ -102,16 +152,22 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.types.Scene.aiagent_copilot_input = bpy.props.StringProperty(
+        name="Copilot Input",
+        description="Type your request for the AI Copilot",
+    )
     _register_tools()
     print("[Blender AI Agent] Registered. Tools:", get_registry().list_tools())
 
 
 def unregister():
-    global _bridge, _registry
+    global _bridge, _registry, _copilot_controller
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+    del bpy.types.Scene.aiagent_copilot_input
     _bridge = None
     _registry = None
+    _copilot_controller = None
 
 
 if __name__ == "__main__":
