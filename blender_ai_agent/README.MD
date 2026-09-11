@@ -186,3 +186,75 @@ The agent can now *see* the scene — not just query its structured state — an
 **Confidence is never treated as ground truth:** `VisionObserveTool` flags `low_confidence_warning` on uncertain observations instead of silently trusting them, and `check_confidence()` can hard-stop a workflow before it acts on an unreliable observation.
 
 **Vision integrates with Phase 4's reliability loop** via `RepairableExecutionLoop.validate_visually()` — an explicit, opt-in step (image analysis is expensive, so it's never run automatically after every tool call).
+
+
+### ✅ Phase 6 — Copilot UX
+
+The engine built across Phases 1–5 is now exposed through a Blender-native chat interface, without the UI layer ever containing business logic or touching `bpy` directly.
+
+> UI → CopilotController → Agent → Tool System → Blender
+                USER
+                  │
+                  ▼
+        ┌──────────────────┐
+        │  AIAgentPanel    │  (Blender sidebar)
+        └────────┬─────────┘
+                  │
+                  ▼
+        ┌──────────────────┐
+        │ CopilotController│
+        └────────┬─────────┘
+                  │
+    ┌─────────────┼─────────────────┐
+    ▼             ▼                 ▼
+
+CopilotSession ProgressState ConfirmationManager
+│ │ │
+▼ ▼ ▼
+SuggestionEngine TaskHistory EventBus
+│
+▼
+RepairableExecutionLoop (Phase 3 + 4)
+│
+▼
+ToolRegistry → Tools (15) + vision.observe
+│
+▼
+BlenderBridge → Blender
+
+
+| Component | File | Responsibility |
+|---|---|---|
+| `CopilotController` | `copilot/controller.py` | The single entry point between UI and Agent. Accepts any object with a `.run(text)` method via dependency injection — works with `Agent`, `ExecutionLoop`, or `RepairableExecutionLoop` interchangeably |
+| `CopilotSession` / `CopilotMessage` | `copilot/session.py`, `copilot/messages.py` | Structured, displayable chat history — kept separate from the LLM's internal `ConversationState` (Phase 3) |
+| `ProgressState` | `copilot/progress.py` | Live per-step task progress: `○ pending → → running → ✓ done / ✗ failed` |
+| `ConfirmationManager` | `copilot/confirmations.py` | Destructive-permission actions require explicit approval before executing |
+| `SuggestionEngine` | `copilot/suggestions.py` | Scene-aware "what to do next" suggestions, derived live from `scene.inspect` — never a hardcoded list |
+| `CopilotContextBuilder` | `copilot/context.py` | Selection / active object / active camera, always derived fresh from Blender state — never an independent source of truth |
+| `TaskHistory` | `copilot/history.py` | In-memory recent-task log (session-scoped — permanent memory is Phase 7, intentionally not built here) |
+| `EventBus` / `CopilotEvent` | `copilot/events.py` | Publish/subscribe so the UI never reaches into the Agent's internals |
+| `compute_diff` / `SceneDiff` | `copilot/diff.py` | Before/after scene comparison, built directly on Phase 4's `SceneSnapshot` |
+| `AIAgentPanel`, `copilot_submit` operator | `ui/panel.py` | The actual Blender sidebar UI — a thin shell that only forwards typed text to `CopilotController.submit()` |
+
+**Architecture rule enforced:** nothing under `copilot/` imports `bpy`, and `ui/panel.py` contains no tool logic — every action flows through `CopilotController`.
+
+**Definition of Done:**
+
+| Item | Status |
+|---|---|
+| Blender sidebar panel + chat input/output | ✅ |
+| Conversation session | ✅ |
+| Agent integration | ✅ |
+| Task progress | ✅ |
+| Tool execution visibility | ✅ |
+| Confirmation system + permission visibility | ✅ |
+| Cancel/stop | ✅ |
+| Error presentation | ✅ |
+| Context-aware suggestions | ✅ |
+| Selection awareness | ✅ |
+| Scene diff | ✅ |
+| Task history | ✅ |
+| Event-driven UI | ✅ |
+| Tests, docs, git history, GitHub push | ✅ |
+
+**Known limitation:** the panel currently wires to a `MockProvider` with no scripted responses (`get_copilot_controller()` in the root `__init__.py`) — a real LLM provider (OpenAI/Anthropic) needs to be plugged in before the chat is usable inside real Blender with real natural-language input. Swapping it in is a one-line change, by design (Open/Closed Principle — `ModelProvider` abstraction from Phase 3).
