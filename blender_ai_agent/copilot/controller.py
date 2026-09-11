@@ -44,15 +44,16 @@ class CopilotController:
         Hinglish: User ka message Agent ko bhejta hai, result ko
         session mein record karta hai, aur UI ke liye ek simple
         SubmitResult return karta hai.
+
+        Agar submit() call hone se PEHLE hi cancel() ho chuka tha,
+        Agent ko call hi nahi karte — turant cancelled result de dete hain.
         """
-        self._cancelled = False
-        self.session.add_user_message(user_input)
-
-        run_result = self._agent.run(user_input)
-
         if self._cancelled:
             self.session.add_error_message("Task was cancelled.")
             return SubmitResult(reply_text=None, success=False)
+
+        self.session.add_user_message(user_input)
+        run_result = self._agent.run(user_input)
 
         task_id = getattr(run_result, "task_id", "")
         rolled_back = getattr(run_result, "rolled_back", False)
