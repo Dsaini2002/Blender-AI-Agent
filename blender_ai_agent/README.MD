@@ -164,6 +164,25 @@ An unrecoverable failure partway through a multi-step task (e.g. invalid input o
 | Retry | ❌ | ✅ Controlled, policy-driven |
 | Logging | ❌ | ✅ Structured event log per task |
 
-### phase 5 start
-lets now start phase 
-do now
+### ✅ Phase 5 — Vision
+
+The agent can now *see* the scene — not just query its structured state — and combine both to reason about visual correctness (framing, missing objects, low-confidence detections) before committing to a result.
+
+> Blender scene data tells us what is there. Vision tells us what it looks like.
+
+| Component | File | Responsibility |
+|---|---|---|
+| `VisionProvider` (ABC) + `MockVisionProvider` | `vision/providers/` | Same abstraction pattern as `ModelProvider` — real vision APIs plug in without touching the Agent |
+| `VisualObservation` | `vision/models.py` | Structured vision output: description, detected objects, composition, lighting, issues, confidence |
+| `Capture` / `RenderCapture` / `ViewportCapture` / `CameraCapture` | `vision/capture.py` | Blender-specific screenshot/render logic, kept out of the vision provider |
+| `VisionAnalyzer` | `vision/analyzer.py` | Wires a `Capture` strategy to a `VisionProvider` |
+| `VisionObserveTool` (`vision.observe`) | `vision/tool.py` | Exposes the vision pipeline as a standard tool — the Agent calls it exactly like `object.create` |
+| `VisionContextManager` | `vision/context.py` | Combines structured scene context with a visual observation into one payload |
+| `VisualValidator` | `vision/validator.py` | Checks an observation against expectations (required objects, minimum confidence, no issues) |
+| `ObjectIdentifier` | `vision/identifier.py` | Grounds a visual description ("red cube") to an actual scene object name ("Red_Cube") |
+| `VisionError` / `classify_vision_exception` | `vision/errors.py` | Structured vision-specific error codes, following the same pattern as `reliability/errors.py` |
+| `HumanInTheLoopGate` | `vision/human_in_loop.py` | Vision-driven suggestions never auto-execute destructive tools — they require explicit confirmation |
+
+**Confidence is never treated as ground truth:** `VisionObserveTool` flags `low_confidence_warning` on uncertain observations instead of silently trusting them, and `check_confidence()` can hard-stop a workflow before it acts on an unreliable observation.
+
+**Vision integrates with Phase 4's reliability loop** via `RepairableExecutionLoop.validate_visually()` — an explicit, opt-in step (image analysis is expensive, so it's never run automatically after every tool call).
