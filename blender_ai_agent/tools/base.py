@@ -22,7 +22,7 @@ class Permission(str, Enum):
     READ_ONLY = "read_only"       # scene.inspect — kuch modify nahi karta
     SAFE_WRITE = "safe_write"     # object.create — reversible, low risk
     DESTRUCTIVE = "destructive"   # object.delete — data loss ho sakta hai
-
+    PYTHON_EXECUTION = "python_execution"
 
 @dataclass
 class ToolResult:
