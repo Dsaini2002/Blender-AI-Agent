@@ -57,3 +57,33 @@ class TaskGraph:
             raise CyclicDependencyError("TaskGraph has a cyclic dependency — cannot determine execution order.")
 
         return [self._subtasks[tid] for tid in ordered_ids]
+    def parallel_groups(self) -> list:
+        """
+        Hinglish: Step 11.3/11.4 — execution_order() ek FLAT sequence
+        deta hai. Ye method tasks ko "levels" mein group karta hai —
+        har level ke andar wale tasks EK-DOOSRE se independent hain
+        (potentially parallel), lekin level N, level N-1 complete
+        hone ke BAAD hi chalega.
+
+        Return: List[List[SubTask]] — outer list = sequential levels,
+        inner list = us level ke parallel-eligible tasks.
+        """
+        ordered = self.execution_order()  # cycle-check bhi ho jaata hai isi call se
+        completed_ids = set()
+        remaining = list(ordered)
+        levels = []
+
+        while remaining:
+            current_level = [
+                task for task in remaining
+                if all(dep in completed_ids for dep in task.depends_on)
+            ]
+            if not current_level:
+                break  # safety — cycle already check ho chuka hai upar, ye theoretically nahi hoga
+
+            levels.append(current_level)
+            for task in current_level:
+                completed_ids.add(task.id)
+            remaining = [t for t in remaining if t not in current_level]
+
+        return levels
