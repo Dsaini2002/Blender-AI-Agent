@@ -1,8 +1,8 @@
 """
 fakes.py
 ========
-Hinglish: SceneInspector, Object/Material/Modifier/Camera Tools ko
-test karne ke liye "Fake" BlenderBridge.
+Hinglish: SceneInspector, Object/Material/Modifier/Camera/GeometryNodes/
+Animation Tools ko test karne ke liye "Fake" BlenderBridge.
 """
 
 
@@ -15,6 +15,7 @@ class FakeModifier:
         self.width = None
         self.levels = None
         self.thickness = None
+        self.node_group = None
 
 
 class FakeModifierCollection:
@@ -49,6 +50,7 @@ class FakeObject:
         self.scale = scale or [1.0, 1.0, 1.0]
         self.material_name = None
         self.modifiers = FakeModifierCollection()
+        self.keyframes = []  # list of (frame, location) tuples — Step 9.13
 
 
 class FakeMaterial:
@@ -232,4 +234,39 @@ class FakeBridge:
     def render_preview(self, filepath):
         # Real file save nahi karte tests mein — bas path record karte hain
         self._last_render_path = filepath
-        return filepath 
+        return filepath
+
+    # ---------------------------------------------------------
+    # Geometry Nodes — Step 9.8
+    # ---------------------------------------------------------
+    def add_geometry_nodes(self, object_name, node_group_name):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+        return obj.modifiers.new(name=node_group_name, type="NODES")
+
+    def get_geometry_nodes(self, object_name, modifier_name):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+        return obj.modifiers.get(modifier_name)
+
+    # ---------------------------------------------------------
+    # Animation — Step 9.13
+    # ---------------------------------------------------------
+    def insert_keyframe(self, object_name, frame, location=None):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return False
+
+        if location is not None:
+            obj.location = location
+
+        obj.keyframes.append((frame, list(obj.location)))
+        return True
+
+    def get_keyframes(self, object_name):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return []
+        return sorted(frame for frame, _ in obj.keyframes)

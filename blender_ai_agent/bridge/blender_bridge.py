@@ -224,3 +224,51 @@ class BlenderBridge:
         scene.render.filepath = filepath
         bpy.ops.render.render(write_still=True)
         return filepath
+        # ---------------------------------------------------------
+    # Geometry Nodes — Step 9.8
+    # ---------------------------------------------------------
+    def add_geometry_nodes(self, object_name: str, node_group_name: str):
+        """Object pe naya Geometry Nodes modifier add karta hai."""
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+
+        node_tree = bpy.data.node_groups.new(name=node_group_name, type='GeometryNodeTree')
+        modifier = obj.modifiers.new(name=node_group_name, type='NODES')
+        modifier.node_group = node_tree
+        return modifier
+
+    def get_geometry_nodes(self, object_name: str, modifier_name: str):
+        """Object ke Geometry Nodes modifier ko dhundta hai."""
+        obj = self.get_object(object_name)
+        if obj is None:
+            return None
+        return obj.modifiers.get(modifier_name)
+
+    # ---------------------------------------------------------
+    # Animation — Step 9.13
+    # ---------------------------------------------------------
+    def insert_keyframe(self, object_name: str, frame: int, location=None):
+        """Object ki current (ya di gayi) location pe keyframe insert karta hai."""
+        obj = self.get_object(object_name)
+        if obj is None:
+            return False
+
+        if location is not None:
+            obj.location = location
+
+        obj.keyframe_insert(data_path="location", frame=frame)
+        return True
+
+    def get_keyframes(self, object_name: str):
+        """Object ke location keyframes ki frame-number list deta hai."""
+        obj = self.get_object(object_name)
+        if obj is None or obj.animation_data is None or obj.animation_data.action is None:
+            return []
+
+        frames = set()
+        for fcurve in obj.animation_data.action.fcurves:
+            if fcurve.data_path == "location":
+                for keyframe_point in fcurve.keyframe_points:
+                    frames.add(int(keyframe_point.co[0]))
+        return sorted(frames)
