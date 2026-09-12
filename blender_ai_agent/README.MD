@@ -299,3 +299,42 @@ The agent can now remember useful context across tasks and execute high-level, p
 **Skill permissions:** every skill exposes `required_permissions()`, so a skill involving `object.delete` (or any `DESTRUCTIVE` tool) can be flagged for confirmation before it runs — skills never get unrestricted access by default.
 
 **Scene remains the source of truth:** memory can help resolve references ("move it") and personalize workflows, but it never substitutes for `scene.inspect` — exactly the same principle carried forward from Phase 1.
+
+
+### ✅ Phase 8 — Benchmark
+
+The agent no longer just "does things" — its performance can now be objectively measured. The core principle carries forward from Phase 4: an agent's own "Done ✓" is never trusted as truth. The Blender scene, read fresh through `BlenderBridge`, is the only source of truth an evaluation trusts.
+
+> Agent Response ≠ truth. Blender Scene → Evaluator → Actual Result.
+
+BenchmarkTask
+↓
+BenchmarkRunner (fresh, isolated environment per task)
+↓
+Agent executes the instruction
+↓
+ValidationRules read the actual scene
+↓
+Evaluator → score (PASS / FAIL / partial)
+↓
+MetricCalculator → aggregate stats across a suite
+↓
+FailureAnalyzer / BenchmarkComparator / BenchmarkReporter
+
+
+| Component | File | Responsibility |
+|---|---|---|
+| `BenchmarkTask`, `ValidationResult`, `BenchmarkResult` | `benchmarks/models.py` | Typed task definitions and results — instruction, expected state, rules, timeout, score, status |
+| `ValidationRule` (ABC) + concrete rules | `benchmarks/validation_rules.py` | `ObjectExistsRule`, `ObjectTypeRule`, `TransformRule`, `MaterialRule`, `ModifierRule` — each reads the scene directly through the bridge, never trusting the tool's own success flag |
+| `Evaluator` | `benchmarks/evaluator.py` | Runs a task's rules against the actual scene; supports both equal-weight and weighted scoring |
+| `BenchmarkRunner` | `benchmarks/runner.py` | Executes a task's full lifecycle with a fresh, isolated agent+bridge per task — one task's changes never leak into the next |
+| `MetricCalculator` | `benchmarks/metrics.py` | Aggregates a suite's results into success rate, average score, duration, tool calls, retries, and rollbacks |
+| `DatasetLoader` | `benchmarks/dataset_loader.py` | Builds `BenchmarkTask` objects from task definitions (dict/JSON-shaped) |
+| `FailureAnalyzer` | `benchmarks/failure_analysis.py` | Classifies failures into categories (`VALIDATION_FAILURE`, `TOOL_FAILURE`, `RECOVERY_FAILURE`, `TIMEOUT`, etc.) instead of a generic "failed" |
+| `BenchmarkComparator` | `benchmarks/comparator.py` | Detects regressions and improvements between two benchmark runs, overall and per-category |
+| `BenchmarkReporter` | `benchmarks/reporter.py` | Produces the human-readable summary report |
+| `benchmarks/tasks/basic_tasks.py` | — | A working example task ("Create a cube named Hero.") wired end-to-end through the runner |
+
+**Isolation guarantee (verified by test):** running the same task twice in a suite produces two independent PASS results — no state leaks between tasks, because each task gets its own fresh `FakeBridge`/`BlenderBridge` and agent instance.
+
+**Scoring is partial, not binary:** a task with 2 of 2 rules passing scores 100%, but a task with 1 of 2 scores 50% — this surfaces *how close* a failing task got, not just that it failed.
