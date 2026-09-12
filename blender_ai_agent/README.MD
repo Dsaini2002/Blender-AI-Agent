@@ -338,3 +338,47 @@ FailureAnalyzer / BenchmarkComparator / BenchmarkReporter
 **Isolation guarantee (verified by test):** running the same task twice in a suite produces two independent PASS results — no state leaks between tasks, because each task gets its own fresh `FakeBridge`/`BlenderBridge` and agent instance.
 
 **Scoring is partial, not binary:** a task with 2 of 2 rules passing scores 100%, but a task with 1 of 2 scores 50% — this surfaces *how close* a failing task got, not just that it failed.
+
+
+### ✅ Phase 9 — Advanced Agents & Blender Capabilities
+
+The agent moved from handling single, controlled operations to decomposing complex, high-level instructions into dependency-ordered sub-tasks, executing them with checkpoint-based recovery, and gaining new Blender capabilities (Geometry Nodes, animation, a tightly restricted Python escape hatch).
+
+> Blender = Execution Environment. Agent = Intelligence. Tools = Actions. Vision = Observation. Validator = Truth Check.
+          Complex Instruction
+                   ↓
+           TaskDecomposer
+                   ↓
+              TaskGraph (dependency order)
+                   ↓
+        AdvancedOrchestrator
+                   ↓
+    ┌──────────────┼──────────────┐
+    ↓              ↓              ↓
+
+Checkpoint Skill/Tool AgentStateMachine
+(per subtask) execution (IDLE→PLANNING→
+↓ ↓ EXECUTING→...)
+└──────────────┴──────────────┘
+↓
+Failure? → rollback to LATEST checkpoint
+(not a full restart)
+
+
+| Component | File | Responsibility |
+|---|---|---|
+| `TaskDecomposer` | `agent/advanced/decomposer.py` | Breaks a high-level instruction into `SubTask`s with declared dependencies |
+| `TaskGraph` | `agent/advanced/task_graph.py` | Topologically sorts sub-tasks so dependencies always execute before dependents; detects cycles |
+| `CheckpointManager` | `agent/advanced/checkpoints.py` | Named checkpoints built on Phase 4's `SnapshotManager`/`RollbackManager` — failure rolls back to the *latest* checkpoint, not the start |
+| `AgentStateMachine` | `agent/advanced/state.py` | Enforces valid lifecycle transitions (e.g. `IDLE` can't jump straight to `COMPLETED`) |
+| `AdvancedOrchestrator` | `agent/advanced/orchestrator.py` | Ties decomposition + graph ordering + checkpointing + state machine together into one complex-task runner |
+| `SkillPermissionChecker` | `skills/advanced_permissions.py` | Determines a skill's overall risk level and whether it needs confirmation, based on the tools it composes |
+| `CreateGeometryNodesTool` (`geometry_nodes.create`) | `tools/geometry_node_tools.py` | Adds a Geometry Nodes modifier + node group to an object |
+| `InsertKeyframeTool` (`animation.keyframe`) | `tools/animation_tools.py` | Inserts a location keyframe at a given frame |
+| `PythonPowerTool` (`python.execute`) | `tools/python_power_tool.py` | A deliberately restricted escape hatch — blocked keywords (`import`, `exec`, `__`, etc.), a minimal builtins allowlist, and a new `PYTHON_EXECUTION` permission level. Used only when no structured tool exists |
+| `Tracer` | `observability/tracer.py` | Nested trace spans (`Task → Modeling → Tool 1/2/3`) instead of Phase 4's flat event log |
+| `VisualSimilarityComparator` | `vision/similarity.py` | Compares two `VisualObservation`s by object overlap — a transparent, explainable score, not an unexplained ML number |
+
+**Recovery without full restart (verified by test):** when a sub-task fails partway through a multi-part task, the orchestrator rolls back only to the most recent checkpoint — earlier completed sub-tasks are not redone.
+
+**Python execution stays a last resort:** it carries the highest permission level (`PYTHON_EXECUTION`), runs against a restricted builtins set, and only has access to the `bridge` object — never raw `bpy` or the filesystem.
