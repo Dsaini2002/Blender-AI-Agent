@@ -382,3 +382,23 @@ Failure? → rollback to LATEST checkpoint
 **Recovery without full restart (verified by test):** when a sub-task fails partway through a multi-part task, the orchestrator rolls back only to the most recent checkpoint — earlier completed sub-tasks are not redone.
 
 **Python execution stays a last resort:** it carries the highest permission level (`PYTHON_EXECUTION`), runs against a restricted builtins set, and only has access to the `bridge` object — never raw `bpy` or the filesystem.
+
+
+### ✅ Phase 10 — Production & Community
+
+The project moved from "a working system" to "a system others can install, configure, and extend."
+
+| Component | File | Responsibility |
+|---|---|---|
+| `AgentConfig`, `ProviderConfig`, `PermissionConfig` | `config/settings.py` | Typed, structured configuration — API keys are read from an environment variable **name** at runtime, never stored or logged |
+| `ProviderRegistry` | `providers/registry.py` | Register/create model providers by name — adding a new provider never requires touching the `Agent` |
+| Tool SDK | `sdk/tools.py` | `create_tool()` builds a fully-formed `Tool` subclass + input dataclass from a few arguments, reducing boilerplate for third-party contributors |
+| `CONTRIBUTING.md`, `SECURITY.md` | repo root | Contribution workflow and the project's security principles |
+| Issue/PR templates | `.github/` | Structured bug reports, feature requests, benchmark issues, and PR checklists |
+| `docs/tools.md` | — | Step-by-step guide for authoring a new `Tool` |
+
+**Security guarantee carried through every phase:** no API key, secret, or credential is ever stored in code, config objects, logs, or `.blend` files — only environment variable *names* are configured; values are read at runtime.
+
+---
+
+## 🏁 Project Status: Phases 1–10 Complete
