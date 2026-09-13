@@ -1,15 +1,27 @@
 """
-UI Panel — Step 6.6 (Copilot integration)
-=============================================
-Hinglish: Phase 1 mein ye panel sirf ek button tha jo directly
-SceneInspectTool call karta tha. Ab Phase 6 mein ye CopilotController
-se baat karta hai — UI business logic nahi rakhti, sirf user input
-leke Controller ko forward karti hai (Step 6.1 ka rule).
-
-    Panel -> CopilotController -> Agent -> ... -> Blender
+UI Panel — Copilot + Multi-Provider Selection
+==================================================
+Hinglish: Ab user Blender sidebar se hi AI provider (Gemini/Mock)
+switch kar sakta hai, bina code chhue.
 """
 
 import bpy
+
+
+class AIAGENT_OT_switch_provider(bpy.types.Operator):
+    """Selected provider ke saath naya Copilot controller banata hai."""
+
+    bl_idname = "aiagent.switch_provider"
+    bl_label = "Switch AI Provider"
+
+    def execute(self, context):
+        from .. import get_copilot_controller
+
+        provider_name = context.scene.aiagent_provider_choice
+        get_copilot_controller(provider_name=provider_name)
+
+        self.report({'INFO'}, f"Switched to provider: {provider_name}")
+        return {'FINISHED'}
 
 
 class AIAGENT_OT_copilot_submit(bpy.types.Operator):
@@ -40,7 +52,7 @@ class AIAGENT_OT_copilot_submit(bpy.types.Operator):
 
 
 class AIAGENT_OT_inspect_scene(bpy.types.Operator):
-    """Hinglish: Phase 1 ka original tool — backward-compatible rakha hai, standalone debugging ke liye."""
+    """Phase 1 ka original debug tool."""
 
     bl_idname = "aiagent.inspect_scene"
     bl_label = "Inspect Scene"
@@ -72,7 +84,21 @@ class AIAgentPanel(bpy.types.Panel):
     bl_category = "AI Agent"
 
     def draw(self, context):
+        from .. import get_copilot_controller
+
         layout = self.layout
+
+        # Hinglish: Provider selection UI
+        layout.label(text="AI Provider:")
+        row = layout.row(align=True)
+        row.prop(context.scene, "aiagent_provider_choice", text="")
+        row.operator("aiagent.switch_provider", icon='FILE_REFRESH', text="")
+
+        controller = get_copilot_controller()
+        current = getattr(controller, "current_provider_name", "mock")
+        layout.label(text=f"Active: {current}", icon='CHECKMARK')
+
+        layout.separator()
 
         layout.label(text="Ask the Copilot:")
         layout.prop(context.scene, "aiagent_copilot_input", text="")
