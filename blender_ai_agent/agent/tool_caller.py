@@ -62,17 +62,44 @@ class ToolCaller:
     # ---------------------------------------------------------
     def _build_parameters_schema(self, tool) -> dict:
         """
-        Hinglish: Tool ke input_model (dataclass) se ek simple schema
-        banata hai — field names ki list. Real OpenAI/Anthropic format
-        (JSON Schema) Step baad mein refine karenge jab real provider
-        add karenge; abhi ke liye simple aur kaam-chalau version.
+        Hinglish: Tool ke input_model (dataclass) se REAL JSON Schema
+        banata hai — Gemini/OpenAI dono isi format ko samajhte hain.
         """
         if tool.input_model is None:
-            return {}
+            return {"type": "object", "properties": {}}
 
         try:
-            field_names = list(tool.input_model.__dataclass_fields__.keys())
-        except AttributeError:
-            return {}
+            import dataclasses
+            type_fields = dataclasses.fields(tool.input_model)
+        except TypeError:
+            return {"type": "object", "properties": {}}
 
-        return {"fields": field_names}
+        properties = {}
+        required = []
+
+        for field in type_fields:
+            properties[field.name] = self._python_type_to_json_schema(field.type)
+            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING:
+                required.append(field.name)
+
+        schema = {"type": "object", "properties": properties}
+        if required:
+            schema["required"] = required
+        return schema
+
+    @staticmethod
+    def _python_type_to_json_schema(python_type) -> dict:
+        """Hinglish: Python type hints ko JSON Schema types mein map karta hai."""
+        type_str = str(python_type)
+
+        if "str" in type_str:
+            return {"type": "string"}
+        if "float" in type_str:
+            return {"type": "number"}
+        if "int" in type_str:
+            return {"type": "integer"}
+        if "bool" in type_str:
+            return {"type": "boolean"}
+        if "List" in type_str or "list" in type_str:
+            return {"type": "array", "items": {"type": "number"}}
+        return {"type": "string"}  # safe default

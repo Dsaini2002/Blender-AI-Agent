@@ -45,7 +45,7 @@ class TestGetToolDefinitions(unittest.TestCase):
         definitions = caller.get_tool_definitions()
         create_def = next(d for d in definitions if d.name == "object.create")
 
-        self.assertIn("name", create_def.parameters["fields"])
+        self.assertIn("name", create_def.parameters["properties"])
 
 
 class TestToolCall(unittest.TestCase):

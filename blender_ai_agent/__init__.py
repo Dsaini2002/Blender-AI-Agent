@@ -128,6 +128,35 @@ def get_provider_registry():
         _provider_registry = registry
 
     return _provider_registry
+_provider_registry = None
+
+
+def get_provider_registry():
+    """
+    Hinglish: Saare available AI providers yahan register hote hain.
+    Naya provider add karna ho toh bas yahan ek line add karni hai —
+    Agent/Controller ka code kabhi nahi badalta (Open/Closed Principle).
+    """
+    global _provider_registry
+    if _provider_registry is None:
+        import os
+        from .providers.registry import ProviderRegistry
+        from .providers.mock_provider import MockProvider
+
+        registry = ProviderRegistry()
+
+        # Mock — hamesha available, testing/fallback ke liye
+        registry.register("mock", lambda **kwargs: MockProvider(responses=[]))
+
+        # Gemini — sirf tab available jab API key set hai
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        if gemini_key:
+            from .providers.gemini_provider import GeminiProvider
+            registry.register("gemini", lambda **kwargs: GeminiProvider(api_key=gemini_key))
+
+        _provider_registry = registry
+
+    return _provider_registry
 
 def get_copilot_controller(provider_name: str = None):
     """
