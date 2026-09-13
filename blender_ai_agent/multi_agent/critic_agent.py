@@ -30,7 +30,11 @@ class CriticReport:
 
     @property
     def feedback(self) -> List[str]:
-        return [c.message for c in self.checks if not c.valid]
+        feedback_list = []
+        for check in self.checks:
+            if not check.valid:
+                feedback_list.extend(check.reasons)
+        return feedback_list
 
 
 class CriticAgent:
