@@ -402,3 +402,51 @@ The project moved from "a working system" to "a system others can install, confi
 ---
 
 ## 🏁 Project Status: Phases 1–10 Complete
+
+
+
+### ✅ Phase 11 — Scale, Autonomy & Intelligent Orchestration
+
+The agent evolved from "execute a plan" to a long-horizon system that chooses between strategies, evaluates its own results, generates and ranks multiple repair candidates, routes work across model tiers, and can pause/resume long-running tasks — all while defaulting to conservative autonomy.
+
+> Multi-agent ≠ automatically better. The main goal is long-horizon reliable task execution — multi-agent is just one possible implementation, benchmarked against single-agent, not assumed superior.
+
+| Component | File | Responsibility |
+|---|---|---|
+| `AutonomyMode` / `AutonomyPolicy` | `autonomy/modes.py` | MANUAL / ASSISTED / AUTONOMOUS — defaults to `ASSISTED`, never `AUTONOMOUS`; `PYTHON_EXECUTION` always requires confirmation regardless of mode |
+| `GuardrailMonitor` | `autonomy/guardrails.py` | Hard limits (max steps, retries, runtime, scene changes) — violated limits stop execution rather than looping indefinitely |
+| `TaskGraph.parallel_groups()` | `agent/advanced/task_graph.py` | Groups independent sub-tasks into levels that could run in parallel, while still respecting dependency order between levels |
+| `StrategySelector` | `agent/advanced/strategy.py` | Scores competing approaches to the same goal (reliability + quality − cost) and picks the best, or ranks all for fallback |
+| `SelfEvaluator` | `agent/advanced/self_evaluator.py` | Combines structural (Phase 4) and visual (Phase 5) validation into one verdict — the agent checks its own "Done" |
+| `AdaptiveRepairPlanner` | `agent/advanced/adaptive_repair.py` | Generates *multiple* repair candidates per failure and selects the highest-confidence one, instead of one fixed retry strategy |
+| `ModelRouter` | `routing/model_router.py` | Routes a task to a `fast`/`strong`/`vision` provider tier based on complexity and vision requirements |
+| `ContextOptimizer` | `agent/advanced/context_optimizer.py` | Sends only the selected/relevant objects to the LLM instead of the entire scene |
+| `TaskManager` | `orchestration/task_manager.py` | Full task lifecycle (`QUEUED→RUNNING→PAUSED→...`) with checkpoint-backed pause/resume |
+| `SupervisorAgent` + `ModelingAgent`/`MaterialAgent`/`CameraAgent` | `multi_agent/` | Domain-specialized agents, dispatched by a supervisor — built to be benchmark-comparable against single-agent execution |
+| `CriticAgent` | `multi_agent/critic_agent.py` | Independently evaluates a creator agent's output against named checks, separate from execution |
+| `VisualQualityOptimizer` | `optimization/visual_optimizer.py` | Controlled render→score→improve loop with a hard `max_iterations` — never an unbounded autonomous loop |
+| `AblationStudy` | `research/ablation.py` | Compares two variants (e.g. with/without vision) on the same benchmark tasks to justify architecture decisions empirically |
+| `StressTest` | `benchmarks/stress_test.py` | Measures how duration scales as scene object count grows |
+
+---
+
+## 🏁 Project Status: Phases 1–11 Complete
+
+Phase 1 ✅ Blender Foundation — BlenderBridge, SceneInspector, first tool
+Phase 2 ✅ Tool System — 15+ typed, validated, permissioned tools
+Phase 3 ✅ Agent Core — LLM-agnostic Agent, Planner, multi-step ExecutionLoop
+Phase 4 ✅ Reliability — Validation, transactions, rollback, recovery, retry
+Phase 5 ✅ Vision — VisionProvider, capture, observation, validation
+Phase 6 ✅ Copilot UX — Blender-native chat UI, progress, confirmations
+Phase 7 ✅ Memory & Skills — Typed memory, reusable multi-tool skills
+Phase 8 ✅ Benchmark — Objective, isolated, scored evaluation
+Phase 9 ✅ Advanced Agents — Task decomposition, checkpoints, Geometry Nodes, animation
+Phase 10 ✅ Production & Community — Configuration, SDK, docs, contribution workflow
+Phase 11 ✅ Scale & Autonomy — Strategy selection, self-evaluation, multi-agent, guardrails
+
+
+**479 tests**, verified end-to-end in real Blender 5.2 for the core deterministic pipeline (Phases 1–2), with the full Agent/Reliability/Vision/Copilot/Memory/Skills/Benchmark/Advanced/Production/Autonomy stack tested against `FakeBridge`/`MockProvider`/`MockVisionProvider`.
+
+See `CHANGELOG.md` for the phase-by-phase history.
+
+**Known limitation carried forward:** the Copilot is currently wired to `MockProvider` with no scripted responses. To use it with real natural language, register a real provider via `ProviderRegistry` (Phase 10) — by design, this requires changing one line, not the Agent itself.
