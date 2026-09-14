@@ -1,15 +1,15 @@
 """
-UI Panel — Copilot + Multi-Provider Selection
-==================================================
-Hinglish: Ab user Blender sidebar se hi AI provider (Gemini/Mock)
-switch kar sakta hai, bina code chhue.
+UI Panel — Copilot + Multi-Provider + Model Selection
+==========================================================
+Hinglish: Ab user Blender sidebar se hi AI provider AUR model
+(jaise gemini-3.6-flash vs gemini-flash-latest) switch kar sakta hai.
 """
 
 import bpy
 
 
 class AIAGENT_OT_switch_provider(bpy.types.Operator):
-    """Selected provider ke saath naya Copilot controller banata hai."""
+    """Selected provider + model ke saath naya Copilot controller banata hai."""
 
     bl_idname = "aiagent.switch_provider"
     bl_label = "Switch AI Provider"
@@ -18,9 +18,14 @@ class AIAGENT_OT_switch_provider(bpy.types.Operator):
         from .. import get_copilot_controller
 
         provider_name = context.scene.aiagent_provider_choice
-        get_copilot_controller(provider_name=provider_name)
+        model_name = context.scene.aiagent_model_choice or None
 
-        self.report({'INFO'}, f"Switched to provider: {provider_name}")
+        get_copilot_controller(provider_name=provider_name, model_name=model_name)
+
+        label = f"{provider_name}"
+        if model_name:
+            label += f" ({model_name})"
+        self.report({'INFO'}, f"Switched to: {label}")
         return {'FINISHED'}
 
 
@@ -88,11 +93,16 @@ class AIAgentPanel(bpy.types.Panel):
 
         layout = self.layout
 
-        # Hinglish: Provider selection UI
+        # Provider selection
         layout.label(text="AI Provider:")
-        row = layout.row(align=True)
-        row.prop(context.scene, "aiagent_provider_choice", text="")
-        row.operator("aiagent.switch_provider", icon='FILE_REFRESH', text="")
+        layout.prop(context.scene, "aiagent_provider_choice", text="")
+
+        # Model selection — sirf tab dikhega jab provider = gemini
+        if context.scene.aiagent_provider_choice == 'gemini':
+            layout.label(text="Model:")
+            layout.prop(context.scene, "aiagent_model_choice", text="")
+
+        layout.operator("aiagent.switch_provider", icon='FILE_REFRESH', text="Apply")
 
         controller = get_copilot_controller()
         current = getattr(controller, "current_provider_name", "mock")
