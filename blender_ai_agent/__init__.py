@@ -192,6 +192,15 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.types.Scene.aiagent_provider_choice = bpy.props.EnumProperty(
+        name="Provider",
+        description="Choose which AI provider to use",
+        items=[
+            ('mock', "Mock (Testing)", "Fake provider for testing, no real AI"),
+            ('gemini', "Google Gemini", "Google's Gemini AI (requires GEMINI_API_KEY)"),
+        ],
+        default='mock',
+    )
     bpy.types.Scene.aiagent_model_choice = bpy.props.EnumProperty(
         name="Model",
         description="Choose which Gemini model to use",
@@ -222,7 +231,6 @@ def unregister():
     _registry = None
     _copilot_controller = None
     _tools_registered = False
-
 
 if __name__ == "__main__":
     register()

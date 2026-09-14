@@ -32,12 +32,28 @@ class BlenderBridge:
     # Object level — write
     # ---------------------------------------------------------
     def create_object(self, name: str, object_type: str = "MESH", primitive: str = "CUBE", location=None):
-        if object_type == "MESH" and primitive == "CUBE":
+        """Naya object banata hai. Phase 2 mein `location` bhi accept karta hai."""
+        primitive = (primitive or "CUBE").upper()
+
+        if object_type != "MESH":
+            raise ValueError(f"Unsupported object_type: {object_type}")
+
+        if primitive == "CUBE":
             bpy.ops.mesh.primitive_cube_add()
-        elif object_type == "MESH" and primitive == "SPHERE":
+        elif primitive == "SPHERE":
             bpy.ops.mesh.primitive_uv_sphere_add()
+        elif primitive == "CONE":
+            bpy.ops.mesh.primitive_cone_add()
+        elif primitive == "CYLINDER":
+            bpy.ops.mesh.primitive_cylinder_add()
+        elif primitive == "PLANE":
+            bpy.ops.mesh.primitive_plane_add()
+        elif primitive == "TORUS":
+            bpy.ops.mesh.primitive_torus_add()
+        elif primitive == "MONKEY":
+            bpy.ops.mesh.primitive_monkey_add()
         else:
-            raise ValueError(f"Unsupported object_type/primitive: {object_type}/{primitive}")
+            raise ValueError(f"Unsupported primitive: {primitive}")
 
         obj = bpy.context.active_object
         obj.name = name
