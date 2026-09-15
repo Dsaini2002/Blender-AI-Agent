@@ -127,6 +127,14 @@ def get_provider_registry():
                 lambda **kwargs: GeminiProvider(api_key=gemini_key, model_name=kwargs.get("model_name", "gemini-3.6-flash")),
             )
 
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        if groq_key:
+            from .providers.groq_provider import GroqProvider
+            registry.register(
+                "groq",
+                lambda **kwargs: GroqProvider(api_key=groq_key, model_name=kwargs.get("model_name", "openai/gpt-oss-120b")),
+            )
+
         _provider_registry = registry
 
     return _provider_registry
@@ -198,6 +206,7 @@ def register():
         items=[
             ('mock', "Mock (Testing)", "Fake provider for testing, no real AI"),
             ('gemini', "Google Gemini", "Google's Gemini AI (requires GEMINI_API_KEY)"),
+            ('groq', "Groq (Free, fast)", "Groq's free-tier hosted models (requires GROQ_API_KEY)"),
         ],
         default='mock',
     )
@@ -208,9 +217,19 @@ def register():
             ('gemini-3.6-flash', "Gemini 3.6 Flash", "Latest fast model"),
             ('gemini-flash-latest', "Gemini Flash (Latest)", "Always points to newest flash model"),
             ('gemini-3.1-pro-preview', "Gemini 3.1 Pro (Preview)", "Stronger reasoning, preview"),
-            ('gemini-2.5-flash-lite', "Gemini 2.5 Flash Lite", "Lightweight, cheaper"),
+            ('gemini-3.5-flash-lite', "Gemini 3.5 Flash Lite", "Lightweight, cheaper"),
         ],
         default='gemini-3.6-flash',
+    )
+    bpy.types.Scene.aiagent_groq_model_choice = bpy.props.EnumProperty(
+        name="Groq Model",
+        description="Choose which Groq-hosted model to use",
+        items=[
+            ('openai/gpt-oss-120b', "GPT-OSS 120B", "Higher-reasoning free model"),
+            ('openai/gpt-oss-20b', "GPT-OSS 20B", "Faster, lighter free model"),
+            ('qwen/qwen3-32b', "Qwen3 32B", "Alternative free model"),
+        ],
+        default='openai/gpt-oss-120b',
     )
     bpy.types.Scene.aiagent_copilot_input = bpy.props.StringProperty(
         name="Copilot Input",
@@ -226,6 +245,7 @@ def unregister():
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.aiagent_provider_choice
     del bpy.types.Scene.aiagent_model_choice
+    del bpy.types.Scene.aiagent_groq_model_choice
     del bpy.types.Scene.aiagent_copilot_input
     _bridge = None
     _registry = None

@@ -18,7 +18,15 @@ class AIAGENT_OT_switch_provider(bpy.types.Operator):
         from .. import get_copilot_controller
 
         provider_name = context.scene.aiagent_provider_choice
-        model_name = context.scene.aiagent_model_choice or None
+        # Hinglish: model_name sirf tab relevant hai jab provider = gemini
+        # ya groq — har provider ka apna model dropdown hai. Mock provider
+        # ke liye ise None rakho, warna "Switched to: mock (...)" jaisa
+        # confusing message aata hai.
+        model_name = None
+        if provider_name == 'gemini':
+            model_name = context.scene.aiagent_model_choice or None
+        elif provider_name == 'groq':
+            model_name = context.scene.aiagent_groq_model_choice or None
 
         get_copilot_controller(provider_name=provider_name, model_name=model_name)
 
@@ -97,10 +105,13 @@ class AIAgentPanel(bpy.types.Panel):
         layout.label(text="AI Provider:")
         layout.prop(context.scene, "aiagent_provider_choice", text="")
 
-        # Model selection — sirf tab dikhega jab provider = gemini
+        # Model selection — sirf relevant provider ke liye dikhega
         if context.scene.aiagent_provider_choice == 'gemini':
             layout.label(text="Model:")
             layout.prop(context.scene, "aiagent_model_choice", text="")
+        elif context.scene.aiagent_provider_choice == 'groq':
+            layout.label(text="Model:")
+            layout.prop(context.scene, "aiagent_groq_model_choice", text="")
 
         layout.operator("aiagent.switch_provider", icon='FILE_REFRESH', text="Apply")
 

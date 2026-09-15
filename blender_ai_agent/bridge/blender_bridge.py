@@ -46,6 +46,8 @@ class BlenderBridge:
             bpy.ops.mesh.primitive_cone_add()
         elif primitive == "CYLINDER":
             bpy.ops.mesh.primitive_cylinder_add()
+        elif primitive == "CIRCLE":
+            bpy.ops.mesh.primitive_circle_add()
         elif primitive == "PLANE":
             bpy.ops.mesh.primitive_plane_add()
         elif primitive == "TORUS":
@@ -233,9 +235,17 @@ class BlenderBridge:
     def render_preview(self, filepath: str) -> str:
         """
         Current scene ka render leta hai aur diye gaye filepath pe
-        save karta hai. Path wapas return karta hai — future mein
-        Vision system (Phase 5) isi image ko "dekhega".
+        save karta hai. Agar path invalid/inaccessible ho (jaise
+        root C:\), safe temp folder mein fallback karta hai.
         """
+        import os
+        import tempfile
+
+        directory = os.path.dirname(filepath)
+        if not directory or not os.access(directory if os.path.isdir(directory) else tempfile.gettempdir(), os.W_OK):
+            filename = os.path.basename(filepath) or "preview.png"
+            filepath = os.path.join(tempfile.gettempdir(), filename)
+
         scene = self.get_scene()
         scene.render.filepath = filepath
         bpy.ops.render.render(write_still=True)

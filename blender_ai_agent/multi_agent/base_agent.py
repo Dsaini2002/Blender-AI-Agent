@@ -33,4 +33,4 @@ class SpecializedAgent(ABC):
 
     @abstractmethod
     def execute(self, subtask_description: str, context: Dict[str, Any]) -> AgentTaskResult:
-        raise NotImplementedError
+        raise NotImplementedError   

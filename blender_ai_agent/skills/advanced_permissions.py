@@ -36,4 +36,4 @@ class SkillPermissionChecker:
 
         # Hinglish: Risk order — DESTRUCTIVE sabse zyada risky
         risk_order = [Permission.READ_ONLY, Permission.SAFE_WRITE, Permission.DESTRUCTIVE]
-        return max(permissions, key=risk_order.index)
+        return max(permissions, key=risk_order.index) 
