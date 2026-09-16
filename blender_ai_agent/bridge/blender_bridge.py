@@ -2,9 +2,27 @@
 BlenderBridge
 =============
 Hinglish: Ye class Blender ke saare raw `bpy` calls ko encapsulate karti hai.
+
+PATCHED (thread-safety fix): Copilot ka worker thread (ui/panel.py mein
+AIAGENT_OT_copilot_submit) LLM se baat background thread pe karta hai,
+aur phir har tool call yahin BlenderBridge tak pahunchta hai — lekin
+WORKER THREAD SE HI. bpy ka poora API sirf MAIN THREAD pe safe hai;
+worker thread se seedha bpy.ops.* chalane par Blender crash ho sakta
+hai (ACCESS_VIOLATION, depsgraph ke andar mesh_copy_data jaisi jagah
+pe race condition — bilkul wahi crash jo bina is fix ke aata tha).
+
+Fix: har method jo bpy ko chhuti hai, uske andar ka actual kaam ek
+chhoti closure mein wrap karke `run_on_main_thread()` ko de dete hain.
+Agar hum already main thread pe hain (jaise unit tests, jahan koi
+threading involved nahi), `run_on_main_thread` seedha call kar deta
+hai — koi extra overhead nahi. Agar worker thread se aaya hai, to
+Blender ke modal-operator timer tick tak wait karta hai aur wahin
+(main thread pe) safely execute hota hai.
 """
 
 import bpy
+
+from .main_thread_dispatch import run_on_main_thread
 
 
 class BlenderBridge:
@@ -14,19 +32,19 @@ class BlenderBridge:
     # Scene level
     # ---------------------------------------------------------
     def get_scene(self):
-        return bpy.context.scene
+        return run_on_main_thread(lambda: bpy.context.scene)
 
     def get_scene_name(self) -> str:
-        return self.get_scene().name
+        return run_on_main_thread(lambda: bpy.context.scene.name)
 
     # ---------------------------------------------------------
     # Object level — read
     # ---------------------------------------------------------
     def get_objects(self):
-        return list(bpy.data.objects)
+        return run_on_main_thread(lambda: list(bpy.data.objects))
 
     def get_object(self, name: str):
-        return bpy.data.objects.get(name)
+        return run_on_main_thread(lambda: bpy.data.objects.get(name))
 
     # ---------------------------------------------------------
     # Object level — write
@@ -38,124 +56,152 @@ class BlenderBridge:
         if object_type != "MESH":
             raise ValueError(f"Unsupported object_type: {object_type}")
 
-        if primitive == "CUBE":
-            bpy.ops.mesh.primitive_cube_add()
-        elif primitive == "SPHERE":
-            bpy.ops.mesh.primitive_uv_sphere_add()
-        elif primitive == "CONE":
-            bpy.ops.mesh.primitive_cone_add()
-        elif primitive == "CYLINDER":
-            bpy.ops.mesh.primitive_cylinder_add()
-        elif primitive == "CIRCLE":
-            bpy.ops.mesh.primitive_circle_add()
-        elif primitive == "PLANE":
-            bpy.ops.mesh.primitive_plane_add()
-        elif primitive == "TORUS":
-            bpy.ops.mesh.primitive_torus_add()
-        elif primitive == "MONKEY":
-            bpy.ops.mesh.primitive_monkey_add()
-        else:
-            raise ValueError(f"Unsupported primitive: {primitive}")
+        def _do():
+            if primitive == "CUBE":
+                bpy.ops.mesh.primitive_cube_add()
+            elif primitive == "SPHERE":
+                bpy.ops.mesh.primitive_uv_sphere_add()
+            elif primitive == "CONE":
+                bpy.ops.mesh.primitive_cone_add()
+            elif primitive == "CYLINDER":
+                bpy.ops.mesh.primitive_cylinder_add()
+            elif primitive == "CIRCLE":
+                bpy.ops.mesh.primitive_circle_add()
+            elif primitive == "PLANE":
+                bpy.ops.mesh.primitive_plane_add()
+            elif primitive == "TORUS":
+                bpy.ops.mesh.primitive_torus_add()
+            elif primitive == "MONKEY":
+                bpy.ops.mesh.primitive_monkey_add()
+            else:
+                raise ValueError(f"Unsupported primitive: {primitive}")
 
-        obj = bpy.context.view_layer.objects.active
-        obj.name = name
+            obj = bpy.context.view_layer.objects.active
+            obj.name = name
 
-        if location is not None:
-            obj.location = location
+            if location is not None:
+                obj.location = location
 
-        return obj
+            return obj
+
+        return run_on_main_thread(_do)
 
     def delete_object(self, name: str) -> bool:
-        obj = self.get_object(name)
-        if obj is None:
-            return False
-        bpy.data.objects.remove(obj, do_unlink=True)
-        return True
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                return False
+            bpy.data.objects.remove(obj, do_unlink=True)
+            return True
+
+        return run_on_main_thread(_do)
 
     def duplicate_object(self, name: str, new_name: str = None):
-        obj = self.get_object(name)
-        if obj is None:
-            return None
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                return None
 
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.duplicate()
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.duplicate()
 
-        new_obj = bpy.context.view_layer.objects.active
-        if new_name:
-            new_obj.name = new_name
+            new_obj = bpy.context.view_layer.objects.active
+            if new_name:
+                new_obj.name = new_name
 
-        return new_obj
+            return new_obj
+
+        return run_on_main_thread(_do)
 
     def rename_object(self, old_name: str, new_name: str):
-        obj = self.get_object(old_name)
-        if obj is None:
-            return None
-        obj.name = new_name
-        return obj
+        def _do():
+            obj = bpy.data.objects.get(old_name)
+            if obj is None:
+                return None
+            obj.name = new_name
+            return obj
+
+        return run_on_main_thread(_do)
 
     def transform_object(self, name: str, location=None, rotation=None, scale=None):
-        obj = self.get_object(name)
-        if obj is None:
-            return None
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                return None
 
-        if location is not None:
-            obj.location = location
-        if rotation is not None:
-            obj.rotation_euler = rotation
-        if scale is not None:
-            obj.scale = scale
+            if location is not None:
+                obj.location = location
+            if rotation is not None:
+                obj.rotation_euler = rotation
+            if scale is not None:
+                obj.scale = scale
 
-        return obj
+            return obj
+
+        return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
     # Material level — Step 2.5
     # ---------------------------------------------------------
     def get_material(self, name: str):
-        return bpy.data.materials.get(name)
+        return run_on_main_thread(lambda: bpy.data.materials.get(name))
 
     def create_material(self, name: str, color=None):
-        material = bpy.data.materials.new(name=name)
-        material.use_nodes = True
+        def _do():
+            material = bpy.data.materials.new(name=name)
+            material.use_nodes = True
 
-        if color is not None:
-            self._set_material_base_color(material, color)
+            if color is not None:
+                self._set_material_base_color(material, color)
 
-        return material
+            return material
+
+        return run_on_main_thread(_do)
 
     def assign_material(self, object_name: str, material_name: str):
-        obj = self.get_object(object_name)
-        material = self.get_material(material_name)
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            material = bpy.data.materials.get(material_name)
 
-        if obj is None or material is None:
-            return False
+            if obj is None or material is None:
+                return False
 
-        if obj.data.materials:
-            obj.data.materials[0] = material
-        else:
-            obj.data.materials.append(material)
+            if obj.data.materials:
+                obj.data.materials[0] = material
+            else:
+                obj.data.materials.append(material)
 
-        return True
+            return True
+
+        return run_on_main_thread(_do)
 
     def modify_material(self, name: str, color=None, roughness=None, metallic=None):
-        material = self.get_material(name)
-        if material is None:
-            return None
+        def _do():
+            material = bpy.data.materials.get(name)
+            if material is None:
+                return None
 
-        if color is not None:
-            self._set_material_base_color(material, color)
+            if color is not None:
+                self._set_material_base_color(material, color)
 
-        bsdf = self._get_principled_bsdf(material)
-        if bsdf is not None:
-            if roughness is not None:
-                bsdf.inputs["Roughness"].default_value = roughness
-            if metallic is not None:
-                bsdf.inputs["Metallic"].default_value = metallic
+            bsdf = self._get_principled_bsdf(material)
+            if bsdf is not None:
+                if roughness is not None:
+                    bsdf.inputs["Roughness"].default_value = roughness
+                if metallic is not None:
+                    bsdf.inputs["Metallic"].default_value = metallic
 
-        return material
+            return material
+
+        return run_on_main_thread(_do)
 
     def _get_principled_bsdf(self, material):
+        """Hinglish: Ye sirf node data padhta hai, bpy.ops nahi chalata —
+        isliye main-thread-safe caller ke andar hi use hota hai, isse
+        khud alag se wrap karne ki zaroorat nahi (already run_on_main_thread
+        ke andar call hota hai)."""
         if not material.use_nodes:
             return None
         for node in material.node_tree.nodes:
@@ -173,70 +219,85 @@ class BlenderBridge:
     # Modifier level — Step 2.6
     # ---------------------------------------------------------
     def add_modifier(self, object_name: str, modifier_name: str, modifier_type: str = "BEVEL"):
-        obj = self.get_object(object_name)
-        if obj is None:
-            return None
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return None
+            return obj.modifiers.new(name=modifier_name, type=modifier_type)
 
-        modifier = obj.modifiers.new(name=modifier_name, type=modifier_type)
-        return modifier
+        return run_on_main_thread(_do)
 
     def remove_modifier(self, object_name: str, modifier_name: str) -> bool:
-        obj = self.get_object(object_name)
-        if obj is None:
-            return False
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return False
 
-        modifier = obj.modifiers.get(modifier_name)
-        if modifier is None:
-            return False
+            modifier = obj.modifiers.get(modifier_name)
+            if modifier is None:
+                return False
 
-        obj.modifiers.remove(modifier)
-        return True
+            obj.modifiers.remove(modifier)
+            return True
+
+        return run_on_main_thread(_do)
 
     def configure_modifier(self, object_name: str, modifier_name: str, properties: dict):
-        obj = self.get_object(object_name)
-        if obj is None:
-            return None
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return None
 
-        modifier = obj.modifiers.get(modifier_name)
-        if modifier is None:
-            return None
+            modifier = obj.modifiers.get(modifier_name)
+            if modifier is None:
+                return None
 
-        for key, value in properties.items():
-            if hasattr(modifier, key):
-                setattr(modifier, key, value)
+            for key, value in properties.items():
+                if hasattr(modifier, key):
+                    setattr(modifier, key, value)
 
-        return modifier
+            return modifier
+
+        return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
     # Camera / Render level — Step 2.7
     # ---------------------------------------------------------
     def create_camera(self, name: str, location=None, rotation=None):
         """Naya camera object banata hai scene mein."""
-        camera_data = bpy.data.cameras.new(name=f"{name}_data")
-        camera_obj = bpy.data.objects.new(name=name, object_data=camera_data)
-        bpy.context.collection.objects.link(camera_obj)
 
-        if location is not None:
-            camera_obj.location = location
-        if rotation is not None:
-            camera_obj.rotation_euler = rotation
+        def _do():
+            camera_data = bpy.data.cameras.new(name=f"{name}_data")
+            camera_obj = bpy.data.objects.new(name=name, object_data=camera_data)
+            bpy.context.collection.objects.link(camera_obj)
 
-        return camera_obj
+            if location is not None:
+                camera_obj.location = location
+            if rotation is not None:
+                camera_obj.rotation_euler = rotation
+
+            return camera_obj
+
+        return run_on_main_thread(_do)
 
     def set_active_camera(self, name: str) -> bool:
         """Scene ka active/render camera set karta hai."""
-        obj = self.get_object(name)
-        if obj is None or obj.type != 'CAMERA':
-            return False
 
-        self.get_scene().camera = obj
-        return True
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None or obj.type != 'CAMERA':
+                return False
+
+            bpy.context.scene.camera = obj
+            return True
+
+        return run_on_main_thread(_do)
 
     def render_preview(self, filepath: str) -> str:
         """
         Current scene ka render leta hai aur diye gaye filepath pe
         save karta hai. Agar path invalid/inaccessible ho (jaise
-        root C:\), safe temp folder mein fallback karta hai.
+        root C:\\), safe temp folder mein fallback karta hai.
         """
         import os
         import tempfile
@@ -246,55 +307,75 @@ class BlenderBridge:
             filename = os.path.basename(filepath) or "preview.png"
             filepath = os.path.join(tempfile.gettempdir(), filename)
 
-        scene = self.get_scene()
-        scene.render.filepath = filepath
-        bpy.ops.render.render(write_still=True)
-        return filepath
-        # ---------------------------------------------------------
+        def _do():
+            scene = bpy.context.scene
+            scene.render.filepath = filepath
+            bpy.ops.render.render(write_still=True)
+            return filepath
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
     # Geometry Nodes — Step 9.8
     # ---------------------------------------------------------
     def add_geometry_nodes(self, object_name: str, node_group_name: str):
         """Object pe naya Geometry Nodes modifier add karta hai."""
-        obj = self.get_object(object_name)
-        if obj is None:
-            return None
 
-        node_tree = bpy.data.node_groups.new(name=node_group_name, type='GeometryNodeTree')
-        modifier = obj.modifiers.new(name=node_group_name, type='NODES')
-        modifier.node_group = node_tree
-        return modifier
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return None
+
+            node_tree = bpy.data.node_groups.new(name=node_group_name, type='GeometryNodeTree')
+            modifier = obj.modifiers.new(name=node_group_name, type='NODES')
+            modifier.node_group = node_tree
+            return modifier
+
+        return run_on_main_thread(_do)
 
     def get_geometry_nodes(self, object_name: str, modifier_name: str):
         """Object ke Geometry Nodes modifier ko dhundta hai."""
-        obj = self.get_object(object_name)
-        if obj is None:
-            return None
-        return obj.modifiers.get(modifier_name)
+
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return None
+            return obj.modifiers.get(modifier_name)
+
+        return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
     # Animation — Step 9.13
     # ---------------------------------------------------------
     def insert_keyframe(self, object_name: str, frame: int, location=None):
         """Object ki current (ya di gayi) location pe keyframe insert karta hai."""
-        obj = self.get_object(object_name)
-        if obj is None:
-            return False
 
-        if location is not None:
-            obj.location = location
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return False
 
-        obj.keyframe_insert(data_path="location", frame=frame)
-        return True
+            if location is not None:
+                obj.location = location
+
+            obj.keyframe_insert(data_path="location", frame=frame)
+            return True
+
+        return run_on_main_thread(_do)
 
     def get_keyframes(self, object_name: str):
         """Object ke location keyframes ki frame-number list deta hai."""
-        obj = self.get_object(object_name)
-        if obj is None or obj.animation_data is None or obj.animation_data.action is None:
-            return []
 
-        frames = set()
-        for fcurve in obj.animation_data.action.fcurves:
-            if fcurve.data_path == "location":
-                for keyframe_point in fcurve.keyframe_points:
-                    frames.add(int(keyframe_point.co[0]))
-        return sorted(frames)
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None or obj.animation_data is None or obj.animation_data.action is None:
+                return []
+
+            frames = set()
+            for fcurve in obj.animation_data.action.fcurves:
+                if fcurve.data_path == "location":
+                    for keyframe_point in fcurve.keyframe_points:
+                        frames.add(int(keyframe_point.co[0]))
+            return sorted(frames)
+
+        return run_on_main_thread(_do)
