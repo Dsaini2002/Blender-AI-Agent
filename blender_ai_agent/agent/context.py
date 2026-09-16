@@ -67,3 +67,37 @@ class ContextManager:
             "focused_objects": focused,
             "not_found": missing,
         }
+
+    # ---------------------------------------------------------
+    # Naya — Step "Deep Complexity": LLM ke liye plain-text context
+    # ---------------------------------------------------------
+    def build_context_text(self) -> str:
+        """
+        Hinglish: Scene ka FULL current state (har object ka naam,
+        type, location, rotation, scale) ek plain-text description
+        mein deta hai — har turn pe fresh banta hai, kabhi state mein
+        save nahi hota (stale na ho jaye isliye).
+
+        Ye LLM ko "table" jaisi cheez ki asli position/size dikhata
+        hai, taaki "book ko table pe rakho" jaisi spatial request
+        sahi se resolve ho sake.
+        """
+        result = self._scene_inspect_tool.execute({})
+        if not result.success:
+            return ""
+
+        objects = result.data.get("objects", [])
+        if not objects:
+            return "The scene currently has no objects."
+
+        lines = ["Current scene objects (use these exact names and positions when referencing existing objects):"]
+        for obj in objects:
+            loc = obj.get("location", [0, 0, 0])
+            line = f"- {obj['name']} (type={obj['type']}, location=({loc[0]:.2f}, {loc[1]:.2f}, {loc[2]:.2f})"
+            if "scale" in obj:
+                scale = obj["scale"]
+                line += f", scale=({scale[0]:.2f}, {scale[1]:.2f}, {scale[2]:.2f})"
+            line += ")"
+            lines.append(line)
+
+        return "\n".join(lines)

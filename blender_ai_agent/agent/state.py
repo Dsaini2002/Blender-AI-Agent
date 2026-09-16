@@ -28,8 +28,10 @@ class ConversationState:
     kuch pata nahi chalega.
     """
 
-    def __init__(self):
+    def __init__(self, system_prompt: Optional[str] = None):
         self._messages: List[Message] = []
+        if system_prompt:
+            self._messages.append(Message(role="system", content=system_prompt))
 
     def add_user_message(self, content: str) -> None:
         self._messages.append(Message(role="user", content=content))

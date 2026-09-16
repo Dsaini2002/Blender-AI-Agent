@@ -92,6 +92,12 @@ class ToolCaller:
         """Hinglish: Python type hints ko JSON Schema types mein map karta hai."""
         type_str = str(python_type)
 
+        # Hinglish: Ye check SABSE PEHLE hona zaroori hai — "List[float]"
+        # jaise type string mein "float" word already maujood hota hai,
+        # isliye agar float/int check pehle karte to array (jaise
+        # location: List[float]) galat se "number" ban jaata.
+        if "List" in type_str or "list" in type_str or "Tuple" in type_str or "tuple" in type_str:
+            return {"type": "array", "items": {"type": "number"}}
         if "str" in type_str:
             return {"type": "string"}
         if "float" in type_str:
@@ -100,6 +106,4 @@ class ToolCaller:
             return {"type": "integer"}
         if "bool" in type_str:
             return {"type": "boolean"}
-        if "List" in type_str or "list" in type_str:
-            return {"type": "array", "items": {"type": "number"}}
         return {"type": "string"}  # safe default

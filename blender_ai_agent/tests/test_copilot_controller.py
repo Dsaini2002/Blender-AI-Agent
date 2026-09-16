@@ -24,7 +24,7 @@ class FakeAgent:
         self._call_count = 0
         self.received_inputs = []
 
-    def run(self, user_message):
+    def run(self, user_message, state=None):
         self.received_inputs.append(user_message)
         result = self._results[self._call_count]
         self._call_count += 1

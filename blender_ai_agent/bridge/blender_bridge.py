@@ -57,7 +57,7 @@ class BlenderBridge:
         else:
             raise ValueError(f"Unsupported primitive: {primitive}")
 
-        obj = bpy.context.active_object
+        obj = bpy.context.view_layer.objects.active
         obj.name = name
 
         if location is not None:
@@ -82,7 +82,7 @@ class BlenderBridge:
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.duplicate()
 
-        new_obj = bpy.context.active_object
+        new_obj = bpy.context.view_layer.objects.active
         if new_name:
             new_obj.name = new_name
 

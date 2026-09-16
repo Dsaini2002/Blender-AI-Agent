@@ -227,13 +227,21 @@ def register():
         items=[
             ('openai/gpt-oss-120b', "GPT-OSS 120B", "Higher-reasoning free model"),
             ('openai/gpt-oss-20b', "GPT-OSS 20B", "Faster, lighter free model"),
-            ('qwen/qwen3-32b', "Qwen3 32B", "Alternative free model"),
+            ('qwen/qwen3.6-27b', "Qwen3 32B", "Alternative free model"),
         ],
         default='openai/gpt-oss-120b',
     )
     bpy.types.Scene.aiagent_copilot_input = bpy.props.StringProperty(
         name="Copilot Input",
         description="Type your request for the AI Copilot",
+    )
+    bpy.types.Scene.aiagent_is_running = bpy.props.BoolProperty(
+        name="Copilot Running",
+        default=False,
+    )
+    bpy.types.Scene.aiagent_status_text = bpy.props.StringProperty(
+        name="Copilot Status",
+        default="",
     )
     _ensure_tools_registered()
     print("[Blender AI Agent] Registered. Tools:", get_registry().list_tools())
@@ -247,6 +255,8 @@ def unregister():
     del bpy.types.Scene.aiagent_model_choice
     del bpy.types.Scene.aiagent_groq_model_choice
     del bpy.types.Scene.aiagent_copilot_input
+    del bpy.types.Scene.aiagent_is_running
+    del bpy.types.Scene.aiagent_status_text
     _bridge = None
     _registry = None
     _copilot_controller = None

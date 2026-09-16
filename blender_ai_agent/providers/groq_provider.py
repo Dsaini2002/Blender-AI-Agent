@@ -16,6 +16,8 @@ karte hain).
 """
 
 import json
+import re
+import time
 import urllib.error
 import urllib.request
 
@@ -64,14 +66,39 @@ class GroqProvider(ModelProvider):
             method="POST",
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Groq API error {exc.code}: {error_body}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Groq API request failed: {exc.reason}") from exc
+        # Hinglish: 429 (rate limit) transient hota hai — thodi der wait
+        # karke retry karna almost hamesha kaam kar jaata hai, isliye
+        # seedha crash karne ki jagah kuch baar khud retry karte hain.
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                error_body = exc.read().decode("utf-8", errors="ignore")
+                if exc.code == 429 and attempt < max_retries:
+                    wait_seconds = self._parse_retry_delay(error_body)
+                    time.sleep(wait_seconds)
+                    continue
+                raise RuntimeError(f"Groq API error {exc.code}: {error_body}") from exc
+            except urllib.error.URLError as exc:
+                raise RuntimeError(f"Groq API request failed: {exc.reason}") from exc
+
+    @staticmethod
+    def _parse_retry_delay(error_body: str, default: float = 3.0) -> float:
+        """
+        Hinglish: Groq apne error message mein "Please try again in
+        9.4125s" jaisa exact wait time bata deta hai — usse hi parse
+        karke utna wait karte hain (thoda buffer ke saath), guess karne
+        ki jagah.
+        """
+        match = re.search(r"try again in ([\d.]+)s", error_body)
+        if match:
+            try:
+                return float(match.group(1)) + 0.5
+            except ValueError:
+                pass
+        return default
 
     def _build_messages(self, messages):
         """

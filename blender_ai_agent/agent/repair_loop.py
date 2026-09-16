@@ -20,7 +20,8 @@ from typing import Dict, List, Optional
 import uuid
 
 from .execution_loop import AgentRunResult, ExecutionRecord
-from .models import ModelRequest, ToolCall
+from .models import Message, ModelRequest, ToolCall
+from .prompts import SYSTEM_PROMPT
 from .state import ConversationState
 from ..reliability.errors import classify_tool_error, classify_validation_error
 from ..reliability.retry import RetryPolicy
@@ -49,7 +50,13 @@ class RepairableExecutionLoop:
         logger,
         validators: Optional[Dict[str, object]] = None,
         retry_policy: Optional[RetryPolicy] = None,
-        max_iterations: int = 5,
+        # Hinglish: 100 bahut zyada tha — Blender ka poora UI is loop ke
+        # dauraan FREEZE rehta hai (synchronous execution, koi
+        # background thread nahi), isliye worst-case bahut lambi
+        # (kai minute) freeze ban sakti thi. 25 zyada tar complex
+        # objects (table, chair, poora furniture set) ke liye kaafi
+        # hai, bina bahut lambi freeze ke risk ke.
+        max_iterations: int = 25,
     ):
         self._model_provider = model_provider
         self._tool_caller = tool_caller
@@ -64,7 +71,7 @@ class RepairableExecutionLoop:
 
     def run(self, user_message: str, state: Optional[ConversationState] = None) -> RepairRunResult:
         task_id = str(uuid.uuid4())[:8]
-        state = state if state is not None else ConversationState()
+        state = state if state is not None else ConversationState(system_prompt=SYSTEM_PROMPT)
         state.add_user_message(user_message)
 
         self._logger.info("task.start", task_id=task_id, message=user_message)
@@ -79,6 +86,10 @@ class RepairableExecutionLoop:
             request = self._build_request(state)
             self._logger.info("model.request", task_id=task_id, turn=turn)
             response = self._model_provider.generate(request)
+
+            if response.has_tool_calls:
+                planned = [tc.tool_name for tc in response.tool_calls]
+                self._logger.info("model.plan", task_id=task_id, turn=turn, planned_tools=planned)
 
             if not response.has_tool_calls:
                 self._logger.info("task.complete", task_id=task_id)
@@ -140,13 +151,23 @@ class RepairableExecutionLoop:
         current_call = tool_call
 
         while True:
-            self._logger.info("tool.execute", task_id=task_id, tool=current_call.tool_name)
+            self._logger.info(
+                "tool.execute",
+                task_id=task_id,
+                tool=current_call.tool_name,
+                arguments=current_call.arguments,
+            )
             result = self._tool_caller.call(current_call)
 
             if result.success:
                 validated_result = self._validate(current_call, result)
                 if validated_result.success:
-                    self._logger.info("validation.success", task_id=task_id, tool=current_call.tool_name)
+                    self._logger.info(
+                        "validation.success",
+                        task_id=task_id,
+                        tool=current_call.tool_name,
+                        result=validated_result.data,
+                    )
                     return ExecutionRecord(tool_call=current_call, tool_result=validated_result), repairs_done
                 result = validated_result  # validation fail hui, isse aage error-handling common hai
 
@@ -203,4 +224,15 @@ class RepairableExecutionLoop:
 
     def _build_request(self, state: ConversationState) -> ModelRequest:
         tool_definitions = self._tool_caller.get_tool_definitions()
-        return ModelRequest(messages=state.get_messages(), tools=tool_definitions)
+        messages = state.get_messages()
+
+        # Hinglish: Scene context HAMESHA fresh banta hai (state mein
+        # save nahi hota) — taaki objects move/delete hone pe LLM ko
+        # stale info na mile. Har request ke saath naya snapshot jaata
+        # hai, conversation history alag rehti hai.
+        if self._context_manager is not None:
+            context_text = self._context_manager.build_context_text()
+            if context_text:
+                messages = [Message(role="system", content=context_text)] + messages
+
+        return ModelRequest(messages=messages, tools=tool_definitions)
