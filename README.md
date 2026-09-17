@@ -6,8 +6,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Blender](https://img.shields.io/badge/blender-3.6%2B-orange.svg)](https://www.blender.org/)
-[![Tests](https://img.shields.io/badge/tests-479%20passing-brightgreen.svg)](#-testing)
-[![Status](https://img.shields.io/badge/phases-11%2F11%20complete-success.svg)](#-development-phases)
+[![Tests](https://img.shields.io/badge/tests-501%20passing-brightgreen.svg)](#-testing)
+[![Status](https://img.shields.io/badge/phases-12%2F12%20complete-success.svg)](#-development-phases)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#-license)
 
 *Say "create a cube, move it to x=3, and rename it MainCube" — and watch it happen.*
@@ -20,7 +20,7 @@
 
 **Blender AI Agent** lets you control Blender through natural language, backed by an agent architecture that never lets a Large Language Model touch the Blender API directly. Every action the AI takes is routed through a deterministic, permission-gated, independently testable **Tool** layer — the LLM only ever sees tool *names* and *descriptions*, never `bpy`.
 
-The project was built bottom-up, in eleven engineering phases: first a rock-solid deterministic foundation (tools, validation, permissions), then an LLM-agnostic agent core, then reliability (rollback/retry), vision, a Copilot-style chat UX, memory, benchmarking, advanced multi-step orchestration, production tooling, and finally autonomy and multi-agent scaling.
+The project was built bottom-up, in twelve engineering phases: first a rock-solid deterministic foundation (tools, validation, permissions), then an LLM-agnostic agent core, then reliability (rollback/retry), vision, a Copilot-style chat UX, memory, benchmarking, advanced multi-step orchestration, production tooling, autonomy and multi-agent scaling, and finally an automated asset-quality inspection layer.
 
 > **Engineering philosophy:** Build the deterministic Blender foundation first. Introduce AI only after the execution layer is reliable. Tool response ≠ truth — the Blender scene is the source of truth.
 
@@ -36,6 +36,7 @@ The project was built bottom-up, in eleven engineering phases: first a rock-soli
 - 📊 **Objective benchmarking** — isolated, partially-scored evaluation of agent performance across tasks.
 - 🤖 **Autonomy with guardrails** — `ASSISTED` mode by default, hard limits on steps/retries/runtime, and `PYTHON_EXECUTION` always requires confirmation.
 - 🧑‍🤝‍🧑 **Multi-agent orchestration** — a `SupervisorAgent` dispatching domain-specialized agents (modeling, material, camera), benchmarked against single-agent execution rather than assumed superior.
+- 🔍 **Automated Asset QA** — a `GeometryInspector` scans mesh objects for non-manifold geometry, flipped normals, and bounding-box overlaps, auto-fixes what it safely can, and re-inspects in a guardrail-limited loop — runnable from Blender's own "Run QA Inspection" button.
 
 ## 🏗️ Architecture
 
@@ -53,10 +54,13 @@ flowchart TD
     SCENE -->|Validate| VAL[Validator / VisionValidator]
     VAL -->|Fail| REPAIR[Adaptive Repair → Rollback to Checkpoint]
     REPAIR --> EL
-    VAL -->|Pass| DONE[Result returned to User]
+    VAL -->|Pass| QA{Run QA Inspection}
+    QA -->|Issues found| FIX[GeometryFixer auto-fixes via Tools]
+    FIX --> QA
+    QA -->|Pass or retries exhausted| DONE[Result returned to User]
 ```
 
-**Core architectural rule:** `BlenderBridge` is the *only* place that touches raw `bpy`. Everything above it — tools, agent, validators — depends on this single abstraction, which is what makes the entire stack (except the two deterministic foundation phases) testable outside Blender using a `FakeBridge`.
+**Core architectural rule:** `BlenderBridge` is the *only* place that touches raw `bpy`. Everything above it — tools, agent, validators, QA inspectors — depends on this single abstraction, which is what makes the entire stack (except the two deterministic foundation phases) testable outside Blender using a `FakeBridge`.
 
 | Layer | Responsibility |
 |---|---|
@@ -68,6 +72,7 @@ flowchart TD
 | `ConversationState` vs `CopilotSession` | LLM-facing state kept deliberately separate from UI-facing state |
 | `AdvancedOrchestrator` | Decomposes complex instructions into a dependency-ordered `TaskGraph` with checkpoint recovery |
 | `AutonomyPolicy` / `GuardrailMonitor` | Conservative-by-default autonomy with hard execution limits |
+| `Inspector` (ABC) / `InspectionLoop` | inspect → auto-fix → re-inspect scene-quality loop, retry-limited by `GuardrailMonitor` |
 
 ## 📂 Project Structure
 
@@ -95,9 +100,10 @@ Blender-AI-Agent/
     ├── routing/                   # ModelRouter (fast / strong / vision tiers)
     ├── research/                  # AblationStudy
     ├── config/                    # AgentConfig, ProviderConfig, PermissionConfig
+    ├── qa/                        # Inspector (ABC), GeometryInspector, GeometryFixer, InspectionLoop
     ├── sdk/                       # create_tool() — boilerplate-free tool authoring
-    ├── ui/                        # Blender sidebar panel
-    └── tests/                     # 99 test files covering every phase
+    ├── ui/                        # Blender sidebar panel (incl. "Run QA Inspection")
+    └── tests/                     # 100+ test files covering every phase
 ```
 
 ## 🚀 Getting Started
@@ -146,19 +152,19 @@ API keys are only ever read from environment variables at runtime — never stor
 python run_tests.py
 ```
 
-`run_tests.py` installs a **fake `bpy` module** before test discovery, so the full test suite — **479 tests** — runs on any machine, no Blender installation required.
+`run_tests.py` installs a **fake `bpy` module** before test discovery, so the full test suite — **501 tests** — runs on any machine, no Blender installation required.
 
 | Layer | Tested via |
 |---|---|
-| Blender-touching code (Phases 1–2) | Verified end-to-end in real Blender 3.6+ |
-| Agent / Reliability / Vision / Copilot / Memory / Skills / Benchmark / Advanced / Autonomy | `FakeBridge`, `MockProvider`, `MockVisionProvider` |
+| Blender-touching code (Phases 1–2, QA bridge methods) | Verified end-to-end in real Blender 3.6+ |
+| Agent / Reliability / Vision / Copilot / Memory / Skills / Benchmark / Advanced / Autonomy / QA logic | `FakeBridge`, `MockProvider`, `MockVisionProvider` |
 
 ### Why the mock layer stays in the repo
 
 `MockProvider` and `FakeBridge` aren't leftover scaffolding — they're load-bearing:
 
 - The entire agent/reliability/vision/copilot/memory/benchmark/autonomy stack is exercised **without** a Blender install, an API key, or any network call.
-- Real LLMs are non-deterministic; `MockProvider` returns **scripted, predictable** responses, which is what makes 479 assertions reproducible in CI.
+- Real LLMs are non-deterministic; `MockProvider` returns **scripted, predictable** responses, which is what makes 501 assertions reproducible in CI.
 - It mirrors the same pattern used for Blender itself (`BlenderBridge` → `FakeBridge`), keeping the whole codebase testable in isolation.
 - It doubles as a **zero-cost, zero-setup demo mode** for anyone trying the addon without an API key.
 
@@ -179,8 +185,39 @@ python run_tests.py
 | 9 | Advanced Agents — Task decomposition, checkpoints, Geometry Nodes, animation | ✅ Complete |
 | 10 | Production & Community — Configuration, SDK, docs, contribution workflow | ✅ Complete |
 | 11 | Scale & Autonomy — Strategy selection, self-evaluation, multi-agent, guardrails | ✅ Complete |
+| 12 | Asset QA — Geometry inspection, auto-fix, re-inspection loop, UI-wired | ✅ Complete |
 
 See [`CHANGELOG.md`](blender_ai_agent/.github/docs/CHANGELOG.md) for the full phase-by-phase history.
+
+## 🔍 Asset QA (Phase 12)
+
+Beyond confirming that a tool call *executed*, Phase 12 checks whether its *result* is actually good — the same "generate → inspect → auto-fix → re-inspect → pass/fail" pattern used in production asset pipelines.
+
+```mermaid
+flowchart TD
+    START[Run QA Inspection] --> INSPECT[GeometryInspector.inspect]
+    INSPECT --> CHECK{Issues found?}
+    CHECK -->|No| PASS[✅ PASS]
+    CHECK -->|Yes, auto-fixable| FIX[GeometryFixer runs matching Tool]
+    FIX --> GUARD{Within GuardrailMonitor retry limit?}
+    GUARD -->|Yes| INSPECT
+    GUARD -->|No| FAIL[❌ FAIL — remaining issues reported]
+    CHECK -->|Yes, not auto-fixable| FAIL
+```
+
+| Check | Severity | Auto-fixable | Fix Tool |
+|---|---|---|---|
+| Non-manifold geometry | HIGH | ❌ (flagged only — needs manual remeshing) | — |
+| Flipped normals | MEDIUM | ✅ | `geometry.recalculate_normals` |
+| Intersecting objects (bounding-box overlap) | MEDIUM | ✅ | `geometry.separate_overlap` |
+
+- **`Inspector` (ABC)** — same polymorphic pattern as `Tool`/`Validator`; future `UVInspector`, `MaterialInspector`, `AnimationInspector` plug in the same way.
+- **`InspectionReport`** — a typed, JSON-serializable result (`passed`, `blocking_issues`, `retries_used`), mirroring `ToolResult`'s "one fixed shape" philosophy.
+- **`InspectionLoop`** — reuses Phase 11's `GuardrailMonitor` for the retry limit, so there's no separate/new infinite-loop risk introduced.
+- **No new `bpy` touchpoints** — geometry stats (`get_mesh_stats`) and fixes (`recalculate_normals`) live in `BlenderBridge`, and fixes execute through the normal permission-gated `Tool` system, not raw `bpy` calls.
+- **Wired into the sidebar** — a **"Run QA Inspection"** button under *Asset QA* in the Copilot panel runs the loop against the live scene and displays a PASS/FAIL report inline.
+
+**Known limitation:** flipped-normal detection is a heuristic (signed mesh volume, reliable mainly for closed meshes) and intersection detection is bounding-box based rather than true mesh-level collision — both are intentional MVP trade-offs, documented here for future refinement.
 
 ## 🤝 Contributing
 
