@@ -13,6 +13,14 @@ Groq free tier: 30 requests/minute, ~1000/day per model — Gemini ke
 20/day se kaafi zyada. Free models: openai/gpt-oss-120b,
 openai/gpt-oss-20b, qwen/qwen3-32b (sab function-calling support
 karte hain).
+
+PATCHED (speed fix): openai/gpt-oss-120b aur openai/gpt-oss-20b dono
+reasoning models hain, jinka DEFAULT reasoning_effort "medium" hota
+hai — matlab har LLM call se pehle model kaafi lambi (hidden)
+chain-of-thought generate karta hai jo user ko dikhti bhi nahi, bas
+time khaati hai. Simple Blender tool-calling steps (cube banao,
+transform karo, etc.) ke liye "low" kaafi hai aur latency drastically
+kam kar deta hai.
 """
 
 import json
@@ -37,6 +45,13 @@ class GroqProvider(ModelProvider):
         payload = {
             "model": self._model_name,
             "messages": self._build_messages(request.messages),
+            # Hinglish: reasoning_effort "low" — fast tool-calling ke
+            # liye kaafi hai, "medium" (default) jitni hidden reasoning
+            # generate nahi karta, isliye response bahut jaldi aata hai.
+            "reasoning_effort": "low",
+            # Hinglish: safety cap — agar kabhi model phir bhi lamba
+            # jawab generate karne lage, request hang nahi hogi.
+            "max_completion_tokens": 1024,
         }
 
         tools = self._build_tools(request.tools)
@@ -71,17 +86,26 @@ class GroqProvider(ModelProvider):
         # seedha crash karne ki jagah kuch baar khud retry karte hain.
         max_retries = 3
         for attempt in range(max_retries + 1):
+            attempt_start = time.perf_counter()
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
+                    elapsed = time.perf_counter() - attempt_start
+                    print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s (ok)")
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
+                elapsed = time.perf_counter() - attempt_start
                 error_body = exc.read().decode("utf-8", errors="ignore")
                 if exc.code == 429 and attempt < max_retries:
                     wait_seconds = self._parse_retry_delay(error_body)
+                    print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s "
+                          f"-> 429, sleeping {wait_seconds:.2f}s before retry")
                     time.sleep(wait_seconds)
                     continue
+                print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s -> error {exc.code}")
                 raise RuntimeError(f"Groq API error {exc.code}: {error_body}") from exc
             except urllib.error.URLError as exc:
+                elapsed = time.perf_counter() - attempt_start
+                print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s -> URLError {exc.reason}")
                 raise RuntimeError(f"Groq API request failed: {exc.reason}") from exc
 
     @staticmethod

@@ -32,7 +32,15 @@ ho sakte hain (Plan mein multiple steps) — sab sequentially execute
 hote hain. Aur poora loop khud kayi TURNS le sakta hai (max_iterations
 tak) — taaki "create chair" jaisa complex task multiple LLM calls mein
 naturally break ho.
+
+DIAGNOSTIC PATCH (temporary): Har turn ka LLM-call time aur tool-exec
+time print() hota hai, taaki System Console mein exactly dikhe ki
+poore "10 minute" mein time kahan ja raha hai — LLM (network+reasoning)
+mein, ya bpy tool calls execute karne mein. Debugging khatam hone ke
+baad ye print() lines hata dena — production mein noisy hain.
 """
+
+import time
 
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -88,13 +96,35 @@ class ExecutionLoop:
 
         executed_steps: List[ExecutionRecord] = []
 
+        # ---- DIAGNOSTIC: overall timer ----
+        run_start = time.perf_counter()
+        print(f"[TIMING] === ExecutionLoop.run() start: '{user_message}' ===")
+
         for turn in range(1, self._max_iterations + 1):
+            turn_start = time.perf_counter()
+
             request = self._build_request(state)
+            build_elapsed = time.perf_counter() - turn_start
+            print(f"[TIMING] Turn {turn}: request built in {build_elapsed:.2f}s "
+                  f"({len(request.messages)} messages, {len(request.tools)} tools)")
+
+            llm_start = time.perf_counter()
             response = self._model_provider.generate(request)
+            llm_elapsed = time.perf_counter() - llm_start
+
+            usage = getattr(response, "usage", None)
+            usage_str = ""
+            if usage is not None:
+                usage_str = (f" [prompt_tokens={usage.prompt_tokens}, "
+                             f"completion_tokens={usage.completion_tokens}]")
+            print(f"[TIMING] Turn {turn}: LLM call took {llm_elapsed:.2f}s{usage_str}")
 
             if not response.has_tool_calls:
                 # Hinglish: LLM ne final text jawab diya — loop yahin ruk jaata hai.
                 state.add_assistant_message(response.content)
+                total_elapsed = time.perf_counter() - run_start
+                print(f"[TIMING] === Done: turn {turn}, total {total_elapsed:.2f}s, "
+                      f"{len(executed_steps)} tool calls ===")
                 return AgentRunResult(
                     reply_text=response.content,
                     executed_steps=executed_steps,
@@ -103,12 +133,20 @@ class ExecutionLoop:
                 )
 
             plan = self._planner.create_plan(response)
+            tools_start = time.perf_counter()
             self._execute_plan(plan, state, executed_steps)
+            tools_elapsed = time.perf_counter() - tools_start
+            turn_total = time.perf_counter() - turn_start
+            print(f"[TIMING] Turn {turn}: {len(plan.steps)} tool(s) executed in "
+                  f"{tools_elapsed:.2f}s | turn total = {turn_total:.2f}s")
             # Hinglish: Loop yahan RUKTA NAHI — agla turn shuru hota hai,
             # taaki LLM tool results dekh kar agla decision le sake.
 
         # Hinglish: max_iterations tak koi final text nahi mila —
         # safety limit hit hui (infinite loop se bachne ke liye).
+        total_elapsed = time.perf_counter() - run_start
+        print(f"[TIMING] === Stopped: max_iterations reached, total {total_elapsed:.2f}s, "
+              f"{len(executed_steps)} tool calls ===")
         return AgentRunResult(
             reply_text=None,
             executed_steps=executed_steps,
@@ -126,6 +164,10 @@ class ExecutionLoop:
     def _execute_plan(self, plan, state: ConversationState, executed_steps: List[ExecutionRecord]) -> None:
         """Hinglish: Plan ke saare steps SEQUENTIALLY chalata hai (Step 3.8 — multi-step)."""
         for step in plan.steps:
+            step_start = time.perf_counter()
             result = self._tool_caller.call(step.tool_call)
+            step_elapsed = time.perf_counter() - step_start
+            print(f"[TIMING]   tool '{step.tool_call.tool_name}' -> "
+                  f"{step_elapsed:.3f}s (ok={result.success})")
             executed_steps.append(ExecutionRecord(tool_call=step.tool_call, tool_result=result))
             state.add_tool_result_message(step.tool_call, result)

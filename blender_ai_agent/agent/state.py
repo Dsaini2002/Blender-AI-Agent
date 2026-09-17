@@ -28,6 +28,12 @@ class ConversationState:
     kuch pata nahi chalega.
     """
 
+    # Hinglish: kitne recent (non-system) messages bhejne hain — TPM
+    # budget flat rakhne ke liye. 12 messages = ~6 turns ka context
+    # (user/assistant/tool alternating), jo table jaisa 5-6 step task
+    # ke liye kaafi hai.
+    MAX_RECENT_MESSAGES = 12
+
     def __init__(self, system_prompt: Optional[str] = None):
         self._messages: List[Message] = []
         if system_prompt:
@@ -55,8 +61,27 @@ class ConversationState:
         self._messages.append(Message(role="tool", content=summary))
 
     def get_messages(self) -> List[Message]:
-        """Poori history ka copy deta hai — caller isse modify na kare."""
-        return list(self._messages)
+        """
+        Hinglish: Poori history ka copy deta hai — caller isse modify na kare.
+
+        PATCHED (TPM budget fix): Groq free tier ka tokens-per-minute
+        budget bahut chhota hai (gpt-oss-20b jaise models pe). Agar hum
+        har turn pe POORI, badhti hui history bhejte rahein, token count
+        har turn badhta jaata hai aur 429 rate-limit bahut jaldi aane
+        lagta hai (real logs mein confirm hua). Isliye ab sirf system
+        prompt + last MAX_RECENT_MESSAGES messages bhejte hain — purani
+        history "bhool" jaati hai, lekin recent context (jo agle step ke
+        decision ke liye zaroori hai) intact rehta hai, aur token
+        footprint FLAT rehta hai instead of unbounded growth.
+        """
+        if not self._messages:
+            return []
+
+        system_messages = [m for m in self._messages if m.role == "system"]
+        other_messages = [m for m in self._messages if m.role != "system"]
+
+        trimmed = other_messages[-self.MAX_RECENT_MESSAGES:]
+        return system_messages + trimmed
 
     def __len__(self) -> int:
         return len(self._messages)

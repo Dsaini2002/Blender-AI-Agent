@@ -72,16 +72,64 @@ class Tool(ABC, Generic[TInput]):
           - Missing/extra fields -> TypeError -> humara ValueError
           - __post_init__ ke andar wale checks -> ValueError seedha propagate
         Dono cases mein caller (execute()) ko clean ValueError milta hai.
+
+        PATCHED (robustness): Chhote/fast LLMs (jaise openai/gpt-oss-20b)
+        kabhi-kabhi tool ke exact field names follow nahi karte — jaise
+        `object.create` ke liye `primitive` ki jagah `type` bhej dete
+        hain. Isse pehle seedha TypeError crash hota tha. Ab yahan pehle
+        arguments ko dataclass ke asli field names ke saath normalize
+        karte hain: known aliases map karte hain, aur jo bhi key kisi
+        bhi field se match nahi hoti wo silently drop kar dete hain
+        (crash karne ki jagah) — taaki weaker model ka minor schema
+        mismatch poore task ko fail na kare.
         """
         if self.input_model is None:
             return input_data  # type: ignore
 
+        normalized_input = self._normalize_input(input_data or {})
+
         try:
-            return self.input_model(**(input_data or {}))
+            return self.input_model(**normalized_input)
         except TypeError as exc:
             raise ValueError(f"Invalid input for tool '{self.name}': {exc}") from exc
         except ValueError:
             raise  # __post_init__ ka apna ValueError hai, waisa hi propagate karo
+
+    # ---------------------------------------------------------
+    # Common aliases models mistakenly use instead of the real field name.
+    # Only applied when the real field name doesn't already have a value.
+    # ---------------------------------------------------------
+    _FIELD_ALIASES = {
+        "type": ("primitive", "object_type"),
+        "shape": ("primitive",),
+        "kind": ("primitive",),
+        "object_name": ("name",),
+        "position": ("location",),
+    }
+
+    def _normalize_input(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        import dataclasses
+
+        if not dataclasses.is_dataclass(self.input_model):
+            return input_data
+
+        valid_fields = {f.name for f in dataclasses.fields(self.input_model)}
+        normalized: Dict[str, Any] = {}
+
+        for key, value in input_data.items():
+            if key in valid_fields:
+                normalized[key] = value
+                continue
+
+            aliases = self._FIELD_ALIASES.get(key, ())
+            target = next((a for a in aliases if a in valid_fields and a not in normalized), None)
+            if target is not None:
+                normalized[target] = value
+            # Hinglish: agar koi alias bhi nahi milta, is unknown key ko
+            # chhod dete hain — dataclass constructor ko crash nahi karne
+            # dete ek anjaani key ke liye.
+
+        return normalized
 
     @abstractmethod
     def run(self, validated_input: TInput) -> ToolResult:
@@ -111,4 +159,4 @@ class Tool(ABC, Generic[TInput]):
         try:
             return self.run(validated)
         except Exception as exc:  # deliberately broad — ek tool crash se poora addon na gire
-            return ToolResult.fail(f"Tool '{self.name}' failed: {exc}") 
+            return ToolResult.fail(f"Tool '{self.name}' failed: {exc}")

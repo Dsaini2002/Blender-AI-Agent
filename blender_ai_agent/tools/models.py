@@ -16,9 +16,27 @@ class CreateObjectInput:
     primitive: str = "CUBE"
     location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
+    # Hinglish: Chhote/fast models (jaise openai/gpt-oss-20b) kabhi-kabhi
+    # do-parameter schema confuse kar dete hain aur primitive naam
+    # (CUBE, SPHERE, etc.) galti se `object_type` field mein bhej dete
+    # hain, jabki `object_type` sirf "MESH" jaisi generic value expect
+    # karta hai. Isse "Unsupported object_type: CUBE" jaisi crash aati
+    # thi. Yahan defensively normalize karte hain: agar object_type mein
+    # koi known primitive naam aaye, usse primitive field mein shift
+    # kar dete hain aur object_type ko wapas "MESH" set kar dete hain —
+    # bina koi error diye, jaisa bada model (120b) khud karta hai.
+    _KNOWN_PRIMITIVES = {
+        "CUBE", "SPHERE", "CONE", "CYLINDER", "CIRCLE", "PLANE", "TORUS", "MONKEY",
+    }
+
     def __post_init__(self):
         if not self.name or not isinstance(self.name, str):
             raise ValueError("CreateObjectInput.name must be a non-empty string")
+
+        if isinstance(self.object_type, str) and self.object_type.upper() in self._KNOWN_PRIMITIVES:
+            self.primitive = self.object_type.upper()
+            self.object_type = "MESH"
+
         if len(self.location) != 3:
             raise ValueError("CreateObjectInput.location must have exactly 3 values [x, y, z]")
 
