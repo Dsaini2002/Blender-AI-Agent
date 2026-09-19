@@ -46,6 +46,7 @@ from .ui.panel import (
     AIAGENT_OT_inspect_scene,
     AIAGENT_OT_copilot_submit,
     AIAGENT_OT_switch_provider,
+    AIAGENT_OT_run_inspection,
 )
 
 _bridge: BlenderBridge = None
@@ -108,6 +109,51 @@ def _ensure_tools_registered() -> None:
         _tools_registered = True
 
 
+_tool_caller: object = None
+_skill_registry = None
+
+
+def get_tool_caller():
+    """
+    Hinglish: Pehle har get_copilot_controller() call apna naya
+    ToolCaller banata tha (harmless tha, kyunki ye sirf ToolRegistry
+    ko wrap karta hai). Ab isse singleton banaya hai taaki Skills
+    (jo apne constructor mein ek ToolCaller chahti hain — dependency
+    injection pattern) hamesha WAHI, live ToolCaller use karein jo
+    Agent bhi use kar raha hai.
+    """
+    global _tool_caller
+    if _tool_caller is None:
+        from .agent.tool_caller import ToolCaller
+        _ensure_tools_registered()
+        _tool_caller = ToolCaller(get_registry())
+    return _tool_caller
+
+
+def get_skill_registry():
+    """
+    Hinglish: Tools ki tarah hi — saare built-in Skills (jaise
+    HouseBuilderSkill) yahan register hote hain. CopilotController
+    isse "fast path" ke liye use karta hai (Step: Skill fast-path) —
+    agar user ka message kisi Skill se confidently match karta hai
+    (e.g. "house"), to LLM call kiye bina hi directly execute hoti hai.
+    """
+    global _skill_registry
+    if _skill_registry is None:
+        from .skills.registry import SkillRegistry
+        from .skills.builtins.house_builder import HouseBuilderSkill
+        from .skills.builtins.product_showcase import ProductShowcaseSkill
+
+        tool_caller = get_tool_caller()
+
+        registry = SkillRegistry()
+        registry.register(HouseBuilderSkill(tool_caller))
+        registry.register(ProductShowcaseSkill(tool_caller))
+        _skill_registry = registry
+
+    return _skill_registry
+
+
 def get_provider_registry():
     """Hinglish: Saare available AI providers yahan register hote hain."""
     global _provider_registry
@@ -152,7 +198,6 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
         from .agent.repair_loop import RepairableExecutionLoop
         from .agent.context import ContextManager
         from .agent.planner import Planner
-        from .agent.tool_caller import ToolCaller
         from .copilot.controller import CopilotController
         from .observability.logger import Logger
         from .reliability.recovery import RecoveryManager
@@ -162,7 +207,8 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
         registry = get_registry()
         provider_registry = get_provider_registry()
 
-        tool_caller = ToolCaller(registry)
+        tool_caller = get_tool_caller()
+        skill_registry = get_skill_registry()
         context_manager = ContextManager(registry.get("scene.inspect"))
         planner = Planner()
         recovery = RecoveryManager(tool_caller)
@@ -183,7 +229,10 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
         )
 
         existing_session = _copilot_controller.session if _copilot_controller else None
-        _copilot_controller = CopilotController(agent, session=existing_session)
+        _copilot_controller = CopilotController(
+            agent, session=existing_session,
+            skill_registry=skill_registry, tool_caller=tool_caller,
+        )
         _copilot_controller.current_provider_name = chosen_name
 
     return _copilot_controller
@@ -193,6 +242,7 @@ classes = (
     AIAGENT_OT_inspect_scene,
     AIAGENT_OT_copilot_submit,
     AIAGENT_OT_switch_provider,
+    AIAGENT_OT_run_inspection,
     AIAgentPanel,
 )
 
@@ -243,12 +293,29 @@ def register():
         name="Copilot Status",
         default="",
     )
+    bpy.types.Scene.aiagent_qa_report_text = bpy.props.StringProperty(
+        name="QA Report",
+        default="",
+    )
+    bpy.types.Scene.aiagent_qa_passed = bpy.props.BoolProperty(
+        name="QA Passed",
+        default=False,
+    )
+    bpy.types.Scene.aiagent_qa_retries = bpy.props.IntProperty(
+        name="QA Retries",
+        default=0,
+    )
+    bpy.types.Scene.aiagent_qa_report_text = bpy.props.StringProperty(
+        name="QA Report",
+        default="",
+    )
     _ensure_tools_registered()
     print("[Blender AI Agent] Registered. Tools:", get_registry().list_tools())
 
 
 def unregister():
     global _bridge, _registry, _copilot_controller, _tools_registered
+    global _tool_caller, _skill_registry, _provider_registry
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.aiagent_provider_choice
@@ -257,10 +324,16 @@ def unregister():
     del bpy.types.Scene.aiagent_copilot_input
     del bpy.types.Scene.aiagent_is_running
     del bpy.types.Scene.aiagent_status_text
+    del bpy.types.Scene.aiagent_qa_report_text
+    del bpy.types.Scene.aiagent_qa_passed
+    del bpy.types.Scene.aiagent_qa_retries
     _bridge = None
     _registry = None
     _copilot_controller = None
     _tools_registered = False
+    _tool_caller = None
+    _skill_registry = None
+    _provider_registry = None
 
 if __name__ == "__main__":
     register()

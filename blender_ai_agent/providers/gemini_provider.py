@@ -4,9 +4,17 @@ GeminiProvider — Real LLM Provider
 Hinglish: Phase 3 ka ModelProvider abstraction implement karta hai
 Google Gemini ke saath. Isse Agent ko koi fark nahi padta — same
 interface jo MockProvider follow karta hai.
+
+PATCHED (rate-limit resilience): GroqProvider ki tarah, ab Gemini bhi
+429 (rate limit) errors par khud retry karta hai, taaki free-tier ka
+"5 requests/minute" jaisa strict limit user ko error dikhake task
+BEECH mein na rok de — thodi der wait karke khud-ba-khud continue ho
+jaata hai (jab tak retries khatam na ho jaayein).
 """
 
 import json
+import re
+import time
 
 from .base import ModelProvider
 from ..agent.models import ModelResponse, ToolCall, Usage
@@ -29,9 +37,59 @@ class GeminiProvider(ModelProvider):
         )
 
         contents = self._build_contents(request.messages)
-        response = model.generate_content(contents)
+        response = self._generate_with_retry(model, contents)
 
         return self._parse_response(response)
+
+    def _generate_with_retry(self, model, contents):
+        """
+        Hinglish: Gemini free tier ka "requests per minute" quota bahut
+        tight hota hai (jaise 5/min ya 15/min). Jab wo hit ho jaata hai,
+        Google 429 error deta hai jisme WOH KHUD bata deta hai "retry
+        in N seconds" — hum usi N ko parse karke utna wait karte hain,
+        phir dobara try karte hain, GroqProvider ke _call_api() jaisa
+        hi pattern.
+        """
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            attempt_start = time.perf_counter()
+            try:
+                response = model.generate_content(contents)
+                elapsed = time.perf_counter() - attempt_start
+                print(f"[TIMING]     Gemini attempt {attempt + 1}: {elapsed:.2f}s (ok)")
+                return response
+            except Exception as exc:  # noqa: BLE001 — SDK ka exact exception type
+                # version ke hisaab se badal sakta hai, isliye message
+                # ke content pe hi rely karte hain.
+                elapsed = time.perf_counter() - attempt_start
+                message = str(exc)
+                if "429" in message and attempt < max_retries:
+                    wait_seconds = self._parse_retry_delay(message)
+                    print(f"[TIMING]     Gemini attempt {attempt + 1}: {elapsed:.2f}s "
+                          f"-> 429, sleeping {wait_seconds:.2f}s before retry")
+                    time.sleep(wait_seconds)
+                    continue
+                print(f"[TIMING]     Gemini attempt {attempt + 1}: {elapsed:.2f}s -> error")
+                raise
+
+    @staticmethod
+    def _parse_retry_delay(error_message: str, default: float = 5.0) -> float:
+        """
+        Hinglish: Gemini ka error message ("Please retry in
+        31.334966899s.") ya uska structured 'retry_delay { seconds: N }'
+        block — dono se exact wait time nikal lete hain, guess karne
+        ki jagah. Thoda buffer (+0.5s) add karte hain taaki clock-skew
+        se dubara turant 429 na aaye.
+        """
+        match = re.search(r"retry in ([\d.]+)s", error_message)
+        if not match:
+            match = re.search(r"seconds:\s*(\d+)", error_message)
+        if match:
+            try:
+                return float(match.group(1)) + 0.5
+            except ValueError:
+                pass
+        return default
 
     # ---------------------------------------------------------
     # Private helpers

@@ -50,7 +50,28 @@ class DeleteObjectInput:
         if not self.name or not isinstance(self.name, str):
             raise ValueError("DeleteObjectInput.name must be a non-empty string")
 
+@dataclass
+class RecalculateNormalsInput:
+    """geometry.recalculate_normals tool ke liye input contract."""
+    object_name: str
 
+    def __post_init__(self):
+        if not self.object_name or not isinstance(self.object_name, str):
+            raise ValueError("RecalculateNormalsInput.object_name must be a non-empty string")
+
+
+@dataclass
+class SeparateOverlapInput:
+    """geometry.separate_overlap tool ke liye input contract."""
+    object_name: str
+    offset: List[float] = field(default_factory=lambda: [2.0, 0.0, 0.0])
+
+    def __post_init__(self):
+        if not self.object_name or not isinstance(self.object_name, str):
+            raise ValueError("SeparateOverlapInput.object_name must be a non-empty string")
+        if len(self.offset) != 3:
+            raise ValueError("SeparateOverlapInput.offset must have exactly 3 values [x, y, z]")
+        
 @dataclass
 class DuplicateObjectInput:
     """object.duplicate tool ke liye input contract."""

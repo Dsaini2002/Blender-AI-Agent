@@ -343,7 +343,67 @@ class BlenderBridge:
             return obj.modifiers.get(modifier_name)
 
         return run_on_main_thread(_do)
+    # ---------------------------------------------------------
+    # Geometry QA — Step 12.7
+    # ---------------------------------------------------------
+    def get_mesh_stats(self, object_name: str):
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None or obj.type != "MESH":
+                return None
 
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            bm.normal_update()
+
+            non_manifold_edge_count = sum(1 for edge in bm.edges if not edge.is_manifold)
+
+            flipped_normal_count = 0
+            try:
+                if bm.calc_volume(signed=True) < 0:
+                    flipped_normal_count = len(bm.faces)
+            except Exception:
+                flipped_normal_count = 0
+
+            vertex_count = len(bm.verts)
+            bm.free()
+
+            world_corners = [obj.matrix_world @ corner for corner in [
+                __import__("mathutils").Vector(c) for c in obj.bound_box
+            ]]
+            xs = [c.x for c in world_corners]
+            ys = [c.y for c in world_corners]
+            zs = [c.z for c in world_corners]
+
+            return {
+                "vertex_count": vertex_count,
+                "non_manifold_edge_count": non_manifold_edge_count,
+                "flipped_normal_count": flipped_normal_count,
+                "bounding_box_min": [min(xs), min(ys), min(zs)],
+                "bounding_box_max": [max(xs), max(ys), max(zs)],
+            }
+
+        return run_on_main_thread(_do)
+
+    def recalculate_normals(self, object_name: str) -> bool:
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None or obj.type != "MESH":
+                return False
+
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+            bm.to_mesh(obj.data)
+            bm.free()
+            obj.data.update()
+            return True
+
+        return run_on_main_thread(_do)
+
+    
     # ---------------------------------------------------------
     # Animation — Step 9.13
     # ---------------------------------------------------------

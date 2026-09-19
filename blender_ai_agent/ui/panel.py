@@ -163,6 +163,37 @@ class AIAGENT_OT_inspect_scene(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class AIAGENT_OT_run_inspection(bpy.types.Operator):
+    """Phase 12 — scene ki geometry QA inspection chalata hai (inspect -> auto-fix -> re-inspect)."""
+
+    bl_idname = "aiagent.run_inspection"
+    bl_label = "Run QA Inspection"
+
+    def execute(self, context):
+        from .. import get_bridge
+        from ..qa.inspection_loop import InspectionLoop
+
+        bridge = get_bridge()
+        loop = InspectionLoop(bridge)
+        report = loop.run()
+
+        context.scene.aiagent_qa_passed = report.passed
+        context.scene.aiagent_qa_retries = report.retries_used
+
+        if report.passed:
+            context.scene.aiagent_qa_report_text = ""
+            self.report({'INFO'}, "QA Inspection passed — no issues found.")
+        else:
+            lines = [
+                f"[{issue.severity.value.upper()}] {issue.object_name}: {issue.message}"
+                for issue in report.issues
+            ]
+            context.scene.aiagent_qa_report_text = "\n".join(lines)
+            self.report({'WARNING'}, f"QA Inspection found {len(report.issues)} issue(s) — see panel.")
+
+        return {'FINISHED'}
+
+
 class AIAgentPanel(bpy.types.Panel):
     """Sidebar (N-panel) mein AI Copilot ka panel."""
 
@@ -213,3 +244,18 @@ class AIAgentPanel(bpy.types.Panel):
         layout.separator()
         layout.label(text="Debug Tools")
         layout.operator("aiagent.inspect_scene", icon='ZOOM_ALL')
+
+        layout.separator()
+        layout.label(text="Asset QA")
+        layout.operator("aiagent.run_inspection", icon='VIEWZOOM', text="Run QA Inspection")
+
+        report_text = getattr(context.scene, "aiagent_qa_report_text", "")
+        if report_text or context.scene.aiagent_qa_passed:
+            box = layout.box()
+            if context.scene.aiagent_qa_passed:
+                box.label(text="PASS — no issues found", icon='CHECKMARK')
+            else:
+                box.label(text=f"FAIL — {context.scene.aiagent_qa_retries} retry(ies) used", icon='ERROR')
+                for line in report_text.split("\n"):
+                    if line:
+                        box.label(text=line)

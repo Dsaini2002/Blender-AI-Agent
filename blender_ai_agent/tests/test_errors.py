@@ -21,6 +21,17 @@ class TestClassifyToolError(unittest.TestCase):
         self.assertEqual(error.code, ErrorCode.INVALID_INPUT)
         self.assertFalse(error.recoverable)
 
+    def test_missing_required_argument_classified_as_recoverable(self):
+        """Hinglish: 'name' jaisa zaroori argument LLM bhool gaya —
+        isse recoverable maana jana chahiye (RecoveryManager fix kar
+        sakta hai), 'invalid input' ki tarah permanently fail nahi."""
+        error = classify_tool_error(
+            "Invalid input for tool 'object.transform': "
+            "TransformObjectInput.__init__() missing 1 required positional argument: 'name'"
+        )
+        self.assertEqual(error.code, ErrorCode.MISSING_ARGUMENT)
+        self.assertTrue(error.recoverable)
+
     def test_unknown_tool_classified(self):
         error = classify_tool_error("Unknown tool: 'foo.bar'")
         self.assertEqual(error.code, ErrorCode.TOOL_EXECUTION_FAILED)

@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 class ErrorCode(str, Enum):
     INVALID_INPUT = "INVALID_INPUT"
+    MISSING_ARGUMENT = "MISSING_ARGUMENT"
     OBJECT_NOT_FOUND = "OBJECT_NOT_FOUND"
     TOOL_EXECUTION_FAILED = "TOOL_EXECUTION_FAILED"
     VALIDATION_FAILED = "VALIDATION_FAILED"
@@ -40,6 +41,15 @@ def classify_tool_error(message: str) -> ToolError:
 
     if "not found" in lowered:
         return ToolError(code=ErrorCode.OBJECT_NOT_FOUND, message=message, recoverable=True)
+    if "missing" in lowered and "required" in lowered and "argument" in lowered:
+        # Hinglish: LLM tool call banate waqt ek zaroori argument
+        # (aksar 'name'/'object_name') bhool gaya — jaise "create X"
+        # ke turant baad "transform it" bola aur naam repeat nahi
+        # kiya. Ye ek genuinely recoverable mistake hai: RecoveryManager
+        # is object ko jis object pe abhi-abhi kaam hua tha, uske naam
+        # se retry kar sakta hai — isliye INVALID_INPUT se alag, apna
+        # recoverable=True code milta hai.
+        return ToolError(code=ErrorCode.MISSING_ARGUMENT, message=message, recoverable=True)
     if "invalid input" in lowered or "must be" in lowered or "must have" in lowered:
         return ToolError(code=ErrorCode.INVALID_INPUT, message=message, recoverable=False)
     if "unknown tool" in lowered:

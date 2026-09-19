@@ -86,5 +86,60 @@ class TestCopilotController(unittest.TestCase):
         self.assertIs(controller.session, custom_session)
 
 
+class TestCopilotControllerSkillFastPath(unittest.TestCase):
+    """Hinglish: 'house' jaisa request LLM ko chhue bina, seedha
+    HouseBuilderSkill se handle ho jana chahiye."""
+
+    def _build_controller(self):
+        from blender_ai_agent.skills.builtins.house_builder import HouseBuilderSkill
+        from blender_ai_agent.skills.registry import SkillRegistry
+        from blender_ai_agent.tools.material_tools import AssignMaterialTool, CreateMaterialTool
+        from blender_ai_agent.tools.object_tools import CreateObjectTool, TransformObjectTool
+        from blender_ai_agent.tools.registry import ToolRegistry
+        from blender_ai_agent.agent.tool_caller import ToolCaller
+        from .fakes import FakeBridge
+
+        bridge = FakeBridge()
+        tool_registry = ToolRegistry()
+        tool_registry.register(CreateObjectTool(bridge))
+        tool_registry.register(TransformObjectTool(bridge))
+        tool_registry.register(CreateMaterialTool(bridge))
+        tool_registry.register(AssignMaterialTool(bridge))
+        tool_caller = ToolCaller(tool_registry)
+
+        skill_registry = SkillRegistry()
+        skill_registry.register(HouseBuilderSkill(tool_caller))
+
+        # Agent jaan-boojhkar KHAALI results deta hai — agar skill
+        # fast-path kaam nahi karti, Agent.run() IndexError se crash
+        # ho jayega, aur test fail hoga. Isse proof milta hai ki LLM
+        # ko call hi nahi kiya gaya.
+        agent = FakeAgent(results=[])
+        controller = CopilotController(
+            agent, skill_registry=skill_registry, tool_caller=tool_caller,
+        )
+        return controller, agent, bridge
+
+    def test_house_request_bypasses_llm_and_builds_house(self):
+        controller, agent, bridge = self._build_controller()
+
+        result = controller.submit("Can you make a house for me?")
+
+        self.assertTrue(result.success)
+        self.assertEqual(agent.received_inputs, [])  # LLM never called
+        self.assertIsNotNone(bridge.get_object("House_Walls"))
+        self.assertIsNotNone(bridge.get_object("House_Roof"))
+        self.assertIsNotNone(bridge.get_object("House_Door"))
+
+    def test_unrelated_request_falls_back_to_agent(self):
+        controller, agent, _ = self._build_controller()
+        agent._results = [FakeAgentResult(reply_text="Cube created.")]
+
+        result = controller.submit("Create a spinning cube")
+
+        self.assertTrue(result.success)
+        self.assertEqual(agent.received_inputs, ["Create a spinning cube"])
+
+
 if __name__ == "__main__":
     unittest.main()

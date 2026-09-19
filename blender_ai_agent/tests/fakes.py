@@ -42,7 +42,8 @@ class FakeModifierCollection:
 class FakeObject:
     """bpy Object jaisa dikhne waala fake object."""
 
-    def __init__(self, name, type_="MESH", location=None, rotation=None, scale=None):
+    def __init__(self, name, type_="MESH", location=None, rotation=None, scale=None,
+                 non_manifold_edge_count=0, flipped_normal_count=0, bounding_box_size=1.0):
         self.name = name
         self.type = type_
         self.location = location or [0.0, 0.0, 0.0]
@@ -52,6 +53,10 @@ class FakeObject:
         self.modifiers = FakeModifierCollection()
         self.keyframes = []  # list of (frame, location) tuples — Step 9.13
 
+        # QA stats — Step 12.7
+        self.non_manifold_edge_count = non_manifold_edge_count
+        self.flipped_normal_count = flipped_normal_count
+        self.bounding_box_size = bounding_box_size
 
 class FakeMaterial:
     """bpy Material jaisa dikhne waala fake material."""
@@ -250,7 +255,32 @@ class FakeBridge:
         if obj is None:
             return None
         return obj.modifiers.get(modifier_name)
+    # ---------------------------------------------------------
+    # Geometry QA — Step 12.7
+    # ---------------------------------------------------------
+    def get_mesh_stats(self, object_name):
+        obj = self.get_object(object_name)
+        if obj is None or obj.type != "MESH":
+            return None
 
+        half = obj.bounding_box_size / 2.0
+        cx, cy, cz = obj.location
+
+        return {
+            "vertex_count": 8,
+            "non_manifold_edge_count": obj.non_manifold_edge_count,
+            "flipped_normal_count": obj.flipped_normal_count,
+            "bounding_box_min": [cx - half, cy - half, cz - half],
+            "bounding_box_max": [cx + half, cy + half, cz + half],
+        }
+
+    def recalculate_normals(self, object_name):
+        obj = self.get_object(object_name)
+        if obj is None or obj.type != "MESH":
+            return False
+        obj.flipped_normal_count = 0
+        return True
+    
     # ---------------------------------------------------------
     # Animation — Step 9.13
     # ---------------------------------------------------------

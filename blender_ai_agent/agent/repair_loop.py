@@ -126,15 +126,35 @@ class RepairableExecutionLoop:
                         repairs_attempted=repairs_attempted,
                     )
 
-        transaction.rollback()
+        # Hinglish: PEHLE yahan transaction.rollback() hota tha —
+        # matlab agar 25 turns mein kaam poora nahi hua, ab tak ka
+        # SAARA build hua kaam (jo objects/materials successfully
+        # ban chuke the) delete ho jaata tha, aur user ko sirf ek
+        # khaali "reply_text=None" milta tha — koi wajah nahi batayi
+        # jaati thi. Ye do tarah se nuksaan-dayak tha: (1) partial
+        # progress waste ho jaata tha, (2) user ko pata hi nahi
+        # chalta tha kyun fail hua.
+        #
+        # Ab hum COMMIT karte hain (jo bhi successfully ban chuka hai,
+        # wo scene mein rehta hai) aur ek clear, actionable message
+        # dete hain — user ko pata chalta hai kitna kaam hua, aur wo
+        # "continue" bol ke aage badha sakta hai.
+        transaction.commit()
         self._logger.error("task.max_iterations", task_id=task_id)
+        completed_tools = [record.tool_call.tool_name for record in executed_steps if record.tool_result.success]
+        summary = (
+            f"This request needed more steps than the {self._max_iterations}-step limit allows. "
+            f"{len(completed_tools)} step(s) completed successfully so far "
+            f"({', '.join(completed_tools[-5:])}{'...' if len(completed_tools) > 5 else ''}). "
+            "The scene has NOT been undone — send another message (e.g. 'continue') to keep going."
+        )
         return RepairRunResult(
-            reply_text=None,
+            reply_text=summary,
             executed_steps=executed_steps,
             turns_used=self._max_iterations,
             stopped_reason="max_iterations_reached",
             task_id=task_id,
-            rolled_back=True,
+            rolled_back=False,
             repairs_attempted=repairs_attempted,
         )
 

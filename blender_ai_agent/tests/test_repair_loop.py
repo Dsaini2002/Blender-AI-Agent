@@ -129,5 +129,35 @@ class TestRollbackOnUnrecoverableFailure(unittest.TestCase):
         self.assertIsNotNone(bridge.get_object("Cube"))  # original object bacha hai
 
 
+class TestMaxIterationsDoesNotDiscardProgress(unittest.TestCase):
+    """Hinglish: max_iterations hit hone par PEHLE poora kaam rollback
+    ho jaata tha aur user ko khaali reply_text milta tha. Ab jo bhi
+    successfully ban chuka hai wo scene mein rehta hai, aur user ko
+    ek clear, informative message milta hai."""
+
+    def test_progress_is_kept_and_message_explains_the_limit(self):
+        # Har turn ek naya object banata hai, kabhi bhi final text
+        # response nahi deta — isse max_iterations guaranteed hit hoga.
+        infinite_responses = [
+            ModelResponse(
+                tool_calls=[ToolCall(tool_name="object.create", arguments={"name": f"Cube{i}"})],
+                finish_reason="tool_calls",
+            )
+            for i in range(10)
+        ]
+        loop, bridge, _ = build_repair_loop(scripted_responses=infinite_responses, max_iterations=3)
+
+        result = loop.run("Keep creating cubes forever")
+
+        self.assertEqual(result.stopped_reason, "max_iterations_reached")
+        self.assertFalse(result.rolled_back)
+        self.assertIsNotNone(result.reply_text)
+        self.assertIn("3-step limit", result.reply_text)
+        # Sabse important: objects scene mein bache rehne chahiye, delete nahi hone chahiye
+        self.assertIsNotNone(bridge.get_object("Cube0"))
+        self.assertIsNotNone(bridge.get_object("Cube1"))
+        self.assertIsNotNone(bridge.get_object("Cube2"))
+
+
 if __name__ == "__main__":
     unittest.main()
