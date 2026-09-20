@@ -98,6 +98,8 @@ class ContextManager:
                 scale = obj["scale"]
                 line += f", scale=({scale[0]:.2f}, {scale[1]:.2f}, {scale[2]:.2f})"
             line += ")"
+            if obj.get("materials"):
+                line += f" material={', '.join(obj['materials'])}"
             lines.append(line)
 
         return "\n".join(lines)

@@ -51,7 +51,11 @@ TABLE (tabletop thickness 0.1, leg height 1.0, tabletop top surface at Z=1.1):
 
 CHAIR: same principle as a table but smaller (seat height ~0.5), plus a seat-back: one thin CUBE standing vertically behind the seat, its own bottom face aligned with the seat's top face, extending upward.
 
-SIMPLE CAR: one CUBE (scaled long/low) as the body, four flattened CYLINDERs rotated 90° about X or Y (so their circular face points sideways, like real wheels) positioned at the four bottom corners of the body, each wheel's center at the same Z as the body's bottom edge (not above it — wheels touch the ground, body sits on top of the wheel axis height).
+SIMPLE CAR (worked numbers - ROTATION IS IN RADIANS: 90 degrees = 1.5708, never 90):
+  - car_body: CUBE, scale=(1.5, 0.7, 0.25), location=(0, 0, 0.55)  -> spans Z 0.30..0.80
+  - car_cabin: CUBE, scale=(0.8, 0.62, 0.2), location=(-0.1, 0, 1.0)  -> sits on body top (Z 0.80..1.20). Use a real CUBE for the cabin, NOT a flat plane. Give it a darker/glass-blue material.
+  - car_wheel_fl / fr / rl / rr: CYLINDER, scale=(0.3, 0.3, 0.1), rotation=(1.5708, 0, 0), location Z=0.3, X=+1.0 (front) or -1.0 (rear), Y=+0.8 or -0.8 (outside the body sides). Wheel material: near-black.
+  Build order: create all 6 parts, set transforms, create materials once (car body color, glass, tires), assign each once, then render.preview ONCE, then reply with a short text.
 
 TREE: one CYLINDER (tall, thin, brown-ish) as the trunk standing on the ground (bottom at Z=0), one or more SPHEREs as foliage clustered around the top of the trunk, their combined lower extent overlapping the trunk's top so there's no visible gap.
 
@@ -82,6 +86,8 @@ Naming: always give every created part a clear, descriptive, unique name using t
 Materials: when a color is requested (or clearly implied — e.g. "wooden table", "red car"), call material.create with an appropriate RGB color and material.assign it to the relevant object(s). Multiple parts of the same composite object may share one material if they're meant to look the same (e.g. all 4 table legs), or use different materials for visually distinct parts (e.g. tires vs body of a car).
 
 Scene awareness: you are given the current scene's objects (name, type, location, scale) before every request. Use the REAL positions and sizes of existing objects — never guess or assume where something you didn't just create is located. If the user refers to something ("the table", "it", "the red one") that already exists in the scene context, reuse its actual name and real coordinates; do not recreate it from scratch.
+
+Efficiency: emit ALL create/transform calls for the whole object in a single response (multiple tool calls at once). Never re-create, re-transform or re-assign something the 'ALREADY DONE' list or scene context shows exists (check the material= field in the scene list). When everything requested exists, reply with a short text and NO tool calls.
 
 Rendering (render.preview): only call render.preview once — at the very END, after every part and material for the current request is already created and assigned — unless the user explicitly asks to see progress at intermediate stages. Do not render after each individual part "to check progress"; this wastes turns and API calls without adding value, since you already know exactly what you just created. If you do render, reuse the SAME output name across a conversation (e.g. always "preview") rather than inventing a new filename each time — a new file is unnecessary until the user asks for a distinct saved image.
 

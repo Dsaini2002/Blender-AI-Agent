@@ -17,6 +17,7 @@ nahi ban rahi (SRP maintained hai, har piece apna kaam karta hai).
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+import json
 import uuid
 
 from .execution_loop import AgentRunResult, ExecutionRecord
@@ -38,6 +39,14 @@ class RepairRunResult(AgentRunResult):
 
 
 class RepairableExecutionLoop:
+
+    # Tools jinhe "already done" check se skip nahi karna (state-dependent hain).
+    _NEVER_DEDUPE = {"scene.inspect", "object.delete"}
+    # Ek request mein max kitni baar render.preview chalega (prompt ignore ho
+    # jaye tab bhi code enforce karta hai).
+    MAX_RENDERS_PER_RUN = 1
+    # Lagatar itne turns mein koi naya kaam nahi hua -> loop rok do.
+    MAX_IDLE_TURNS = 2
 
     def __init__(
         self,
@@ -81,9 +90,13 @@ class RepairableExecutionLoop:
 
         executed_steps: List[ExecutionRecord] = []
         repairs_attempted = 0
+        done_keys = set()          # successful (tool, args) - dobara execute nahi honge
+        render_count = 0
+        idle_turns = 0
+        skipped_tool_calls = 0
 
         for turn in range(1, self._max_iterations + 1):
-            request = self._build_request(state)
+            request = self._build_request(state, executed_steps)
             self._logger.info("model.request", task_id=task_id, turn=turn)
             response = self._model_provider.generate(request)
 
@@ -105,9 +118,26 @@ class RepairableExecutionLoop:
                 )
 
             plan = self._planner.create_plan(response)
+            new_work_this_turn = 0
 
             for step in plan.steps:
+                skip_note = self._skip_reason(step.tool_call, done_keys, render_count)
+                if skip_note is not None:
+                    # Hinglish: Model wahi kaam dobara maang raha hai (ya extra
+                    # render). Execute mat karo - bas model ko batao.
+                    skipped_tool_calls += 1
+                    state.add_tool_result_message(
+                        step.tool_call, ToolResult.ok({"skipped": True, "note": skip_note})
+                    )
+                    self._logger.info("tool.skipped", task_id=task_id, tool=step.tool_call.tool_name)
+                    continue
+
                 record, repaired_count = self._execute_with_repair(step.tool_call, task_id)
+                new_work_this_turn += 1
+                if record.tool_result.success:
+                    done_keys.add(self._call_key(record.tool_call))
+                    if record.tool_call.tool_name == "render.preview":
+                        render_count += 1
                 executed_steps.append(record)
                 repairs_attempted += repaired_count
                 state.add_tool_result_message(record.tool_call, record.tool_result)
@@ -125,6 +155,27 @@ class RepairableExecutionLoop:
                         rolled_back=True,
                         repairs_attempted=repairs_attempted,
                     )
+
+            # ---- Progress check: agar poora turn sirf repeats/skips tha ----
+            if new_work_this_turn == 0:
+                idle_turns += 1
+                if idle_turns >= self.MAX_IDLE_TURNS:
+                    transaction.commit()
+                    self._logger.info("task.no_progress_stop", task_id=task_id)
+                    return RepairRunResult(
+                        reply_text=(
+                            f"Done. {len(executed_steps)} tool call(s) completed in {turn} turn(s). "
+                            "The model kept repeating steps that were already finished, "
+                            "so I stopped early - your scene has NOT been undone."
+                        ),
+                        executed_steps=executed_steps,
+                        turns_used=turn,
+                        stopped_reason="no_progress",
+                        task_id=task_id,
+                        repairs_attempted=repairs_attempted,
+                    )
+            else:
+                idle_turns = 0
 
         # Hinglish: PEHLE yahan transaction.rollback() hota tha —
         # matlab agar 25 turns mein kaam poora nahi hua, ab tak ka
@@ -144,9 +195,10 @@ class RepairableExecutionLoop:
         completed_tools = [record.tool_call.tool_name for record in executed_steps if record.tool_result.success]
         summary = (
             f"This request needed more steps than the {self._max_iterations}-step limit allows. "
-            f"{len(completed_tools)} step(s) completed successfully so far "
-            f"({', '.join(completed_tools[-5:])}{'...' if len(completed_tools) > 5 else ''}). "
-            "The scene has NOT been undone — send another message (e.g. 'continue') to keep going."
+            f"{len(completed_tools)} tool call(s) completed successfully "
+            f"({', '.join(completed_tools[-5:])}{'...' if len(completed_tools) > 5 else ''}); "
+            f"{skipped_tool_calls} repeated call(s) were skipped. "
+            "The scene has NOT been undone - send 'continue' to keep going."
         )
         return RepairRunResult(
             reply_text=summary,
@@ -242,17 +294,63 @@ class RepairableExecutionLoop:
         context = vision_context_manager.build_context(filepath=filepath)
         return visual_validator.validate(context.visual_observation, expected)
 
-    def _build_request(self, state: ConversationState) -> ModelRequest:
+    def _build_request(self, state: ConversationState, executed_steps=None) -> ModelRequest:
         tool_definitions = self._tool_caller.get_tool_definitions()
         messages = state.get_messages()
 
         # Hinglish: Scene context HAMESHA fresh banta hai (state mein
-        # save nahi hota) — taaki objects move/delete hone pe LLM ko
-        # stale info na mile. Har request ke saath naya snapshot jaata
-        # hai, conversation history alag rehti hai.
+        # save nahi hota) - taaki objects move/delete hone pe LLM ko
+        # stale info na mile.
+        extra = []
         if self._context_manager is not None:
             context_text = self._context_manager.build_context_text()
             if context_text:
-                messages = [Message(role="system", content=context_text)] + messages
+                extra.append(Message(role="system", content=context_text))
 
-        return ModelRequest(messages=messages, tools=tool_definitions)
+        # Hinglish: History trim hoti hai (last N messages), isliye model
+        # purana kaam "bhool" jaata tha aur material.assign/create dobara
+        # karta tha. Ye ledger poore run ka kaam yaad dilata hai.
+        ledger = self._progress_ledger(executed_steps or [])
+        if ledger:
+            extra.append(Message(role="system", content=ledger))
+
+        return ModelRequest(messages=extra + messages, tools=tool_definitions)
+
+    @staticmethod
+    def _call_key(tool_call: ToolCall) -> str:
+        try:
+            args = json.dumps(tool_call.arguments, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            args = repr(tool_call.arguments)
+        return f"{tool_call.tool_name}|{args}"
+
+    def _skip_reason(self, tool_call: ToolCall, done_keys, render_count: int) -> Optional[str]:
+        name = tool_call.tool_name
+        if name == "render.preview" and render_count >= self.MAX_RENDERS_PER_RUN:
+            return ("A preview was already rendered for this request. Do NOT render again. "
+                    "If everything the user asked for exists, reply with a short final text and stop.")
+        if name not in self._NEVER_DEDUPE and self._call_key(tool_call) in done_keys:
+            return ("This exact call was already completed successfully. Do NOT repeat it. "
+                    "If all requested parts exist, reply with a short final text and stop.")
+        return None
+
+    @staticmethod
+    def _progress_ledger(executed_steps) -> str:
+        lines = []
+        for record in executed_steps:
+            if not record.tool_result.success:
+                continue
+            args = record.tool_call.arguments or {}
+            brief = ", ".join(
+                f"{k}={args[k]}" for k in ("name", "object_name", "material_name", "primitive", "type")
+                if k in args
+            )
+            lines.append(f"- {record.tool_call.tool_name}({brief})")
+        if not lines:
+            return ""
+        lines = lines[-60:]
+        return (
+            "ALREADY DONE in this request (do NOT repeat any of these; the scene already contains them):\n"
+            + "\n".join(lines)
+            + "\nIf the user's request is fully satisfied, reply with a short final text and no tool calls."
+        )

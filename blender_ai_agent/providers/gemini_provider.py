@@ -20,28 +20,59 @@ from .base import ModelProvider
 from ..agent.models import ModelResponse, ToolCall, Usage
 
 
+class RateLimited(Exception):
+    """429 aaya aur wait bahut lamba hai (ya quota 0 hai) - fallback model try karo."""
+
+    def __init__(self, wait_seconds: float, message: str = ""):
+        super().__init__(message or f"rate limited, retry in {wait_seconds:.1f}s")
+        self.wait_seconds = wait_seconds
+
+
 class GeminiProvider(ModelProvider):
 
-    def __init__(self, api_key: str, model_name: str = "gemini-3.6-flash"):
+    # Free tier par lamba wait (55-60s) karne ki jagah is se lamba delay aaye
+    # to turant agle model par switch karte hain.
+    MAX_INLINE_WAIT_SECONDS = 15.0
+    DEFAULT_FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash-lite")
+
+    def __init__(self, api_key: str, model_name: str = "gemini-3.6-flash", fallback_models=None):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         self._genai = genai
         self._model_name = model_name
+        candidates = self.DEFAULT_FALLBACK_MODELS if fallback_models is None else fallback_models
+        self._fallback_models = [m for m in candidates if m != model_name]
 
     def generate(self, request) -> ModelResponse:
         tools = self._build_tools(request.tools)
-
-        model = self._genai.GenerativeModel(
-            model_name=self._model_name,
-            tools=tools if tools else None,
-        )
-
         contents = self._build_contents(request.messages)
-        response = self._generate_with_retry(model, contents)
 
-        return self._parse_response(response)
+        models_to_try = [self._model_name] + self._fallback_models
+        for index, name in enumerate(models_to_try):
+            is_last = index == len(models_to_try) - 1
+            model = self._genai.GenerativeModel(
+                model_name=name,
+                tools=tools if tools else None,
+            )
+            try:
+                response = self._generate_with_retry(
+                    model, contents,
+                    max_inline_wait=None if is_last else self.MAX_INLINE_WAIT_SECONDS,
+                )
+            except RateLimited as exc:
+                print(f"[TIMING]     {name} rate-limited (retry {exc.wait_seconds:.0f}s) "
+                      f"-> switching to {models_to_try[index + 1]}")
+                continue
 
-    def _generate_with_retry(self, model, contents):
+            if name != self._model_name:
+                print(f"[TIMING]     Now using fallback model: {name}")
+                self._model_name = name   # sticky: har turn pe dobara 429 na khaye
+                self._fallback_models = [m for m in models_to_try if m != name]
+            return self._parse_response(response)
+
+        raise RuntimeError("All Gemini models are rate limited.")  # pragma: no cover
+
+    def _generate_with_retry(self, model, contents, max_inline_wait=None):
         """
         Hinglish: Gemini free tier ka "requests per minute" quota bahut
         tight hota hai (jaise 5/min ya 15/min). Jab wo hit ho jaata hai,
@@ -65,6 +96,9 @@ class GeminiProvider(ModelProvider):
                 message = str(exc)
                 if "429" in message and attempt < max_retries:
                     wait_seconds = self._parse_retry_delay(message)
+                    quota_zero = "limit: 0" in message
+                    if max_inline_wait is not None and (quota_zero or wait_seconds > max_inline_wait):
+                        raise RateLimited(wait_seconds, message) from exc
                     print(f"[TIMING]     Gemini attempt {attempt + 1}: {elapsed:.2f}s "
                           f"-> 429, sleeping {wait_seconds:.2f}s before retry")
                     time.sleep(wait_seconds)

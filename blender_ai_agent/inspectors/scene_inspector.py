@@ -47,4 +47,14 @@ class SceneInspector:
             data["rotation"] = list(obj.rotation_euler)
             data["scale"] = list(obj.scale)
 
+            # Hinglish: Material naam bhi bhejo, taaki LLM ko dikhe ki
+            # material already assign hai (repeat-assign loop rukta hai).
+            try:
+                mats = getattr(getattr(obj, "data", None), "materials", None)
+                names = [m.name for m in mats if m is not None] if mats is not None else []
+                if names:
+                    data["materials"] = names
+            except (TypeError, AttributeError):
+                pass
+
         return data

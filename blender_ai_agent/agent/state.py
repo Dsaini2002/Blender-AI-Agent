@@ -32,7 +32,7 @@ class ConversationState:
     # budget flat rakhne ke liye. 12 messages = ~6 turns ka context
     # (user/assistant/tool alternating), jo table jaisa 5-6 step task
     # ke liye kaafi hai.
-    MAX_RECENT_MESSAGES = 12
+    MAX_RECENT_MESSAGES = 30
 
     def __init__(self, system_prompt: Optional[str] = None):
         self._messages: List[Message] = []
