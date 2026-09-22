@@ -1,5 +1,5 @@
 """
-ContextManager — Step 3.3
+ContextManager
 ============================
 Hinglish: LLM ko HAMESHA poori scene nahi bhejni — sirf jo task ke
 liye relevant hai. Ye class scene ki full JSON (SceneInspector se)

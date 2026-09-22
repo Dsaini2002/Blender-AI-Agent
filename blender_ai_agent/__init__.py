@@ -226,6 +226,7 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
             bridge=bridge,
             recovery_manager=recovery,
             logger=logger,
+            max_failed_steps=3,
         )
 
         existing_session = _copilot_controller.session if _copilot_controller else None

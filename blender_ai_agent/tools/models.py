@@ -25,8 +25,16 @@ class CreateObjectInput:
     # koi known primitive naam aaye, usse primitive field mein shift
     # kar dete hain aur object_type ko wapas "MESH" set kar dete hain —
     # bina koi error diye, jaisa bada model (120b) khud karta hai.
+    # Hinglish: Sirf MESH-unique naam (CIRCLE/CUBE jaise naam CURVE/EMPTY
+    # mein bhi hain, isliye unhe yahan normalize nahi karte - ambiguous hai).
     _KNOWN_PRIMITIVES = {
-        "CUBE", "SPHERE", "CONE", "CYLINDER", "CIRCLE", "PLANE", "TORUS", "MONKEY",
+        "CUBE", "SPHERE", "ICOSPHERE", "CONE", "CYLINDER", "PLANE", "TORUS", "GRID", "MONKEY",
+    }
+    # object_type ke liye valid values - CreateObjectTool in sab categories
+    # mein se object bana sakta hai (har ek ke apne primitive names hain,
+    # dekho bridge/blender_bridge.py ki _CREATE_OPS).
+    KNOWN_OBJECT_TYPES = {
+        "MESH", "CURVE", "SURFACE", "METABALL", "EMPTY", "LIGHT", "ARMATURE", "LATTICE",
     }
 
     def __post_init__(self):

@@ -66,6 +66,9 @@ class RepairableExecutionLoop:
         # objects (table, chair, poora furniture set) ke liye kaafi
         # hai, bina bahut lambi freeze ke risk ke.
         max_iterations: int = 25,
+        # Kitne failed tool calls ke baad poora task rollback ho. 1 = purana
+        # behaviour (pehli failure par rollback). Real app 3 use karta hai.
+        max_failed_steps: int = 1,
     ):
         self._model_provider = model_provider
         self._tool_caller = tool_caller
@@ -77,6 +80,7 @@ class RepairableExecutionLoop:
         self._validators = validators or {}
         self._retry_policy = retry_policy or RetryPolicy()
         self._max_iterations = max_iterations
+        self._max_failed_steps = max(1, max_failed_steps)
 
     def run(self, user_message: str, state: Optional[ConversationState] = None) -> RepairRunResult:
         task_id = str(uuid.uuid4())[:8]
@@ -94,6 +98,7 @@ class RepairableExecutionLoop:
         render_count = 0
         idle_turns = 0
         skipped_tool_calls = 0
+        failed_steps = 0
 
         for turn in range(1, self._max_iterations + 1):
             request = self._build_request(state, executed_steps)
@@ -140,10 +145,23 @@ class RepairableExecutionLoop:
                         render_count += 1
                 executed_steps.append(record)
                 repairs_attempted += repaired_count
-                state.add_tool_result_message(record.tool_call, record.tool_result)
+                state_result = record.tool_result
+                if not state_result.success:
+                    # Hinglish: Model ko error ke saath scene ke ASLI object
+                    # naam bhi do, taaki wo stale naam (jo user ne manually
+                    # delete kar diya) chhodkar khud sudhar sake.
+                    state_result = ToolResult.fail(f"{state_result.error}{self._existing_objects_hint()}")
+                state.add_tool_result_message(record.tool_call, state_result)
 
                 if not record.tool_result.success:
-                    # Hinglish: Repair ke baad bhi fail — transaction rollback karo, ruk jao.
+                    failed_steps += 1
+                    if failed_steps < self._max_failed_steps:
+                        # Hinglish: Ek galat call (jaise purana naam) poore task ko
+                        # rollback na kare - model ko error dikhao, wo agle turn
+                        # mein khud correct karega.
+                        self._logger.error("task.step_failed_continuing", task_id=task_id, tool=record.tool_call.tool_name)
+                        continue
+                    # Hinglish: Limit tak fail hua — transaction rollback karo, ruk jao.
                     self._logger.error("task.failed_after_repair", task_id=task_id, tool=record.tool_call.tool_name)
                     transaction.rollback()
                     return RepairRunResult(
@@ -315,6 +333,18 @@ class RepairableExecutionLoop:
             extra.append(Message(role="system", content=ledger))
 
         return ModelRequest(messages=extra + messages, tools=tool_definitions)
+
+    def _existing_objects_hint(self) -> str:
+        if self._context_manager is None:
+            return ""
+        try:
+            summary = self._context_manager.build_context()
+            names = [o["name"] for o in summary.get("objects_summary", [])]
+        except Exception:  # noqa: BLE001 - hint sirf help ke liye hai, crash nahi hona chahiye
+            return ""
+        if not names:
+            return " (The scene currently has no objects.)"
+        return " Objects that actually exist right now: " + ", ".join(names[:40]) + "."
 
     @staticmethod
     def _call_key(tool_call: ToolCall) -> str:

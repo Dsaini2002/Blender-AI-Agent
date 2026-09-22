@@ -49,32 +49,109 @@ class BlenderBridge:
     # ---------------------------------------------------------
     # Object level — write
     # ---------------------------------------------------------
+    # Hinglish: Har object_type category ke apne primitives hain, jo
+    # Blender ke "Shift+A -> Add" menu ke operators se map hote hain.
+    # Ek dict of dicts: {object_type: {primitive: (module, op_name)}}.
+    # Wahi operators jo Blender khud use karta hai - koi "hidden" shape
+    # nahi hai.
+    _CREATE_OPS = {
+        "MESH": {
+            "CUBE": ("mesh", "primitive_cube_add"),
+            "SPHERE": ("mesh", "primitive_uv_sphere_add"),
+            "ICOSPHERE": ("mesh", "primitive_ico_sphere_add"),
+            "CONE": ("mesh", "primitive_cone_add"),
+            "CYLINDER": ("mesh", "primitive_cylinder_add"),
+            "CIRCLE": ("mesh", "primitive_circle_add"),
+            "PLANE": ("mesh", "primitive_plane_add"),
+            "TORUS": ("mesh", "primitive_torus_add"),
+            "GRID": ("mesh", "primitive_grid_add"),
+            "MONKEY": ("mesh", "primitive_monkey_add"),
+        },
+        "CURVE": {
+            "BEZIER": ("curve", "primitive_bezier_curve_add"),
+            "CIRCLE": ("curve", "primitive_bezier_circle_add"),
+            "NURBS_CURVE": ("curve", "primitive_nurbs_curve_add"),
+            "NURBS_CIRCLE": ("curve", "primitive_nurbs_circle_add"),
+            "PATH": ("curve", "primitive_nurbs_path_add"),
+        },
+        "SURFACE": {
+            "NURBS_CURVE": ("surface", "primitive_nurbs_surface_curve_add"),
+            "NURBS_CIRCLE": ("surface", "primitive_nurbs_surface_circle_add"),
+            "NURBS_SURFACE": ("surface", "primitive_nurbs_surface_surface_add"),
+            "NURBS_CYLINDER": ("surface", "primitive_nurbs_surface_cylinder_add"),
+            "NURBS_SPHERE": ("surface", "primitive_nurbs_surface_sphere_add"),
+            "NURBS_TORUS": ("surface", "primitive_nurbs_surface_torus_add"),
+        },
+        "METABALL": {
+            "BALL": ("object", "metaball_add"),
+            "CAPSULE": ("object", "metaball_add"),
+            "PLANE": ("object", "metaball_add"),
+            "ELLIPSOID": ("object", "metaball_add"),
+            "CUBE": ("object", "metaball_add"),
+        },
+        "EMPTY": {
+            "PLAIN_AXES": ("object", "empty_add"),
+            "ARROWS": ("object", "empty_add"),
+            "SINGLE_ARROW": ("object", "empty_add"),
+            "CIRCLE": ("object", "empty_add"),
+            "CUBE": ("object", "empty_add"),
+            "SPHERE": ("object", "empty_add"),
+            "CONE": ("object", "empty_add"),
+        },
+        "LIGHT": {
+            "POINT": ("object", "light_add"),
+            "SUN": ("object", "light_add"),
+            "SPOT": ("object", "light_add"),
+            "AREA": ("object", "light_add"),
+        },
+        "ARMATURE": {
+            "ARMATURE": ("object", "armature_add"),
+        },
+        "LATTICE": {
+            "LATTICE": ("object", "add"),   # bpy.ops.object.add(type='LATTICE')
+        },
+    }
+    # 'object.metaball_add' / 'object.empty_add' / 'object.light_add' need a
+    # `type=` kwarg (Blender's own enum) rather than a distinct op per shape.
+    _TYPE_KWARG_ENUM = {
+        "METABALL": {"BALL": "BALL", "CAPSULE": "CAPSULE", "PLANE": "PLANE",
+                     "ELLIPSOID": "ELLIPSOID", "CUBE": "CUBE"},
+        "EMPTY": {"PLAIN_AXES": "PLAIN_AXES", "ARROWS": "ARROWS",
+                  "SINGLE_ARROW": "SINGLE_ARROW", "CIRCLE": "CIRCLE",
+                  "CUBE": "CUBE", "SPHERE": "SPHERE", "CONE": "CONE"},
+        "LIGHT": {"POINT": "POINT", "SUN": "SUN", "SPOT": "SPOT", "AREA": "AREA"},
+    }
+
     def create_object(self, name: str, object_type: str = "MESH", primitive: str = "CUBE", location=None):
-        """Naya object banata hai. Phase 2 mein `location` bhi accept karta hai."""
+        """Naya object banata hai. Supports MESH/CURVE/SURFACE/METABALL/EMPTY/LIGHT/ARMATURE/LATTICE."""
+        object_type = (object_type or "MESH").upper()
         primitive = (primitive or "CUBE").upper()
 
-        if object_type != "MESH":
-            raise ValueError(f"Unsupported object_type: {object_type}")
+        category = self._CREATE_OPS.get(object_type)
+        if category is None:
+            raise ValueError(
+                f"Unsupported object_type: {object_type}. "
+                f"Supported: {', '.join(sorted(self._CREATE_OPS))}"
+            )
+        if primitive not in category:
+            raise ValueError(
+                f"Unsupported primitive '{primitive}' for object_type '{object_type}'. "
+                f"Supported: {', '.join(sorted(category))}"
+            )
+
+        module_name, op_name = category[primitive]
 
         def _do():
-            if primitive == "CUBE":
-                bpy.ops.mesh.primitive_cube_add()
-            elif primitive == "SPHERE":
-                bpy.ops.mesh.primitive_uv_sphere_add()
-            elif primitive == "CONE":
-                bpy.ops.mesh.primitive_cone_add()
-            elif primitive == "CYLINDER":
-                bpy.ops.mesh.primitive_cylinder_add()
-            elif primitive == "CIRCLE":
-                bpy.ops.mesh.primitive_circle_add()
-            elif primitive == "PLANE":
-                bpy.ops.mesh.primitive_plane_add()
-            elif primitive == "TORUS":
-                bpy.ops.mesh.primitive_torus_add()
-            elif primitive == "MONKEY":
-                bpy.ops.mesh.primitive_monkey_add()
+            op_module = getattr(bpy.ops, module_name)
+            op = getattr(op_module, op_name)
+
+            kwarg_enum = self._TYPE_KWARG_ENUM.get(object_type)
+            if kwarg_enum is not None:
+                op(type=kwarg_enum[primitive])
+            elif object_type == "LATTICE":
+                op(type="LATTICE")
             else:
-                raise ValueError(f"Unsupported primitive: {primitive}")
+                op()
 
             obj = bpy.context.view_layer.objects.active
             obj.name = name

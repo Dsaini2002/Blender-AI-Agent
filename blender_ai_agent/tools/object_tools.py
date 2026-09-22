@@ -18,7 +18,17 @@ from .models import (
 
 class CreateObjectTool(Tool):
     name = "object.create"
-    description = "Creates a new object (e.g. cube, sphere) in the scene."
+    description = (
+        "Creates a new object in the scene. Pass `object_type` (default MESH) and "
+        "a matching `primitive`. Supported object_type -> primitive values: "
+        "MESH -> CUBE, SPHERE, ICOSPHERE, CONE, CYLINDER, CIRCLE, PLANE, TORUS, GRID, MONKEY; "
+        "CURVE -> BEZIER, CIRCLE, NURBS_CURVE, NURBS_CIRCLE, PATH; "
+        "SURFACE -> NURBS_CURVE, NURBS_CIRCLE, NURBS_SURFACE, NURBS_CYLINDER, NURBS_SPHERE, NURBS_TORUS; "
+        "METABALL -> BALL, CAPSULE, PLANE, ELLIPSOID, CUBE; "
+        "EMPTY -> PLAIN_AXES, ARROWS, SINGLE_ARROW, CIRCLE, CUBE, SPHERE, CONE; "
+        "LIGHT -> POINT, SUN, SPOT, AREA; "
+        "ARMATURE -> ARMATURE; LATTICE -> LATTICE."
+    )
     permission = Permission.SAFE_WRITE
     input_model = CreateObjectInput
 

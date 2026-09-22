@@ -54,6 +54,29 @@ class TestLoopGuards(unittest.TestCase):
         self.assertIn("do NOT repeat", ledger)
 
 
+class TestFailureTolerance(unittest.TestCase):
+
+    def _bad_then_good(self, max_failed):
+        bad = ("object.transform", {"name": "table_cloth", "location": [0, 0, 1]})
+        good = ("object.create", {"primitive": "CUBE", "name": "chair_seat"})
+        loop, bridge, _ = build_repair_loop([
+            tool_response(bad, good),
+            text_response("ok"),
+        ])
+        loop._max_failed_steps = max_failed
+        return loop.run("add chairs")
+
+    def test_single_stale_name_does_not_kill_task_when_tolerant(self):
+        result = self._bad_then_good(max_failed=3)
+        self.assertFalse(result.rolled_back)
+        self.assertEqual(result.stopped_reason, "stop")
+        self.assertEqual(result.executed_steps[-1].tool_call.tool_name, "object.create")
+
+    def test_default_still_rolls_back_on_first_failure(self):
+        result = self._bad_then_good(max_failed=1)
+        self.assertTrue(result.rolled_back)
+
+
 class TestGeminiFallback(unittest.TestCase):
 
     def _provider(self, models):
