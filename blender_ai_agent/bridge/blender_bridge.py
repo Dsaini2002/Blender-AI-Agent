@@ -319,6 +319,15 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
+    # Hinglish: BOOLEAN modifier ka 'object' property aur MIRROR modifier
+    # ka 'mirror_object' - ye dono Blender mein ek REAL bpy.types.Object
+    # reference maangte hain, ek plain string naam nahi. Pehle
+    # configure_modifier seedha setattr(modifier, "object", "car_cutter")
+    # kar deta tha, jo silently fail ho jaata (ya crash) kyunki string
+    # ek Object nahi hai. Ab jin properties ko Object chahiye unke liye
+    # object naam ko real object mein resolve karte hain.
+    _OBJECT_REF_PROPERTIES = {"object", "mirror_object", "target", "start_cap", "end_cap", "offset_object"}
+
     def configure_modifier(self, object_name: str, modifier_name: str, properties: dict):
         def _do():
             obj = bpy.data.objects.get(object_name)
@@ -330,7 +339,17 @@ class BlenderBridge:
                 return None
 
             for key, value in properties.items():
-                if hasattr(modifier, key):
+                if not hasattr(modifier, key):
+                    continue
+                if key in self._OBJECT_REF_PROPERTIES and isinstance(value, str):
+                    resolved = bpy.data.objects.get(value)
+                    if resolved is None:
+                        raise ValueError(
+                            f"configure_modifier: object '{value}' (for property '{key}') "
+                            f"not found in scene."
+                        )
+                    setattr(modifier, key, resolved)
+                else:
                     setattr(modifier, key, value)
 
             return modifier
@@ -340,6 +359,53 @@ class BlenderBridge:
     # ---------------------------------------------------------
     # Camera / Render level — Step 2.7
     # ---------------------------------------------------------
+    # Hinglish: Har extension ke liye Blender ka APNA built-in import
+    # operator hai - ye koi third-party asset download nahi karta, sirf
+    # ek file jo user ne khud disk par pehle se rakhi hai, scene mein
+    # LAATA hai. .obj aur .gltf/.glb Blender mein hamesha built-in hote
+    # hain; .fbx ke liye "Import-Export: FBX format" addon enabled hona
+    # chahiye (zyadatar installs mein by default hota hai).
+    _IMPORT_OPS = {
+        ".obj": lambda filepath: bpy.ops.wm.obj_import(filepath=filepath),
+        ".fbx": lambda filepath: bpy.ops.import_scene.fbx(filepath=filepath),
+        ".glb": lambda filepath: bpy.ops.import_scene.gltf(filepath=filepath),
+        ".gltf": lambda filepath: bpy.ops.import_scene.gltf(filepath=filepath),
+    }
+
+    def import_model(self, filepath: str, name: str = None, scale=None):
+        """Ek local .obj/.fbx/.glb/.gltf file ko scene mein import karta hai."""
+        import os
+        ext = os.path.splitext(filepath)[1].lower()
+        importer = self._IMPORT_OPS.get(ext)
+        if importer is None:
+            raise ValueError(
+                f"Unsupported file extension '{ext}'. Supported: {', '.join(self._IMPORT_OPS)}"
+            )
+        if not os.path.isfile(filepath):
+            raise ValueError(f"File not found: {filepath}")
+
+        def _do():
+            before = set(bpy.data.objects)
+            try:
+                importer(filepath)
+            except AttributeError as exc:
+                raise ValueError(
+                    f"The importer for '{ext}' is not available in this Blender install "
+                    f"(is the matching Import-Export addon enabled?): {exc}"
+                ) from exc
+            imported = [obj for obj in bpy.data.objects if obj not in before]
+
+            if scale is not None:
+                for obj in imported:
+                    obj.scale = scale
+
+            if name is not None and len(imported) == 1:
+                imported[0].name = name
+
+            return imported
+
+        return run_on_main_thread(_do)
+
     def create_camera(self, name: str, location=None, rotation=None):
         """Naya camera object banata hai scene mein."""
 

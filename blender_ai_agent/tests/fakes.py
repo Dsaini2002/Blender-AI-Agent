@@ -105,6 +105,15 @@ class FakeBridge:
         self._objects.remove(obj)
         return True
 
+    def import_model(self, filepath, name=None, scale=None):
+        import os
+        base = os.path.splitext(os.path.basename(filepath))[0]
+        obj = FakeObject(name=(name or base), type_="MESH", location=[0.0, 0.0, 0.0])
+        if scale is not None:
+            obj.scale = list(scale)
+        self._objects.append(obj)
+        return [obj]
+
     def duplicate_object(self, name, new_name=None):
         obj = self.get_object(name)
         if obj is None:

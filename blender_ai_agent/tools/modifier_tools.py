@@ -12,7 +12,14 @@ from .models import AddModifierInput, ConfigureModifierInput, RemoveModifierInpu
 
 class AddModifierTool(Tool):
     name = "modifier.add"
-    description = "Adds a new modifier (e.g. Bevel, Subdivision) to an existing object."
+    description = (
+        "Adds a new modifier to an existing object. modifier_type accepts ANY Blender "
+        "modifier type string, not just Bevel - e.g. BEVEL (rounded edges), "
+        "SUBSURF (smooth subdivision), SOLIDIFY (give a flat plane real thickness), "
+        "MIRROR (symmetric geometry - model half a car/character and mirror it), "
+        "BOOLEAN (cut/join/intersect one object's shape with another - use for vents, "
+        "grilles, windows, panel gaps), ARRAY (repeat an object in a line/grid, e.g. slats, spokes)."
+    )
     permission = Permission.SAFE_WRITE
     input_model = AddModifierInput
 
@@ -65,7 +72,14 @@ class RemoveModifierTool(Tool):
 
 class ConfigureModifierTool(Tool):
     name = "modifier.configure"
-    description = "Updates properties (e.g. width, levels) of an existing modifier."
+    description = (
+        "Updates properties of an existing modifier via a properties dict, e.g. "
+        "{\"width\": 0.03, \"segments\": 3} for Bevel, {\"levels\": 2} for Subdivision, "
+        "{\"thickness\": 0.05} for Solidify, {\"use_axis\": [true, false, false]} for Mirror. "
+        "For BOOLEAN's 'object' property or MIRROR's 'mirror_object' property, pass the "
+        "OTHER object's existing name as a plain string (e.g. {\"object\": \"grille_cutter\", "
+        "\"operation\": \"DIFFERENCE\"}) - it will be resolved to that object automatically."
+    )
     permission = Permission.SAFE_WRITE
     input_model = ConfigureModifierInput
 

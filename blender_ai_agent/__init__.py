@@ -41,6 +41,7 @@ from .tools.camera_tools import (
     SetCameraTool,
     RenderPreviewTool,
 )
+from .tools.asset_tools import ImportModelTool
 from .ui.panel import (
     AIAgentPanel,
     AIAGENT_OT_inspect_scene,
@@ -95,6 +96,8 @@ def _register_tools() -> None:
     registry.register(CreateCameraTool(bridge))
     registry.register(SetCameraTool(bridge))
     registry.register(RenderPreviewTool(bridge))
+
+    registry.register(ImportModelTool(bridge))
 
 
 def _ensure_tools_registered() -> None:

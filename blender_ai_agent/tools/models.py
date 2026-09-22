@@ -6,6 +6,7 @@ Hinglish: Har tool ka input ek typed dataclass hai — random dict nahi.
 
 from dataclasses import dataclass, field
 from typing import List, Optional
+import json
 
 
 @dataclass
@@ -212,8 +213,57 @@ class ConfigureModifierInput:
             raise ValueError("ConfigureModifierInput.object_name must be a non-empty string")
         if not self.modifier_name or not isinstance(self.modifier_name, str):
             raise ValueError("ConfigureModifierInput.modifier_name must be a non-empty string")
+
+        # Hinglish: Gemini kabhi-kabhi `properties` ko dict ki jagah JSON
+        # STRING bhej deta hai (e.g. '{"width": 0.03}'), jisse pehle
+        # `.items()` par AttributeError crash hoti thi. Yahan defensively
+        # parse karte hain - jaise CreateObjectInput mein object_type/
+        # primitive ka defensive-fix hai.
+        if isinstance(self.properties, str):
+            try:
+                parsed = json.loads(self.properties)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(
+                    f"ConfigureModifierInput.properties must be a dict, got an "
+                    f"unparseable string: {self.properties!r}"
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f"ConfigureModifierInput.properties must be a dict, got JSON {type(parsed).__name__}"
+                )
+            self.properties = parsed
+
+        if not isinstance(self.properties, dict):
+            raise ValueError(
+                f"ConfigureModifierInput.properties must be a dict, got {type(self.properties).__name__}"
+            )
+
         if not self.properties:
             raise ValueError("ConfigureModifierInput.properties must not be empty")
+@dataclass
+class ImportModelInput:
+    """asset.import_model tool ke liye input contract - koi LOCAL file
+    (.obj/.fbx/.glb/.gltf) jo user ne pehle se disk par rakha hai."""
+    filepath: str
+    name: Optional[str] = None
+    scale: Optional[List[float]] = None
+
+    SUPPORTED_EXTENSIONS = (".obj", ".fbx", ".glb", ".gltf")
+
+    def __post_init__(self):
+        if not self.filepath or not isinstance(self.filepath, str):
+            raise ValueError("ImportModelInput.filepath must be a non-empty string")
+        ext = self.filepath.lower().rsplit(".", 1)
+        ext = f".{ext[1]}" if len(ext) == 2 else ""
+        if ext not in self.SUPPORTED_EXTENSIONS:
+            raise ValueError(
+                f"ImportModelInput.filepath must end with one of "
+                f"{self.SUPPORTED_EXTENSIONS}, got: {self.filepath!r}"
+            )
+        if self.scale is not None and len(self.scale) != 3:
+            raise ValueError("ImportModelInput.scale must have exactly 3 values [x, y, z]")
+
+
 @dataclass
 class CreateCameraInput:
     """camera.create tool ke liye input contract."""
