@@ -184,3 +184,80 @@ class TestConfigureModifierResolvesObjectReferences(unittest.TestCase):
         # bpy.data.objects.get sirf real Blender mein kaam karega — is test
         # ka goal sirf ye hai ki method exist kare aur signature sahi ho.
         self.assertTrue(callable(bridge.configure_modifier))
+
+
+from blender_ai_agent.tools.asset_tools import ImportBlendTool, ListBlendObjectsTool
+from blender_ai_agent.tools.models import ImportBlendInput, ListBlendObjectsInput
+
+
+class TestListBlendObjectsInput(unittest.TestCase):
+
+    def test_requires_blend_extension(self):
+        with self.assertRaises(ValueError):
+            ListBlendObjectsInput(filepath="/tmp/model.fbx")
+
+    def test_accepts_blend_extension(self):
+        inp = ListBlendObjectsInput(filepath="/tmp/model.blend")
+        self.assertEqual(inp.filepath, "/tmp/model.blend")
+
+    def test_rejects_empty(self):
+        with self.assertRaises(ValueError):
+            ListBlendObjectsInput(filepath="")
+
+
+class TestImportBlendInput(unittest.TestCase):
+
+    def test_requires_blend_extension(self):
+        with self.assertRaises(ValueError):
+            ImportBlendInput(filepath="/tmp/model.fbx")
+
+    def test_object_names_must_be_list(self):
+        with self.assertRaises(ValueError):
+            ImportBlendInput(filepath="/tmp/model.blend", object_names="Body")
+
+    def test_defaults(self):
+        inp = ImportBlendInput(filepath="/tmp/model.blend")
+        self.assertIsNone(inp.object_names)
+        self.assertIsNone(inp.name_prefix)
+
+
+class TestListBlendObjectsToolWithFakeBridge(unittest.TestCase):
+
+    def test_lists_fake_objects(self):
+        bridge = FakeBridge()
+        tool = ListBlendObjectsTool(bridge)
+        result = tool.execute({"filepath": "/tmp/male_base.blend"})
+        self.assertTrue(result.success, result.error)
+        self.assertIn("fake_blend_obj_a", result.data["objects"])
+
+
+class TestImportBlendToolWithFakeBridge(unittest.TestCase):
+
+    def test_import_all_when_object_names_omitted(self):
+        bridge = FakeBridge()
+        tool = ImportBlendTool(bridge)
+        result = tool.execute({"filepath": "/tmp/male_base.blend"})
+        self.assertTrue(result.success, result.error)
+        self.assertEqual(len(result.data["imported_objects"]), 3)
+
+    def test_import_specific_object_with_prefix(self):
+        bridge = FakeBridge()
+        tool = ImportBlendTool(bridge)
+        result = tool.execute({
+            "filepath": "/tmp/male_base.blend",
+            "object_names": ["fake_blend_obj_a"],
+            "name_prefix": "real_",
+        })
+        self.assertTrue(result.success, result.error)
+        self.assertEqual(result.data["imported_objects"], ["real_fake_blend_obj_a"])
+        self.assertIsNotNone(bridge.get_object("real_fake_blend_obj_a"))
+
+    def test_unknown_object_name_fails_with_available_list(self):
+        bridge = FakeBridge()
+        tool = ImportBlendTool(bridge)
+        result = tool.execute({
+            "filepath": "/tmp/male_base.blend",
+            "object_names": ["does_not_exist"],
+        })
+        self.assertFalse(result.success)
+        self.assertIn("fake_blend_obj_a", result.error)

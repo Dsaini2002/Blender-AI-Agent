@@ -1,0 +1,592 @@
+{
+  "name": "humanoid",
+  "description": "Full 26-part humanoid/character body (feet, lower/upper legs with knee joints, hips, torso, shoulders, upper/forearms with elbow joints, hands, neck, head, eyes, optional chest emblem). Same exact numbers as the HUMAN worked recipe in agent/prompts.py - this file is now the single source of truth, prompts.py should stay in sync with it but this JSON is what template.build actually reads. Optional face detail (nose, eyebrows, ears, mouth, and two boolean-cut cheek dimples) is included and controlled by include_optional_parts, same flag as the chest emblem. Note: this is stylized/toy-level facial detail via primitive shapes and one boolean cut per dimple - NOT organic sculpted detail (real skin-fold dimples need Sculpt Mode, which this tool cannot do).",
+  "part_name_pattern": "{p}<part> - {p} is the prefix you choose (e.g. 'human_', 'robot_', 'spidey_')",
+  "material_groups": {
+    "primary": {
+      "default_color": [
+        0.82,
+        0.18,
+        0.18,
+        1.0
+      ],
+      "note": "main/hero color - red by default"
+    },
+    "secondary": {
+      "default_color": [
+        0.15,
+        0.3,
+        0.75,
+        1.0
+      ],
+      "note": "secondary color - blue by default"
+    },
+    "accessory": {
+      "default_color": [
+        0.05,
+        0.05,
+        0.05,
+        1.0
+      ],
+      "note": "hands/feet/emblem - dark by default"
+    },
+    "eye": {
+      "default_color": [
+        0.95,
+        0.95,
+        0.95,
+        1.0
+      ],
+      "note": "eye lenses - white by default"
+    }
+  },
+  "parts": [
+    {
+      "name": "{p}foot_r",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0.11,
+        -0.06,
+        0.025
+      ],
+      "scale": [
+        0.05,
+        0.11,
+        0.025
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}lowerleg_r",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        0.11,
+        0,
+        0.275
+      ],
+      "scale": [
+        0.055,
+        0.055,
+        0.225
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}knee_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.11,
+        0,
+        0.5
+      ],
+      "scale": [
+        0.065,
+        0.065,
+        0.065
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}upperleg_r",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        0.11,
+        0,
+        0.7
+      ],
+      "scale": [
+        0.075,
+        0.075,
+        0.2
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}foot_l",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        -0.11,
+        -0.06,
+        0.025
+      ],
+      "scale": [
+        0.05,
+        0.11,
+        0.025
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}lowerleg_l",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        -0.11,
+        0,
+        0.275
+      ],
+      "scale": [
+        0.055,
+        0.055,
+        0.225
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}knee_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.11,
+        0,
+        0.5
+      ],
+      "scale": [
+        0.065,
+        0.065,
+        0.065
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}upperleg_l",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        -0.11,
+        0,
+        0.7
+      ],
+      "scale": [
+        0.075,
+        0.075,
+        0.2
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}hips",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0,
+        0,
+        0.95
+      ],
+      "scale": [
+        0.16,
+        0.1,
+        0.1
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}torso",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0,
+        0,
+        1.3
+      ],
+      "scale": [
+        0.17,
+        0.1,
+        0.25
+      ],
+      "material_group": "primary",
+      "bevel": {
+        "width": 0.02,
+        "segments": 3
+      }
+    },
+    {
+      "name": "{p}shoulder_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.24,
+        0,
+        1.5
+      ],
+      "scale": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}upperarm_r",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        0.24,
+        0,
+        1.36
+      ],
+      "scale": [
+        0.045,
+        0.045,
+        0.14
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}elbow_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.24,
+        0,
+        1.22
+      ],
+      "scale": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}forearm_r",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        0.24,
+        0,
+        1.09
+      ],
+      "scale": [
+        0.04,
+        0.04,
+        0.13
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}hand_r",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0.24,
+        0,
+        0.92
+      ],
+      "scale": [
+        0.04,
+        0.025,
+        0.07
+      ],
+      "material_group": "accessory"
+    },
+    {
+      "name": "{p}shoulder_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.24,
+        0,
+        1.5
+      ],
+      "scale": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}upperarm_l",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        -0.24,
+        0,
+        1.36
+      ],
+      "scale": [
+        0.045,
+        0.045,
+        0.14
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}elbow_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.24,
+        0,
+        1.22
+      ],
+      "scale": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}forearm_l",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        -0.24,
+        0,
+        1.09
+      ],
+      "scale": [
+        0.04,
+        0.04,
+        0.13
+      ],
+      "material_group": "secondary"
+    },
+    {
+      "name": "{p}hand_l",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        -0.24,
+        0,
+        0.92
+      ],
+      "scale": [
+        0.04,
+        0.025,
+        0.07
+      ],
+      "material_group": "accessory"
+    },
+    {
+      "name": "{p}neck",
+      "object_type": "MESH",
+      "primitive": "CYLINDER",
+      "location": [
+        0,
+        0,
+        1.59
+      ],
+      "scale": [
+        0.045,
+        0.045,
+        0.04
+      ],
+      "material_group": "primary"
+    },
+    {
+      "name": "{p}head",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0,
+        0,
+        1.76
+      ],
+      "scale": [
+        0.13,
+        0.13,
+        0.13
+      ],
+      "material_group": "primary",
+      "bevel": {
+        "width": 0.01,
+        "segments": 2
+      }
+    },
+    {
+      "name": "{p}eye_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.05,
+        -0.115,
+        1.78
+      ],
+      "scale": [
+        0.022,
+        0.022,
+        0.022
+      ],
+      "material_group": "eye"
+    },
+    {
+      "name": "{p}eye_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.05,
+        -0.115,
+        1.78
+      ],
+      "scale": [
+        0.022,
+        0.022,
+        0.022
+      ],
+      "material_group": "eye"
+    },
+    {
+      "name": "{p}emblem",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0,
+        -0.11,
+        1.3
+      ],
+      "scale": [
+        0.05,
+        0.02,
+        0.05
+      ],
+      "material_group": "accessory",
+      "optional": true
+    },
+    {
+      "name": "{p}nose",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0,
+        -0.135,
+        1.745
+      ],
+      "scale": [
+        0.02,
+        0.025,
+        0.018
+      ],
+      "material_group": "primary",
+      "optional": true
+    },
+    {
+      "name": "{p}eyebrow_l",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        -0.05,
+        -0.125,
+        1.805
+      ],
+      "scale": [
+        0.035,
+        0.008,
+        0.008
+      ],
+      "material_group": "accessory",
+      "optional": true
+    },
+    {
+      "name": "{p}eyebrow_r",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0.05,
+        -0.125,
+        1.805
+      ],
+      "scale": [
+        0.035,
+        0.008,
+        0.008
+      ],
+      "material_group": "accessory",
+      "optional": true
+    },
+    {
+      "name": "{p}ear_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.135,
+        0,
+        1.76
+      ],
+      "scale": [
+        0.02,
+        0.035,
+        0.045
+      ],
+      "material_group": "primary",
+      "optional": true
+    },
+    {
+      "name": "{p}ear_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.135,
+        0,
+        1.76
+      ],
+      "scale": [
+        0.02,
+        0.035,
+        0.045
+      ],
+      "material_group": "primary",
+      "optional": true
+    },
+    {
+      "name": "{p}mouth",
+      "object_type": "MESH",
+      "primitive": "CUBE",
+      "location": [
+        0,
+        -0.128,
+        1.7
+      ],
+      "scale": [
+        0.035,
+        0.006,
+        0.012
+      ],
+      "material_group": "accessory",
+      "optional": true
+    },
+    {
+      "name": "{p}dimple_cutter_l",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        -0.06,
+        -0.1,
+        1.695
+      ],
+      "scale": [
+        0.02,
+        0.02,
+        0.02
+      ],
+      "boolean_cut_target": "{p}head",
+      "hide": true,
+      "optional": true
+    },
+    {
+      "name": "{p}dimple_cutter_r",
+      "object_type": "MESH",
+      "primitive": "SPHERE",
+      "location": [
+        0.06,
+        -0.1,
+        1.695
+      ],
+      "scale": [
+        0.02,
+        0.02,
+        0.02
+      ],
+      "boolean_cut_target": "{p}head",
+      "hide": true,
+      "optional": true
+    }
+  ]
+}

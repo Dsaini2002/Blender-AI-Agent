@@ -42,6 +42,12 @@ class ToolCaller:
             ))
         return definitions
 
+    def has_tool(self, tool_name: str) -> bool:
+        """Hinglish: Registry mein ye tool registered hai ya nahi - repair_loop
+        ko ye check karne ke liye chahiye (e.g. vision.observe available hai ya nahi,
+        GEMINI_API_KEY na ho to register hi nahi hota)."""
+        return tool_name in self._registry.list_tools()
+
     def call(self, tool_call: ToolCall) -> ToolResult:
         """
         Hinglish: LLM ne jo tool call maanga hai, usse actually

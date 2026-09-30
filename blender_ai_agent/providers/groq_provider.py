@@ -101,7 +101,32 @@ class GroqProvider(ModelProvider):
                           f"-> 429, sleeping {wait_seconds:.2f}s before retry")
                     time.sleep(wait_seconds)
                     continue
+                if exc.code == 413 and attempt < max_retries and len(payload["messages"]) > 5:
+                    # Hinglish: 413 "Request too large" ka matlab hai poori
+                    # conversation history + tools mil kar Groq ke free-tier
+                    # TPM limit (8000) se upar chali gayi. Retry karne se
+                    # (jaisa 429 mein karte hain) koi fayda nahi - SAME size
+                    # phir bhi reject hoga. Isliye history ko trim karte
+                    # hain: pehla message (system/context) rakho, sirf
+                    # sabse recent 4 messages rakho, beech ka purana
+                    # conversation drop karo - phir ek hi baar retry.
+                    trimmed = [payload["messages"][0]] + payload["messages"][-4:]
+                    print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s "
+                          f"-> 413, trimming {len(payload['messages'])} -> {len(trimmed)} "
+                          f"messages and retrying")
+                    payload["messages"] = trimmed
+                    data = json.dumps(payload).encode("utf-8")
+                    req = urllib.request.Request(
+                        self.API_URL, data=data, headers=req.headers, method="POST",
+                    )
+                    continue
                 print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s -> error {exc.code}")
+                if exc.code == 413:
+                    raise RuntimeError(
+                        f"Groq API error 413: request still too large after trimming "
+                        f"history. Try switching to Gemini/OpenAI for this task, or "
+                        f"start a shorter conversation. ({error_body})"
+                    ) from exc
                 raise RuntimeError(f"Groq API error {exc.code}: {error_body}") from exc
             except urllib.error.URLError as exc:
                 elapsed = time.perf_counter() - attempt_start

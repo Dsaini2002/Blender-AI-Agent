@@ -9,16 +9,28 @@ Architecture rule maintain hoti hai: Agent ko VisionAnalyzer, Capture,
 ya VisionProvider ka pata nahi — sirf "vision.observe" tool naam pata hai.
 """
 
-from dataclasses import dataclass
+import os
+import tempfile
+from dataclasses import dataclass, field
 
 from ..tools.base import Permission, Tool, ToolResult
+
+
+def _default_vision_filepath() -> str:
+    # Hinglish: "/tmp/..." sirf Linux/Mac par kaam karta hai - Windows
+    # (jahan sabse zyada users hain) par ye path exist hi nahi karta,
+    # isliye vision.observe crash ho jaata tha jab model filepath khud
+    # nahi bhejta tha. tempfile.gettempdir() har OS par sahi temp
+    # folder deta hai (Windows: AppData\Local\Temp, jaisa render.preview
+    # khud bhi use karta hai).
+    return os.path.join(tempfile.gettempdir(), "vision_observe.png")
 
 
 @dataclass
 class VisionObserveInput:
     """vision.observe tool ke liye input contract."""
     source: str = "render"
-    filepath: str = "/tmp/vision_observe.png"
+    filepath: str = field(default_factory=_default_vision_filepath)
 
     def __post_init__(self):
         valid_sources = ("viewport", "render", "camera")

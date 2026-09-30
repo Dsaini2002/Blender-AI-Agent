@@ -22,6 +22,15 @@ _ALLOWED_BPY_PREFIXES = (
     "bpy.ops.material.",
     "bpy.ops.transform.",
     "bpy.context.",
+    # Hinglish: EXPERIMENTAL - agar user ke Blender mein BlenderKit addon
+    # already installed+logged in hai, to model isse search/download
+    # trigger kar sakta hai. UNVERIFIED against the live BlenderKit
+    # service (koi live test nahi ho saka) - ye async/background-thread
+    # hai, isliye ek hi call mein turant result nahi milega. Prompt
+    # guidance (agent/prompts.py) mein iska poll-across-turns pattern
+    # samjhaya gaya hai.
+    "bpy.ops.view3d.blenderkit_search",
+    "bpy.ops.scene.blenderkit_download",
 )
 
 _ALLOWED_IMPORT_MODULES = {"bpy", "math", "mathutils"}
@@ -49,7 +58,12 @@ class PythonPowerTool(Tool):
     description = (
         "Executes controlled Blender Python code (bpy.ops.mesh.*, bpy.ops.object.*, "
         "bpy.ops.transform.*, bpy.context.*) for complex geometry that structured tools "
-        "don't cover. Use only when no other tool fits."
+        "don't cover. Use only when no other tool fits. EXPERIMENTAL: if the user's Blender "
+        "has the separate BlenderKit addon installed and logged in, this tool can also call "
+        "bpy.ops.view3d.blenderkit_search(...) and bpy.ops.scene.blenderkit_download(...) to "
+        "fetch external assets — but these are asynchronous (results arrive on a background "
+        "thread, not immediately), so check bpy.context.window_manager.blenderkitUI for "
+        "completion status across multiple calls rather than assuming one call finishes it."
     )
     permission = Permission.PYTHON_EXECUTION
     input_model = PythonExecutionInput
@@ -107,7 +121,7 @@ class PythonPowerTool(Tool):
     @staticmethod
     def _uses_only_allowed_bpy(code: str) -> bool:
         import re
-        bpy_mentions = re.findall(r"bpy\.[a-zA-Z_.]+", code)
+        bpy_mentions = re.findall(r"bpy\.[a-zA-Z0-9_.]+", code)
         for mention in bpy_mentions:
             if not any(mention.startswith(prefix) for prefix in _ALLOWED_BPY_PREFIXES):
                 return False

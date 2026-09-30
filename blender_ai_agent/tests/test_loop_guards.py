@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from blender_ai_agent.agent.models import ModelResponse, ToolCall
 from blender_ai_agent.providers.gemini_provider import GeminiProvider, RateLimited
+from .fakes import FakeBridge
 from .test_repair_loop import build_repair_loop
 
 
@@ -140,6 +141,209 @@ class TestSceneContextShowsMaterials(unittest.TestCase):
              "scale": [1.5, 0.7, 0.25], "materials": ["car_red"]}]}
         text = ContextManager(tool).build_context_text()
         self.assertIn("material=car_red", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestVisionCheckEnforced(unittest.TestCase):
+    """Hinglish: Agar vision.observe registered hai, render ho chuka hai, aur
+    build bada hai (>4 parts), to model bina vision.observe call kiye
+    'done' nahi bol sakta - loop ek baar nudge karta hai."""
+
+    def _build_loop_with_vision(self, scripted_responses, vision_tool=None):
+        from blender_ai_agent.agent.context import ContextManager
+        from blender_ai_agent.agent.planner import Planner
+        from blender_ai_agent.agent.repair_loop import RepairableExecutionLoop
+        from blender_ai_agent.agent.tool_caller import ToolCaller
+        from blender_ai_agent.inspectors.scene_inspector import SceneInspector
+        from blender_ai_agent.observability.logger import Logger
+        from blender_ai_agent.providers.mock_provider import MockProvider
+        from blender_ai_agent.reliability.recovery import RecoveryManager
+        from blender_ai_agent.tools.camera_tools import RenderPreviewTool
+        from blender_ai_agent.tools.object_tools import CreateObjectTool
+        from blender_ai_agent.tools.registry import ToolRegistry
+        from blender_ai_agent.tools.scene_tools import SceneInspectTool
+
+        bridge = FakeBridge()
+        registry = ToolRegistry()
+        registry.register(CreateObjectTool(bridge))
+        registry.register(RenderPreviewTool(bridge))
+        inspector = SceneInspector(bridge)
+        registry.register(SceneInspectTool(inspector))
+        if vision_tool is not None:
+            registry.register(vision_tool)
+
+        tool_caller = ToolCaller(registry)
+        context_manager = ContextManager(registry.get("scene.inspect"))
+        provider = MockProvider(responses=scripted_responses)
+        loop = RepairableExecutionLoop(
+            model_provider=provider,
+            tool_caller=tool_caller,
+            context_manager=context_manager,
+            planner=Planner(),
+            bridge=bridge,
+            recovery_manager=RecoveryManager(tool_caller),
+            logger=Logger(),
+            max_iterations=10,
+        )
+        return loop, bridge
+
+    def _fake_vision_tool(self, issues_sequence=None):
+        from blender_ai_agent.tools.base import Permission, Tool, ToolResult
+
+        # Hinglish: issues_sequence diya jaaye to har successive call ek
+        # alag result deta hai (jaise pehli baar issues, dusri baar clean)
+        # - multi-round improve loop test karne ke liye.
+        call_count = {"n": 0}
+
+        class _FakeVisionTool(Tool):
+            name = "vision.observe"
+            description = "fake"
+            permission = Permission.READ_ONLY
+
+            def run(self, validated_input):
+                if issues_sequence is not None:
+                    idx = min(call_count["n"], len(issues_sequence) - 1)
+                    issues = issues_sequence[idx]
+                    call_count["n"] += 1
+                    return ToolResult.ok({"description": "checked", "issues": issues, "confidence": 0.9})
+                return ToolResult.ok({"description": "looks fine", "issues": [], "confidence": 0.9})
+
+        return _FakeVisionTool()
+
+    def _create_calls(self, n):
+        return [("object.create", {"primitive": "CUBE", "name": f"part_{i}"}) for i in range(n)]
+
+    def test_finishing_without_vision_check_gets_nudged_then_succeeds(self):
+        creates = self._create_calls(5)
+        render = ("render.preview", {"filepath": "/tmp/x.png"})
+        vision = ("vision.observe", {})
+        loop, bridge = self._build_loop_with_vision(
+            scripted_responses=[
+                tool_response(*creates, render),
+                text_response("All done, looks great!"),   # tries to finish WITHOUT vision check
+                tool_response(vision),                      # nudged -> calls vision.observe
+                text_response("Verified and done."),
+            ],
+            vision_tool=self._fake_vision_tool(),
+        )
+        result = loop.run("build a 5 part thing")
+        self.assertEqual(result.stopped_reason, "stop")
+        self.assertIn("vision.observe", [s.tool_call.tool_name for s in result.executed_steps])
+        self.assertEqual(result.reply_text, "Verified and done.")
+
+    def test_small_build_does_not_require_vision_check(self):
+        creates = self._create_calls(2)   # <= 4 parts, exempt
+        render = ("render.preview", {"filepath": "/tmp/x.png"})
+        loop, bridge = self._build_loop_with_vision(
+            scripted_responses=[tool_response(*creates, render), text_response("Done.")],
+            vision_tool=self._fake_vision_tool(),
+        )
+        result = loop.run("build 2 cubes")
+        self.assertEqual(result.stopped_reason, "stop")
+        self.assertNotIn("vision.observe", [s.tool_call.tool_name for s in result.executed_steps])
+
+    def test_no_vision_tool_registered_never_nudges(self):
+        creates = self._create_calls(5)
+        render = ("render.preview", {"filepath": "/tmp/x.png"})
+        loop, bridge = self._build_loop_with_vision(
+            scripted_responses=[tool_response(*creates, render), text_response("Done.")],
+            vision_tool=None,   # vision.observe not available at all
+        )
+        result = loop.run("build a 5 part thing")
+        self.assertEqual(result.stopped_reason, "stop")
+        self.assertEqual(result.reply_text, "Done.")
+
+
+class TestVisionControlledMultiRoundImprove(unittest.TestCase):
+    """Hinglish: VisualQualityOptimizer-style controlled loop - render ->
+    vision.observe -> agar issues hain to fix + phir se check -> jab tak
+    issues khatam na ho ya MAX_VISION_ITERATIONS (3) na aa jaye."""
+
+    def _build(self, scripted_responses, issues_sequence):
+        from blender_ai_agent.agent.context import ContextManager
+        from blender_ai_agent.agent.planner import Planner
+        from blender_ai_agent.agent.repair_loop import RepairableExecutionLoop
+        from blender_ai_agent.agent.tool_caller import ToolCaller
+        from blender_ai_agent.inspectors.scene_inspector import SceneInspector
+        from blender_ai_agent.observability.logger import Logger
+        from blender_ai_agent.providers.mock_provider import MockProvider
+        from blender_ai_agent.reliability.recovery import RecoveryManager
+        from blender_ai_agent.tools.camera_tools import RenderPreviewTool
+        from blender_ai_agent.tools.object_tools import CreateObjectTool
+        from blender_ai_agent.tools.registry import ToolRegistry
+        from blender_ai_agent.tools.scene_tools import SceneInspectTool
+
+        bridge = FakeBridge()
+        registry = ToolRegistry()
+        registry.register(CreateObjectTool(bridge))
+        registry.register(RenderPreviewTool(bridge))
+        registry.register(SceneInspectTool(SceneInspector(bridge)))
+        registry.register(self._fake_vision_tool(issues_sequence))
+
+        tool_caller = ToolCaller(registry)
+        context_manager = ContextManager(registry.get("scene.inspect"))
+        provider = MockProvider(responses=scripted_responses)
+        loop = RepairableExecutionLoop(
+            model_provider=provider,
+            tool_caller=tool_caller,
+            context_manager=context_manager,
+            planner=Planner(),
+            bridge=bridge,
+            recovery_manager=RecoveryManager(tool_caller),
+            logger=Logger(),
+            max_iterations=15,
+        )
+        return loop
+
+    _fake_vision_tool = TestVisionCheckEnforced._fake_vision_tool
+
+    def test_issues_reported_then_fixed_then_reconfirmed_clean(self):
+        creates = [("object.create", {"primitive": "CUBE", "name": f"p{i}"}) for i in range(5)]
+        render = ("render.preview", {"filepath": "/tmp/x.png"})
+        vision = ("vision.observe", {})
+        fix = ("object.create", {"primitive": "CUBE", "name": "fixed_wheel"})
+
+        loop = self._build(
+            scripted_responses=[
+                tool_response(*creates, render),
+                text_response("Done!"),                 # tries to finish -> nudged (no check yet)
+                tool_response(vision),                   # 1st check -> issues reported
+                text_response("Fixed it, done."),        # tries to finish -> re-nudged (issues remain)
+                tool_response(fix, vision),               # fixes + 2nd check -> clean
+                text_response("All good now."),
+            ],
+            issues_sequence=[["left wheel is floating"], []],
+        )
+        result = loop.run("build a car")
+        self.assertEqual(result.stopped_reason, "stop")
+        self.assertEqual(result.reply_text, "All good now.")
+        vision_calls = [s for s in result.executed_steps if s.tool_call.tool_name == "vision.observe"]
+        self.assertEqual(len(vision_calls), 2)
+
+    def test_never_exceeds_max_vision_iterations_even_if_issues_persist(self):
+        from blender_ai_agent.agent.repair_loop import RepairableExecutionLoop
+        creates = [("object.create", {"primitive": "CUBE", "name": f"p{i}"}) for i in range(5)]
+        render = ("render.preview", {"filepath": "/tmp/x.png"})
+        vision = ("vision.observe", {})
+
+        # Model keeps "finishing" and getting re-nudged; issues never clear.
+        responses = [tool_response(*creates, render)]
+        for _ in range(6):
+            responses.append(text_response("Done."))
+            responses.append(tool_response(vision))
+        responses.append(text_response("Giving up, done."))
+
+        loop = self._build(
+            scripted_responses=responses,
+            issues_sequence=[["still floating"]] * 10,  # never clears
+        )
+        result = loop.run("build a car")
+        vision_calls = [s for s in result.executed_steps if s.tool_call.tool_name == "vision.observe"]
+        self.assertLessEqual(len(vision_calls), RepairableExecutionLoop.MAX_VISION_ITERATIONS)
+        self.assertEqual(result.stopped_reason, "stop")  # eventually allowed to finish, never infinite
 
 
 if __name__ == "__main__":

@@ -304,6 +304,21 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
+    def set_object_visibility(self, object_name: str, hide: bool) -> bool:
+        """Hinglish: Boolean-cutter objects (jinka sirf shape chahiye, khud
+        wo dikhna nahi chahiye) ko viewport aur render dono se chhupata hai.
+        Object delete NAHI hota - Boolean modifier ko uski mesh data
+        chahiye hoti hai, isliye cutter zinda rehna zaroori hai."""
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None:
+                return False
+            obj.hide_viewport = hide
+            obj.hide_render = hide
+            return True
+
+        return run_on_main_thread(_do)
+
     def remove_modifier(self, object_name: str, modifier_name: str) -> bool:
         def _do():
             obj = bpy.data.objects.get(object_name)
@@ -371,6 +386,62 @@ class BlenderBridge:
         ".glb": lambda filepath: bpy.ops.import_scene.gltf(filepath=filepath),
         ".gltf": lambda filepath: bpy.ops.import_scene.gltf(filepath=filepath),
     }
+
+    def list_blend_objects(self, filepath: str):
+        """Hinglish: .blend file ke ANDAR kaun-kaun se objects hain, ye
+        bina kuch import kiye check karta hai - .blend files obj/fbx ki
+        tarah 'poori file import karo' nahi hoti, isme se specific named
+        objects CHUNNE padte hain (bpy.ops.wm.append), isliye pehle list
+        dekhna zaroori hai."""
+        import os
+        if not os.path.isfile(filepath):
+            raise ValueError(f"File not found: {filepath}")
+        if not filepath.lower().endswith(".blend"):
+            raise ValueError(f"list_blend_objects expects a .blend file, got: {filepath}")
+
+        def _do():
+            with bpy.data.libraries.load(filepath, link=False) as (data_from, _data_to):
+                return list(data_from.objects)
+
+        return run_on_main_thread(_do)
+
+    def import_blend(self, filepath: str, object_names=None, name_prefix: str = None):
+        """Hinglish: .blend file se specific object(s) (ya sab, agar
+        object_names na diya jaaye) current scene mein APPEND karta hai
+        aur unhe scene collection mein link karta hai (append akele se
+        sirf bpy.data mein aata hai, scene mein dikhta nahi jab tak
+        explicitly link na kiya jaaye)."""
+        import os
+        if not os.path.isfile(filepath):
+            raise ValueError(f"File not found: {filepath}")
+        if not filepath.lower().endswith(".blend"):
+            raise ValueError(f"import_blend expects a .blend file, got: {filepath}")
+
+        def _do():
+            with bpy.data.libraries.load(filepath, link=False) as (data_from, data_to):
+                available = list(data_from.objects)
+                if object_names is None:
+                    data_to.objects = available
+                else:
+                    missing = [n for n in object_names if n not in available]
+                    if missing:
+                        raise ValueError(
+                            f"Object(s) {missing} not found in '{filepath}'. "
+                            f"Available: {available}"
+                        )
+                    data_to.objects = [n for n in object_names if n in available]
+
+            imported = []
+            for obj in data_to.objects:
+                if obj is None:
+                    continue
+                bpy.context.scene.collection.objects.link(obj)
+                if name_prefix:
+                    obj.name = f"{name_prefix}{obj.name}"
+                imported.append(obj)
+            return imported
+
+        return run_on_main_thread(_do)
 
     def import_model(self, filepath: str, name: str = None, scale=None):
         """Ek local .obj/.fbx/.glb/.gltf file ko scene mein import karta hai."""

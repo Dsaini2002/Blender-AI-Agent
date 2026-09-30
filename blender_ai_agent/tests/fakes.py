@@ -105,6 +105,34 @@ class FakeBridge:
         self._objects.remove(obj)
         return True
 
+    def set_object_visibility(self, object_name, hide):
+        obj = self.get_object(object_name)
+        if obj is None:
+            return False
+        obj.hide_viewport = hide
+        obj.hide_render = hide
+        return True
+
+    def list_blend_objects(self, filepath):
+        # Hinglish: Fake mein hum simulate karte hain ki file mein
+        # 3 fixed objects hain - real Blender mein ye asli .blend
+        # file padh kar aata hai.
+        return ["fake_blend_obj_a", "fake_blend_obj_b", "fake_blend_obj_c"]
+
+    def import_blend(self, filepath, object_names=None, name_prefix=None):
+        available = self.list_blend_objects(filepath)
+        names = available if object_names is None else object_names
+        missing = [n for n in names if n not in available]
+        if missing:
+            raise ValueError(f"Object(s) {missing} not found in '{filepath}'. Available: {available}")
+        imported = []
+        for n in names:
+            final_name = f"{name_prefix}{n}" if name_prefix else n
+            obj = FakeObject(name=final_name, type_="MESH", location=[0.0, 0.0, 0.0])
+            self._objects.append(obj)
+            imported.append(obj)
+        return imported
+
     def import_model(self, filepath, name=None, scale=None):
         import os
         base = os.path.splitext(os.path.basename(filepath))[0]

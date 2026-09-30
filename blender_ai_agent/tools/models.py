@@ -265,6 +265,76 @@ class ImportModelInput:
 
 
 @dataclass
+class BuildTemplateInput:
+    """template.build tool ke liye input contract - ek poore pre-defined
+    body structure (jaise 'humanoid') ko ek exact, fixed spec se banata
+    hai. Coordinates guess nahi hote - templates/<name>.json se aate hain."""
+    template_name: str
+    prefix: str = ""
+    colors: Optional[dict] = None
+    include_optional_parts: bool = True
+
+    def __post_init__(self):
+        if not self.template_name or not isinstance(self.template_name, str):
+            raise ValueError("BuildTemplateInput.template_name must be a non-empty string")
+        if not isinstance(self.prefix, str):
+            raise ValueError("BuildTemplateInput.prefix must be a string")
+
+        # Hinglish: Gemini kabhi-kabhi `colors` ko dict ki jagah JSON
+        # STRING bhej deta hai (jaisa ConfigureModifierInput.properties
+        # mein hota tha) - defensively parse karte hain, crash nahi.
+        if isinstance(self.colors, str):
+            try:
+                parsed = json.loads(self.colors)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(
+                    f"BuildTemplateInput.colors must be a dict, got an unparseable "
+                    f"string: {self.colors!r}"
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f"BuildTemplateInput.colors must be a dict, got JSON {type(parsed).__name__}"
+                )
+            self.colors = parsed
+
+        if self.colors is not None and not isinstance(self.colors, dict):
+            raise ValueError(
+                f"BuildTemplateInput.colors must be a dict of "
+                f"{{material_group: [r,g,b,a]}}, got {type(self.colors).__name__}"
+            )
+
+
+@dataclass
+class ListBlendObjectsInput:
+    """asset.list_blend_objects tool ke liye input - .blend file ke andar
+    kaun se objects hain, ye dekhne ke liye (import karne se pehle)."""
+    filepath: str
+
+    def __post_init__(self):
+        if not self.filepath or not isinstance(self.filepath, str):
+            raise ValueError("ListBlendObjectsInput.filepath must be a non-empty string")
+        if not self.filepath.lower().endswith(".blend"):
+            raise ValueError("ListBlendObjectsInput.filepath must end with .blend")
+
+
+@dataclass
+class ImportBlendInput:
+    """asset.import_blend tool ke liye input - .blend file se specific
+    (ya sab) objects scene mein laata hai."""
+    filepath: str
+    object_names: Optional[List[str]] = None
+    name_prefix: Optional[str] = None
+
+    def __post_init__(self):
+        if not self.filepath or not isinstance(self.filepath, str):
+            raise ValueError("ImportBlendInput.filepath must be a non-empty string")
+        if not self.filepath.lower().endswith(".blend"):
+            raise ValueError("ImportBlendInput.filepath must end with .blend")
+        if self.object_names is not None and not isinstance(self.object_names, list):
+            raise ValueError("ImportBlendInput.object_names must be a list of strings or omitted")
+
+
+@dataclass
 class CreateCameraInput:
     """camera.create tool ke liye input contract."""
     name: str

@@ -23,6 +23,8 @@ class AIAGENT_OT_switch_provider(bpy.types.Operator):
             model_name = context.scene.aiagent_model_choice or None
         elif provider_name == 'groq':
             model_name = context.scene.aiagent_groq_model_choice or None
+        elif provider_name == 'openai':
+            model_name = context.scene.aiagent_openai_model_choice or None
 
         get_copilot_controller(provider_name=provider_name, model_name=model_name)
 
@@ -217,6 +219,9 @@ class AIAgentPanel(bpy.types.Panel):
         elif context.scene.aiagent_provider_choice == 'groq':
             layout.label(text="Model:")
             layout.prop(context.scene, "aiagent_groq_model_choice", text="")
+        elif context.scene.aiagent_provider_choice == 'openai':
+            layout.label(text="Model:")
+            layout.prop(context.scene, "aiagent_openai_model_choice", text="")
 
         layout.operator("aiagent.switch_provider", icon='FILE_REFRESH', text="Apply")
 

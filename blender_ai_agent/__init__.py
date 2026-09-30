@@ -41,7 +41,10 @@ from .tools.camera_tools import (
     SetCameraTool,
     RenderPreviewTool,
 )
-from .tools.asset_tools import ImportModelTool
+from .tools.asset_tools import ImportBlendTool, ImportModelTool, ListBlendObjectsTool
+from .tools.python_power_tool import PythonPowerTool
+from .tools.template_tools import BuildTemplateTool
+from .vision.tool import VisionObserveTool
 from .ui.panel import (
     AIAgentPanel,
     AIAGENT_OT_inspect_scene,
@@ -98,6 +101,34 @@ def _register_tools() -> None:
     registry.register(RenderPreviewTool(bridge))
 
     registry.register(ImportModelTool(bridge))
+    registry.register(ListBlendObjectsTool(bridge))
+    registry.register(ImportBlendTool(bridge))
+    registry.register(BuildTemplateTool(bridge))
+
+    # Hinglish: PYTHON_EXECUTION - sirf ye zaroori hai jab structured
+    # tools (object.create/transform/modifier) us geometry ko achieve
+    # nahi kar sakte (bmesh edit-mode ops, loop cuts, custom extrusions).
+    # Permission.PYTHON_EXECUTION hamesha confirmation maangta hai
+    # (see autonomy/modes.py AutonomyPolicy) - kabhi silently auto-run
+    # nahi hota.
+    registry.register(PythonPowerTool(bridge))
+
+    # Hinglish: vision.observe - render ko khud "dekh" kar issues
+    # (floating parts, overlaps, missing bevels) detect karne ke liye.
+    # Real provider chahiye - agar GEMINI_API_KEY set hai to Gemini
+    # Vision use karta hai, warna is tool ko register hi nahi karte
+    # (bina real provider ke sirf crash karega).
+    import os
+    if os.environ.get("GEMINI_API_KEY", ""):
+        from .vision.analyzer import VisionAnalyzer
+        from .vision.capture import RenderCapture
+        from .vision.providers.gemini_vision_provider import GeminiVisionProvider
+
+        vision_analyzer = VisionAnalyzer(
+            capture=RenderCapture(bridge),
+            vision_provider=GeminiVisionProvider(api_key=os.environ["GEMINI_API_KEY"]),
+        )
+        registry.register(VisionObserveTool(vision_analyzer))
 
 
 def _ensure_tools_registered() -> None:
@@ -184,6 +215,14 @@ def get_provider_registry():
                 lambda **kwargs: GroqProvider(api_key=groq_key, model_name=kwargs.get("model_name", "openai/gpt-oss-120b")),
             )
 
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if openai_key:
+            from .providers.openai_provider import OpenAIProvider
+            registry.register(
+                "openai",
+                lambda **kwargs: OpenAIProvider(api_key=openai_key, model_name=kwargs.get("model_name", "gpt-6-astra")),
+            )
+
         _provider_registry = registry
 
     return _provider_registry
@@ -230,6 +269,11 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
             recovery_manager=recovery,
             logger=logger,
             max_failed_steps=3,
+            # Hinglish: 25 kaafi tha jab tasks chhote the. Ab template.build
+            # (25-33 parts), vision improve-loop (2-3 rounds, har round mein
+            # kai turns), aur room/interior jaisi badi scenes normal ho gayi
+            # hain — 25 baar-baar hit ho raha tha. 60 zyada realistic hai.
+            max_iterations=60,
         )
 
         existing_session = _copilot_controller.session if _copilot_controller else None
@@ -261,6 +305,7 @@ def register():
             ('mock', "Mock (Testing)", "Fake provider for testing, no real AI"),
             ('gemini', "Google Gemini", "Google's Gemini AI (requires GEMINI_API_KEY)"),
             ('groq', "Groq (Free, fast)", "Groq's free-tier hosted models (requires GROQ_API_KEY)"),
+            ('openai', "OpenAI (GPT-6 Astra)", "OpenAI's flagship model, e.g. GPT-6 Astra (requires your own OPENAI_API_KEY, paid)"),
         ],
         default='mock',
     )
@@ -284,6 +329,15 @@ def register():
             ('qwen/qwen3.6-27b', "Qwen3 32B", "Alternative free model"),
         ],
         default='openai/gpt-oss-120b',
+    )
+    bpy.types.Scene.aiagent_openai_model_choice = bpy.props.EnumProperty(
+        name="OpenAI Model",
+        description="Choose which OpenAI-hosted model to use",
+        items=[
+            ('gpt-6-astra', "GPT-6 Astra", "OpenAI's flagship model"),
+            ('gpt-6-astra-pro', "GPT-6 Astra Pro", "Astra with pro reasoning, slower/pricier"),
+        ],
+        default='gpt-6-astra',
     )
     bpy.types.Scene.aiagent_copilot_input = bpy.props.StringProperty(
         name="Copilot Input",
@@ -325,6 +379,7 @@ def unregister():
     del bpy.types.Scene.aiagent_provider_choice
     del bpy.types.Scene.aiagent_model_choice
     del bpy.types.Scene.aiagent_groq_model_choice
+    del bpy.types.Scene.aiagent_openai_model_choice
     del bpy.types.Scene.aiagent_copilot_input
     del bpy.types.Scene.aiagent_is_running
     del bpy.types.Scene.aiagent_status_text

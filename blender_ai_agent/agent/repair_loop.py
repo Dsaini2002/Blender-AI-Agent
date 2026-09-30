@@ -40,13 +40,23 @@ class RepairRunResult(AgentRunResult):
 
 class RepairableExecutionLoop:
 
-    # Tools jinhe "already done" check se skip nahi karna (state-dependent hain).
-    _NEVER_DEDUPE = {"scene.inspect", "object.delete"}
+    # Tools jinhe "already done" check se skip nahi karna (state-dependent hain,
+    # ya jaanbujhkar dobara chalna chahiye — vision.observe ka result har baar
+    # alag ho sakta hai chahe args same ho, isliye dedup ISE bhi skip NAHI karega).
+    _NEVER_DEDUPE = {"scene.inspect", "object.delete", "vision.observe"}
     # Ek request mein max kitni baar render.preview chalega (prompt ignore ho
     # jaye tab bhi code enforce karta hai).
     MAX_RENDERS_PER_RUN = 1
     # Lagatar itne turns mein koi naya kaam nahi hua -> loop rok do.
     MAX_IDLE_TURNS = 2
+
+    # Hinglish: dormant optimization/visual_optimizer.py (VisualQualityOptimizer)
+    # ka wahi "render -> score -> improve, CONTROLLED iterations, never
+    # infinite" design yahan LIVE agent loop mein apply kiya hai - alag
+    # class instantiate karne ki jagah seedha yahan, kyunki humara
+    # "render_fn"/"improve_fn" asal mein Gemini/Claude/Astra model ke apne
+    # tool-calls hain, koi standalone synchronous callable nahi.
+    MAX_VISION_ITERATIONS = 3
 
     def __init__(
         self,
@@ -99,6 +109,9 @@ class RepairableExecutionLoop:
         idle_turns = 0
         skipped_tool_calls = 0
         failed_steps = 0
+        vision_checked = False
+        vision_iterations = 0
+        last_vision_issues = None  # None = not yet checked; [] = checked, clean; [...] = issues to fix
 
         for turn in range(1, self._max_iterations + 1):
             request = self._build_request(state, executed_steps)
@@ -110,6 +123,48 @@ class RepairableExecutionLoop:
                 self._logger.info("model.plan", task_id=task_id, turn=turn, planned_tools=planned)
 
             if not response.has_tool_calls:
+                # Hinglish: Agar vision.observe registered hai (real vision
+                # provider available hai) aur ek bade multi-part build ke
+                # baad model ne bina apna render "dekhe" hi "done" bol diya,
+                # to ek hi baar nudge karte hain - prompt ki request par
+                # sirf bharosa nahi karte, code khud enforce karta hai.
+                # (Isse infinite loop na ho, sirf ONE nudge per run.)
+                # Hinglish: Ye ab EK-BAAR ka nudge nahi hai - VisualQualityOptimizer
+                # jaisa CONTROLLED multi-round loop hai: render -> vision.observe ->
+                # agar issues hain -> fix karo -> vision.observe phir se -> jab tak
+                # issues khatam na ho ya MAX_VISION_ITERATIONS (3) na aa jaye.
+                # Isi model (Gemini/Claude/Astra) se code bhi likhwate hain aur
+                # usi se apna render dekh kar sudharne ko bolte hain - koi alag
+                # "reviewer" nahi, wahi agent loop, bas bounded-repeat.
+                needs_vision_attention = (
+                    render_count > 0
+                    and len(executed_steps) > 4
+                    and self._tool_caller.has_tool("vision.observe")
+                    and vision_iterations < self.MAX_VISION_ITERATIONS
+                    and (last_vision_issues is None or len(last_vision_issues) > 0)
+                )
+                if needs_vision_attention:
+                    self._logger.info(
+                        "task.vision_nudge", task_id=task_id,
+                        vision_iterations=vision_iterations, issues=last_vision_issues,
+                    )
+                    state.add_assistant_message(response.content)
+                    if last_vision_issues is None:
+                        nudge_text = (
+                            "Before finishing: you have not called vision.observe yet to "
+                            "actually check your render. Call vision.observe now, fix any "
+                            "issues it reports, then give your final reply."
+                        )
+                    else:
+                        nudge_text = (
+                            "vision.observe reported these issues on your last check: "
+                            f"{last_vision_issues}. Fix these SPECIFIC issues (don't rebuild "
+                            "everything), then call vision.observe again to confirm before "
+                            "your final reply."
+                        )
+                    state.add_user_message(nudge_text)
+                    continue
+
                 self._logger.info("task.complete", task_id=task_id)
                 state.add_assistant_message(response.content)
                 transaction.commit()
@@ -143,6 +198,13 @@ class RepairableExecutionLoop:
                     done_keys.add(self._call_key(record.tool_call))
                     if record.tool_call.tool_name == "render.preview":
                         render_count += 1
+                    if record.tool_call.tool_name == "vision.observe":
+                        vision_checked = True
+                        vision_iterations += 1
+                        last_vision_issues = (
+                            list(record.tool_result.data.get("issues", []))
+                            if record.tool_result.data else []
+                        )
                 executed_steps.append(record)
                 repairs_attempted += repaired_count
                 state_result = record.tool_result

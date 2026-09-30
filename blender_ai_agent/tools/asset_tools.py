@@ -9,7 +9,7 @@ is tool se uska path diya jaata hai.
 """
 
 from .base import Permission, Tool, ToolResult
-from .models import ImportModelInput
+from .models import ImportBlendInput, ImportModelInput, ListBlendObjectsInput
 
 
 class ImportModelTool(Tool):
@@ -37,6 +37,57 @@ class ImportModelTool(Tool):
         except ValueError as exc:
             return ToolResult.fail(str(exc))
 
+        return ToolResult.ok({
+            "filepath": validated_input.filepath,
+            "imported_objects": [obj.name for obj in imported],
+        })
+
+
+class ListBlendObjectsTool(Tool):
+    name = "asset.list_blend_objects"
+    description = (
+        "Lists the object names inside a LOCAL .blend file, without importing anything. "
+        "Unlike .obj/.fbx/.glb (which import their whole scene), a .blend file requires "
+        "picking specific named objects to bring in - call this FIRST to see what's "
+        "available, then call asset.import_blend with the names you want."
+    )
+    permission = Permission.READ_ONLY
+    input_model = ListBlendObjectsInput
+
+    def __init__(self, bridge):
+        self._bridge = bridge
+
+    def run(self, validated_input: ListBlendObjectsInput) -> ToolResult:
+        try:
+            names = self._bridge.list_blend_objects(validated_input.filepath)
+        except ValueError as exc:
+            return ToolResult.fail(str(exc))
+        return ToolResult.ok({"filepath": validated_input.filepath, "objects": names})
+
+
+class ImportBlendTool(Tool):
+    name = "asset.import_blend"
+    description = (
+        "Appends object(s) from a LOCAL .blend file into the current scene. Pass "
+        "object_names (from asset.list_blend_objects) to bring in specific objects, or "
+        "omit it to bring in everything in the file. Use name_prefix to avoid name "
+        "collisions with objects already in the scene."
+    )
+    permission = Permission.SAFE_WRITE
+    input_model = ImportBlendInput
+
+    def __init__(self, bridge):
+        self._bridge = bridge
+
+    def run(self, validated_input: ImportBlendInput) -> ToolResult:
+        try:
+            imported = self._bridge.import_blend(
+                filepath=validated_input.filepath,
+                object_names=validated_input.object_names,
+                name_prefix=validated_input.name_prefix,
+            )
+        except ValueError as exc:
+            return ToolResult.fail(str(exc))
         return ToolResult.ok({
             "filepath": validated_input.filepath,
             "imported_objects": [obj.name for obj in imported],
