@@ -69,6 +69,8 @@ Addon skeleton, \`BlenderBridge\`, \`SceneInspector\`, base \`Tool\`/\`ToolRegis
 \| Object | \`object.create\`, \`object.delete\`, \`object.duplicate\`, \`object.rename\`, \`object.transform\` |
 
 \| Material | \`material.create\`, \`material.assign\`, \`material.modify\` |
+\| Lighting & World | \`light.create\`, \`world.set\`  (+ emission via \`material.modify\`) |
+\| Retopology | \`retopology.analyze\`, \`retopology.remesh\` |
 
 \| Modifier | \`modifier.add\`, \`modifier.remove\`, \`modifier.configure\` |
 

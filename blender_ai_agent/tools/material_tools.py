@@ -56,7 +56,13 @@ class AssignMaterialTool(Tool):
 
 class ModifyMaterialTool(Tool):
     name = "material.modify"
-    description = "Updates color, roughness, and/or metallic on an existing material."
+    description = (
+        "Updates color, roughness, metallic, and/or emission on an existing material. "
+        "Set emission_color (+ emission_strength, e.g. 3-10) to make an object GLOW like a "
+        "campfire flame, the moon, a lamp or a neon sign. Emissive objects light up in the "
+        "render but do not by themselves cast light on neighbours - pair with light.create "
+        "for that."
+    )
     permission = Permission.SAFE_WRITE
     input_model = ModifyMaterialInput
 
@@ -69,6 +75,8 @@ class ModifyMaterialTool(Tool):
             color=validated_input.color,
             roughness=validated_input.roughness,
             metallic=validated_input.metallic,
+            emission_color=validated_input.emission_color,
+            emission_strength=validated_input.emission_strength,
         )
 
         if material is None:

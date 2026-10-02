@@ -43,7 +43,8 @@ class FakeObject:
     """bpy Object jaisa dikhne waala fake object."""
 
     def __init__(self, name, type_="MESH", location=None, rotation=None, scale=None,
-                 non_manifold_edge_count=0, flipped_normal_count=0, bounding_box_size=1.0):
+                 non_manifold_edge_count=0, flipped_normal_count=0, bounding_box_size=1.0,
+                 face_count=6, tri_count=0, pole_count=8):
         self.name = name
         self.type = type_
         self.location = location or [0.0, 0.0, 0.0]
@@ -58,6 +59,12 @@ class FakeObject:
         self.flipped_normal_count = flipped_normal_count
         self.bounding_box_size = bounding_box_size
 
+        # Topology stats — retopology
+        self.face_count = face_count
+        self.tri_count = tri_count
+        self.pole_count = pole_count
+        self.hidden = False
+
 class FakeMaterial:
     """bpy Material jaisa dikhne waala fake material."""
 
@@ -66,6 +73,8 @@ class FakeMaterial:
         self.color = color or [0.8, 0.8, 0.8, 1.0]
         self.roughness = roughness
         self.metallic = metallic
+        self.emission_color = [0.0, 0.0, 0.0, 1.0]
+        self.emission_strength = 0.0
 
 
 class FakeBridge:
@@ -77,6 +86,7 @@ class FakeBridge:
         self._materials = materials or []
         self._active_camera = None
         self._last_render_path = None
+        self.world = {"world": "World", "color": [0.05, 0.05, 0.05], "strength": 1.0}
 
     # ---------------------------------------------------------
     # Scene / objects
@@ -203,10 +213,16 @@ class FakeBridge:
         obj.material_name = material.name
         return True
 
-    def modify_material(self, name, color=None, roughness=None, metallic=None):
+    def modify_material(self, name, color=None, roughness=None, metallic=None,
+                        emission_color=None, emission_strength=None):
         material = self.get_material(name)
         if material is None:
             return None
+
+        if emission_color is not None:
+            material.emission_color = (list(emission_color) + [1.0]) if len(emission_color) == 3 else list(emission_color)
+        if emission_strength is not None:
+            material.emission_strength = emission_strength
 
         if color is not None:
             material.color = (list(color) + [1.0]) if len(color) == 3 else list(color)
@@ -317,7 +333,102 @@ class FakeBridge:
             return False
         obj.flipped_normal_count = 0
         return True
+
+    # ---------------------------------------------------------
+    # Retopology
+    # ---------------------------------------------------------
+    @staticmethod
+    def _fake_topology(obj):
+        faces = obj.face_count
+        tris = obj.tri_count
+        quads = faces - tris
+        return {
+            "vertex_count": faces + 2,
+            "face_count": faces,
+            "tri_count": tris,
+            "quad_count": quads,
+            "ngon_count": 0,
+            "quad_ratio": (quads / faces) if faces else 0.0,
+            "pole_count": obj.pole_count,
+        }
+
+    def get_topology_stats(self, object_name):
+        obj = self.get_object(object_name)
+        if obj is None or obj.type != "MESH":
+            return None
+        return self._fake_topology(obj)
+
+    def retopologize(self, object_name, method="QUADRIFLOW", target_faces=2000,
+                     voxel_size=0.05, decimate_ratio=0.5, preserve_sharp=True,
+                     smooth_normals=True, new_name="", hide_original=True):
+        src = self.get_object(object_name)
+        if src is None or src.type != "MESH":
+            return None
+
+        before = self._fake_topology(src)
+
+        if method == "QUADRIFLOW":
+            faces, tris, poles = target_faces, 0, max(2, target_faces // 100)
+        elif method == "VOXEL":
+            faces, tris, poles = max(4, int(src.face_count * 2)), 0, 4
+        elif method == "DECIMATE":
+            faces = max(4, int(src.face_count * decimate_ratio))
+            tris, poles = faces, src.pole_count
+        else:
+            raise ValueError(f"Unsupported retopology method: {method}")
+
+        final_name = new_name or f"{object_name}_retopo"
+        existing = {o.name for o in self._objects}
+        suffix = 0
+        candidate = final_name
+        while candidate in existing:  # Blender-style .001 collision suffix
+            suffix += 1
+            candidate = f"{final_name}.{suffix:03d}"
+
+        copy = FakeObject(name=candidate, type_="MESH", location=list(src.location),
+                          face_count=faces, tri_count=tris, pole_count=poles)
+        self._objects.append(copy)
+
+        if hide_original:
+            src.hidden = True
+
+        return {
+            "new_name": copy.name,
+            "method": method,
+            "before": before,
+            "after": self._fake_topology(copy),
+        }
     
+
+    # ---------------------------------------------------------
+    # Lights + World
+    # ---------------------------------------------------------
+    def create_light(self, name, light_type="POINT", location=None, rotation=None,
+                     color=None, energy=1000.0, size=0.25, spot_angle=45.0):
+        existing = {o.name for o in self._objects}
+        final_name, suffix = name, 0
+        while final_name in existing:  # Blender-style .001 collision suffix
+            suffix += 1
+            final_name = f"{name}.{suffix:03d}"
+
+        obj = FakeObject(name=final_name, type_="LIGHT",
+                         location=list(location) if location else [0.0, 0.0, 3.0],
+                         rotation=list(rotation) if rotation else [0.0, 0.0, 0.0])
+        obj.light_type = light_type
+        obj.light_color = list(color) if color else [1.0, 1.0, 1.0]
+        obj.light_energy = energy
+        obj.light_size = size
+        obj.spot_angle = spot_angle
+        self._objects.append(obj)
+        return obj
+
+    def set_world(self, color=None, strength=None):
+        if color is not None:
+            self.world["color"] = list(color)[:3]
+        if strength is not None:
+            self.world["strength"] = float(strength)
+        return dict(self.world)
+
     # ---------------------------------------------------------
     # Animation — Step 9.13
     # ---------------------------------------------------------

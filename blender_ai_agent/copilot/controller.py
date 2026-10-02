@@ -116,10 +116,18 @@ class CopilotController:
             self.session.add_error_message(error_text)
             return SubmitResult(reply_text=error_text, success=False)
 
+        data = skill_result.data if isinstance(skill_result.data, dict) else {}
+        notes = data.get("notes") or []
+        shown = {k: v for k, v in data.items() if k != "notes"} if notes else skill_result.data
+
         reply_text = (
             f"Done — built with the '{skill.name}' skill "
-            f"({len(skill_result.steps_completed)} steps): {skill_result.data}"
+            f"({len(skill_result.steps_completed)} steps): {shown}"
         )
+        # Hinglish: Skill ke sawaal/notes (jaise "default Cube delete karun?") alag line mein
+        # dikhao, raw dict mein dabe hue nahi.
+        for note in notes:
+            reply_text += f"\n{note}"
         self.session.add_assistant_message(reply_text)
         return SubmitResult(reply_text=reply_text, success=True)
 
@@ -141,6 +149,12 @@ class CopilotController:
         }
         text = user_input.lower()
         context: dict = {}
+
+        # Hinglish: "delete the default cube" / "remove the cube and light" jaisa
+        # explicit kehna = user ki permission. Tabhi skill startup Cube/Light delete karti hai.
+        import re
+        if re.search(r"\b(delete|remove|clear|hatao|hata)\b.*\b(cube|light|default|startup)\b", text):
+            context["clear_defaults"] = True
         for part_key, part_words in (
             ("wall_color", ("wall", "walls")),
             ("roof_color", ("roof",)),

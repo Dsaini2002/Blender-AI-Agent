@@ -141,5 +141,61 @@ class TestCopilotControllerSkillFastPath(unittest.TestCase):
         self.assertEqual(agent.received_inputs, ["Create a spinning cube"])
 
 
+class TestCampsiteThroughController(unittest.TestCase):
+    """Real fast-path: 'make a campsite' must ASK about the startup Cube, and only delete it when told."""
+
+    def _build_controller(self, objects):
+        from blender_ai_agent.agent.tool_caller import ToolCaller
+        from blender_ai_agent.inspectors.scene_inspector import SceneInspector
+        from blender_ai_agent.skills.builtins.campsite import CampsiteSkill
+        from blender_ai_agent.skills.registry import SkillRegistry
+        from blender_ai_agent.tools.camera_tools import CreateCameraTool, SetCameraTool
+        from blender_ai_agent.tools.lighting_tools import CreateLightTool, SetWorldTool
+        from blender_ai_agent.tools.material_tools import AssignMaterialTool, CreateMaterialTool, ModifyMaterialTool
+        from blender_ai_agent.tools.object_tools import CreateObjectTool, DeleteObjectTool, TransformObjectTool
+        from blender_ai_agent.tools.registry import ToolRegistry
+        from blender_ai_agent.tools.scene_tools import SceneInspectTool
+        from .fakes import FakeBridge
+
+        bridge = FakeBridge(objects=objects)
+        registry = ToolRegistry()
+        for tool in (CreateObjectTool, TransformObjectTool, DeleteObjectTool, CreateMaterialTool,
+                     AssignMaterialTool, ModifyMaterialTool, CreateLightTool, SetWorldTool,
+                     CreateCameraTool, SetCameraTool):
+            registry.register(tool(bridge))
+        registry.register(SceneInspectTool(SceneInspector(bridge)))
+        caller = ToolCaller(registry)
+
+        skills = SkillRegistry()
+        skills.register(CampsiteSkill(caller))
+        agent = FakeAgent(results=[])
+        return CopilotController(agent, skill_registry=skills, tool_caller=caller), bridge
+
+    def test_asks_about_the_default_cube_and_keeps_it(self):
+        from .fakes import FakeObject
+        controller, bridge = self._build_controller([FakeObject(name="Cube")])
+
+        result = controller.submit("make a campsite")
+
+        self.assertTrue(result.success)
+        self.assertIn("Want me to delete it?", result.reply_text)
+        self.assertNotIn("'notes'", result.reply_text)  # shown as its own line, not inside the raw dict
+        self.assertIsNotNone(bridge.get_object("Cube"))
+
+    def test_deletes_the_default_cube_when_user_says_so(self):
+        from .fakes import FakeObject
+        controller, bridge = self._build_controller([FakeObject(name="Cube")])
+
+        result = controller.submit("make a campsite and delete the default cube")
+
+        self.assertTrue(result.success)
+        self.assertIsNone(bridge.get_object("Cube"))
+        self.assertIn("Deleted the leftover default 'Cube'", result.reply_text)
+
+    def test_plain_request_does_not_set_clear_defaults(self):
+        self.assertNotIn("clear_defaults", CopilotController._extract_skill_context("make a campsite"))
+        self.assertTrue(CopilotController._extract_skill_context("build a campsite, remove the cube")["clear_defaults"])
+
+
 if __name__ == "__main__":
     unittest.main()

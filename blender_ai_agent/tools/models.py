@@ -162,18 +162,36 @@ class ModifyMaterialInput:
     color: Optional[List[float]] = None
     roughness: Optional[float] = None
     metallic: Optional[float] = None
+    emission_color: Optional[List[float]] = None
+    emission_strength: Optional[float] = None
 
     def __post_init__(self):
         if not self.name or not isinstance(self.name, str):
             raise ValueError("ModifyMaterialInput.name must be a non-empty string")
+        if self.emission_color is not None:
+            self.emission_color = _coerce_list(self.emission_color, "ModifyMaterialInput.emission_color")
+            if len(self.emission_color) not in (3, 4):
+                raise ValueError("ModifyMaterialInput.emission_color must have 3 (RGB) or 4 (RGBA) values")
+        if self.emission_strength is not None:
+            self.emission_strength = _coerce_number(self.emission_strength, "ModifyMaterialInput.emission_strength")
+            if not (0.0 <= self.emission_strength <= 1000.0):
+                raise ValueError("ModifyMaterialInput.emission_strength must be between 0.0 and 1000.0")
+        # Hinglish: sirf emission_color dene par strength default 0 hoti hai
+        # (Blender 4.x), matlab glow dikhega hi nahi — isliye sensible default.
+        if self.emission_color is not None and self.emission_strength is None:
+            self.emission_strength = 1.0
         if self.color is not None and len(self.color) not in (3, 4):
             raise ValueError("ModifyMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
         if self.roughness is not None and not (0.0 <= self.roughness <= 1.0):
             raise ValueError("ModifyMaterialInput.roughness must be between 0.0 and 1.0")
         if self.metallic is not None and not (0.0 <= self.metallic <= 1.0):
             raise ValueError("ModifyMaterialInput.metallic must be between 0.0 and 1.0")
-        if self.color is None and self.roughness is None and self.metallic is None:
-            raise ValueError("ModifyMaterialInput requires at least one of: color, roughness, metallic")
+        if (self.color is None and self.roughness is None and self.metallic is None
+                and self.emission_color is None and self.emission_strength is None):
+            raise ValueError(
+                "ModifyMaterialInput requires at least one of: color, roughness, metallic, "
+                "emission_color, emission_strength"
+            )
 @dataclass
 class AddModifierInput:
     """modifier.add tool ke liye input contract."""
@@ -368,3 +386,197 @@ class RenderPreviewInput:
     def __post_init__(self):
         if not self.filepath or not isinstance(self.filepath, str):
             raise ValueError("RenderPreviewInput.filepath must be a non-empty string")
+
+# ---------------------------------------------------------
+# Lenient number coercion (LLMs often send 500.0 or "500" instead of 500)
+# ---------------------------------------------------------
+def _coerce_number(value, label, *, integer=False):
+    """
+    Hinglish: Chhote LLMs `500` ki jagah `500.0` ya `"500"` bhej dete hain.
+    Pehle ye poore task ko fail kar deta tha. Ab hum safe conversions karte hain:
+    numeric string -> number, integral float -> int (jab integer chahiye).
+    Bool aur jo cheez number nahi ban sakti, wo abhi bhi ValueError hai.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a number, not a boolean")
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            raise ValueError(f"{label} must be a number, got '{value}'") from None
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a number, got {type(value).__name__}")
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError(f"{label} must be a finite number")
+    if integer:
+        if float(value) != int(value):
+            raise ValueError(f"{label} must be a whole number, got {value}")
+        return int(value)
+    return float(value) if not isinstance(value, int) else value
+
+
+def _coerce_bool(value, label):
+    """true/false, "true"/"false", 1/0 -> bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "false", "yes", "no", "1", "0"):
+        return value.strip().lower() in ("true", "yes", "1")
+    if value in (0, 1):
+        return bool(value)
+    raise ValueError(f"{label} must be true or false")
+
+
+def _coerce_list(value, label):
+    """[1,2,3] ya "1, 2, 3" ya "[1,2,3]" -> list of floats."""
+    if isinstance(value, str):
+        cleaned = value.strip().strip("[]()")
+        parts = [p for p in cleaned.replace(";", ",").split(",") if p.strip()]
+        value = parts
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"{label} must be a list of numbers")
+    return [_coerce_number(v, label) for v in value]
+
+
+# ---------------------------------------------------------
+# Retopology
+# ---------------------------------------------------------
+RETOPO_METHODS = ("QUADRIFLOW", "VOXEL", "DECIMATE")
+
+
+@dataclass
+class AnalyzeTopologyInput:
+    """retopology.analyze tool ke liye input contract."""
+    object_name: str
+
+    def __post_init__(self):
+        if not self.object_name or not isinstance(self.object_name, str):
+            raise ValueError("AnalyzeTopologyInput.object_name must be a non-empty string")
+
+
+@dataclass
+class RetopologyInput:
+    """
+    retopology.remesh tool ke liye input contract.
+
+    method:
+      QUADRIFLOW - clean quad-dominant topology (target_faces use karta hai)
+      VOXEL      - uniform even topology (voxel_size use karta hai)
+      DECIMATE   - sirf poly count kam karta hai (decimate_ratio use karta hai)
+    """
+    object_name: str
+    method: str = "QUADRIFLOW"
+    target_faces: int = 2000
+    voxel_size: float = 0.05
+    decimate_ratio: float = 0.5
+    preserve_sharp: bool = True
+    smooth_normals: bool = True
+    new_name: str = ""
+    hide_original: bool = True
+
+    def __post_init__(self):
+        if not self.object_name or not isinstance(self.object_name, str):
+            raise ValueError("RetopologyInput.object_name must be a non-empty string")
+
+        self.method = str(self.method).upper()
+        if self.method not in RETOPO_METHODS:
+            raise ValueError(
+                f"RetopologyInput.method must be one of {list(RETOPO_METHODS)}, got '{self.method}'"
+            )
+        self.target_faces = _coerce_number(self.target_faces, "RetopologyInput.target_faces", integer=True)
+        if not (4 <= self.target_faces <= 1_000_000):
+            raise ValueError("RetopologyInput.target_faces must be an integer between 4 and 1,000,000")
+
+        self.voxel_size = _coerce_number(self.voxel_size, "RetopologyInput.voxel_size")
+        if self.voxel_size <= 0:
+            raise ValueError("RetopologyInput.voxel_size must be a positive number")
+
+        self.decimate_ratio = _coerce_number(self.decimate_ratio, "RetopologyInput.decimate_ratio")
+        if not (0.0 < self.decimate_ratio < 1.0):
+            raise ValueError("RetopologyInput.decimate_ratio must be between 0 and 1 (exclusive)")
+
+        self.preserve_sharp = _coerce_bool(self.preserve_sharp, "RetopologyInput.preserve_sharp")
+        self.smooth_normals = _coerce_bool(self.smooth_normals, "RetopologyInput.smooth_normals")
+        self.hide_original = _coerce_bool(self.hide_original, "RetopologyInput.hide_original")
+
+        if not self.new_name:
+            self.new_name = f"{self.object_name}_retopo"
+
+
+# ---------------------------------------------------------
+# Lights + World
+# ---------------------------------------------------------
+LIGHT_TYPES = ("POINT", "SUN", "SPOT", "AREA")
+
+
+def _validate_rgb(value, label):
+    if len(value) not in (3, 4):
+        raise ValueError(f"{label} must have 3 (RGB) or 4 (RGBA) values")
+    for channel in value[:3]:
+        if not isinstance(channel, (int, float)) or isinstance(channel, bool) or not (0.0 <= channel <= 1.0):
+            raise ValueError(f"{label} RGB values must be numbers between 0.0 and 1.0")
+
+
+@dataclass
+class CreateLightInput:
+    """
+    light.create tool ke liye input contract.
+
+    energy units: POINT/SPOT/AREA = Watts (e.g. 500-1000), SUN = strength (e.g. 1-5).
+    """
+    name: str
+    light_type: str = "POINT"
+    location: List[float] = field(default_factory=lambda: [0.0, 0.0, 3.0])
+    rotation: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    color: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    energy: float = 1000.0
+    size: float = 0.25
+    spot_angle: float = 45.0
+
+    def __post_init__(self):
+        if not self.name or not isinstance(self.name, str):
+            raise ValueError("CreateLightInput.name must be a non-empty string")
+
+        self.light_type = str(self.light_type).upper()
+        if self.light_type not in LIGHT_TYPES:
+            raise ValueError(
+                f"CreateLightInput.light_type must be one of {list(LIGHT_TYPES)}, got '{self.light_type}'"
+            )
+        self.location = _coerce_list(self.location, "CreateLightInput.location")
+        self.rotation = _coerce_list(self.rotation, "CreateLightInput.rotation")
+        if len(self.location) != 3:
+            raise ValueError("CreateLightInput.location must have exactly 3 values [x, y, z]")
+        if len(self.rotation) != 3:
+            raise ValueError("CreateLightInput.rotation must have exactly 3 values [x, y, z] (radians)")
+
+        self.color = _coerce_list(self.color, "CreateLightInput.color")
+        _validate_rgb(self.color, "CreateLightInput.color")
+        self.color = [float(c) for c in self.color[:3]]
+
+        self.energy = _coerce_number(self.energy, "CreateLightInput.energy")
+        if not (0.0 <= self.energy <= 1_000_000.0):
+            raise ValueError("CreateLightInput.energy must be a number between 0 and 1,000,000")
+        self.size = _coerce_number(self.size, "CreateLightInput.size")
+        if self.size < 0:
+            raise ValueError("CreateLightInput.size must be a non-negative number")
+        self.spot_angle = _coerce_number(self.spot_angle, "CreateLightInput.spot_angle")
+        if not (1.0 <= self.spot_angle <= 180.0):
+            raise ValueError("CreateLightInput.spot_angle must be between 1 and 180 degrees")
+
+
+@dataclass
+class SetWorldInput:
+    """world.set tool ke liye input contract (background colour + ambient strength)."""
+    color: Optional[List[float]] = None
+    strength: Optional[float] = None
+
+    def __post_init__(self):
+        if self.color is None and self.strength is None:
+            raise ValueError("SetWorldInput requires at least one of: color, strength")
+        if self.color is not None:
+            self.color = _coerce_list(self.color, "SetWorldInput.color")
+            _validate_rgb(self.color, "SetWorldInput.color")
+            self.color = [float(c) for c in self.color[:3]]
+        if self.strength is not None:
+            self.strength = _coerce_number(self.strength, "SetWorldInput.strength")
+            if not (0.0 <= self.strength <= 100.0):
+                raise ValueError("SetWorldInput.strength must be a number between 0.0 and 100.0")

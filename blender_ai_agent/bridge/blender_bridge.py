@@ -254,7 +254,8 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    def modify_material(self, name: str, color=None, roughness=None, metallic=None):
+    def modify_material(self, name: str, color=None, roughness=None, metallic=None,
+                        emission_color=None, emission_strength=None):
         def _do():
             material = bpy.data.materials.get(name)
             if material is None:
@@ -269,6 +270,18 @@ class BlenderBridge:
                     bsdf.inputs["Roughness"].default_value = roughness
                 if metallic is not None:
                     bsdf.inputs["Metallic"].default_value = metallic
+
+                # Hinglish: Blender 4.x mein socket "Emission Color" hai, 3.x mein
+                # "Emission" — dono versions ke liye fallback.
+                if emission_color is not None:
+                    rgba = list(emission_color) + [1.0] if len(emission_color) == 3 else list(emission_color)
+                    socket = bsdf.inputs.get("Emission Color") or bsdf.inputs.get("Emission")
+                    if socket is not None:
+                        socket.default_value = rgba
+                if emission_strength is not None:
+                    strength_socket = bsdf.inputs.get("Emission Strength")
+                    if strength_socket is not None:
+                        strength_socket.default_value = float(emission_strength)
 
             return material
 
@@ -291,6 +304,80 @@ class BlenderBridge:
         if bsdf is not None:
             rgba = list(color) + [1.0] if len(color) == 3 else list(color)
             bsdf.inputs["Base Color"].default_value = rgba
+
+    # ---------------------------------------------------------
+    # Lights + World
+    # ---------------------------------------------------------
+    def create_light(self, name: str, light_type: str = "POINT", location=None, rotation=None,
+                     color=None, energy: float = 1000.0, size: float = 0.25, spot_angle: float = 45.0):
+        """
+        Hinglish: bpy.data se seedha light datablock + object banate hain
+        (bpy.ops nahi) — isse selection/active-object context par depend nahi
+        karna padta, aur name/colour/energy ek hi step mein set ho jaate hain.
+        """
+        def _do():
+            import math
+
+            light_data = bpy.data.lights.new(name=name, type=light_type)
+            light_data.color = list(color)[:3] if color is not None else [1.0, 1.0, 1.0]
+            light_data.energy = float(energy)
+
+            if light_type in ("POINT", "SPOT"):
+                light_data.shadow_soft_size = float(size)
+            if light_type == "AREA":
+                light_data.size = float(size)
+            if light_type == "SPOT":
+                light_data.spot_size = math.radians(float(spot_angle))
+
+            obj = bpy.data.objects.new(name=name, object_data=light_data)
+            bpy.context.collection.objects.link(obj)
+
+            if location is not None:
+                obj.location = location
+            if rotation is not None:
+                obj.rotation_euler = rotation
+
+            return obj
+
+        return run_on_main_thread(_do)
+
+    def set_world(self, color=None, strength=None):
+        """
+        Hinglish: Scene ke World ka Background node set karta hai. Agar scene
+        mein world hi nahi hai to naya bana deta hai, aur agar Background node
+        missing hai to bana ke World Output se jod deta hai.
+        """
+        def _do():
+            scene = bpy.context.scene
+            world = scene.world
+            if world is None:
+                world = bpy.data.worlds.new("World")
+                scene.world = world
+
+            world.use_nodes = True
+            nodes = world.node_tree.nodes
+            links = world.node_tree.links
+
+            background = next((n for n in nodes if n.type == "BACKGROUND"), None)
+            if background is None:
+                background = nodes.new(type="ShaderNodeBackground")
+                output = next((n for n in nodes if n.type == "OUTPUT_WORLD"), None)
+                if output is None:
+                    output = nodes.new(type="ShaderNodeOutputWorld")
+                links.new(background.outputs["Background"], output.inputs["Surface"])
+
+            if color is not None:
+                background.inputs["Color"].default_value = list(color)[:3] + [1.0]
+            if strength is not None:
+                background.inputs["Strength"].default_value = float(strength)
+
+            return {
+                "world": world.name,
+                "color": list(background.inputs["Color"].default_value)[:3],
+                "strength": float(background.inputs["Strength"].default_value),
+            }
+
+        return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
     # Modifier level — Step 2.6
@@ -617,6 +704,134 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
+
+    # ---------------------------------------------------------
+    # Retopology
+    # ---------------------------------------------------------
+    @staticmethod
+    def _topology_from_bmesh(bm) -> dict:
+        """Face/vertex-level topology numbers from an already-built bmesh."""
+        face_count = len(bm.faces)
+        tri_count = sum(1 for f in bm.faces if len(f.verts) == 3)
+        quad_count = sum(1 for f in bm.faces if len(f.verts) == 4)
+        ngon_count = face_count - tri_count - quad_count
+        # Pole = interior vertex whose valence is not 4 (3-poles and 5+-poles)
+        pole_count = sum(
+            1 for v in bm.verts if not v.is_boundary and len(v.link_edges) != 4
+        )
+        return {
+            "vertex_count": len(bm.verts),
+            "face_count": face_count,
+            "tri_count": tri_count,
+            "quad_count": quad_count,
+            "ngon_count": ngon_count,
+            "quad_ratio": (quad_count / face_count) if face_count else 0.0,
+            "pole_count": pole_count,
+        }
+
+    def get_topology_stats(self, object_name: str):
+        def _do():
+            obj = bpy.data.objects.get(object_name)
+            if obj is None or obj.type != "MESH":
+                return None
+
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            stats = self._topology_from_bmesh(bm)
+            bm.free()
+            return stats
+
+        return run_on_main_thread(_do)
+
+    def retopologize(self, object_name: str, method: str = "QUADRIFLOW",
+                     target_faces: int = 2000, voxel_size: float = 0.05,
+                     decimate_ratio: float = 0.5, preserve_sharp: bool = True,
+                     smooth_normals: bool = True, new_name: str = "",
+                     hide_original: bool = True):
+        """
+        Hinglish: Original object ko kabhi modify nahi karta — uski COPY
+        banakar usi par remesh chalata hai, aur naya object return karta
+        hai. Isse retopology hamesha reversible rehti hai.
+
+        NOTE: bpy.ops yahan active/selected object par chalte hain, isliye
+        copy ko active banate hain. Kuch bhi fail ho to copy delete ho jaati hai.
+        """
+        def _do():
+            src = bpy.data.objects.get(object_name)
+            if src is None or src.type != "MESH":
+                return None
+
+            import bmesh
+
+            def _stats(mesh):
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
+                s = self._topology_from_bmesh(bm)
+                bm.free()
+                return s
+
+            before = _stats(src.data)
+
+            copy = src.copy()
+            copy.data = src.data.copy()
+            copy.name = new_name or f"{object_name}_retopo"
+            for collection in src.users_collection:
+                collection.objects.link(copy)
+
+            view_layer = bpy.context.view_layer
+            for o in view_layer.objects:
+                o.select_set(False)
+            copy.select_set(True)
+            view_layer.objects.active = copy
+
+            def _discard_copy():
+                mesh = copy.data
+                bpy.data.objects.remove(copy, do_unlink=True)
+                if mesh.users == 0:
+                    bpy.data.meshes.remove(mesh)
+
+            try:
+                if method == "QUADRIFLOW":
+                    result = bpy.ops.object.quadriflow_remesh(
+                        mode="FACES",
+                        target_faces=int(target_faces),
+                        use_preserve_sharp=bool(preserve_sharp),
+                        use_preserve_boundary=True,
+                        smooth_normals=bool(smooth_normals),
+                    )
+                    if "FINISHED" not in result:
+                        raise RuntimeError("Quadriflow remesh was cancelled by Blender")
+                elif method == "VOXEL":
+                    copy.data.remesh_voxel_size = float(voxel_size)
+                    result = bpy.ops.object.voxel_remesh()
+                    if "FINISHED" not in result:
+                        raise RuntimeError("Voxel remesh was cancelled by Blender")
+                elif method == "DECIMATE":
+                    mod = copy.modifiers.new(name="Retopo_Decimate", type="DECIMATE")
+                    mod.ratio = float(decimate_ratio)
+                    result = bpy.ops.object.modifier_apply(modifier=mod.name)
+                    if "FINISHED" not in result:
+                        raise RuntimeError("Decimate apply was cancelled by Blender")
+                else:
+                    raise ValueError(f"Unsupported retopology method: {method}")
+            except Exception:
+                _discard_copy()
+                raise
+
+            after = _stats(copy.data)
+
+            if hide_original:
+                src.hide_set(True)
+
+            return {
+                "new_name": copy.name,  # Blender may add .001 suffix on collision
+                "method": method,
+                "before": before,
+                "after": after,
+            }
+
+        return run_on_main_thread(_do)
     
     # ---------------------------------------------------------
     # Animation — Step 9.13

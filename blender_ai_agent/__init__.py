@@ -43,6 +43,8 @@ from .tools.camera_tools import (
 )
 from .tools.asset_tools import ImportBlendTool, ImportModelTool, ListBlendObjectsTool
 from .tools.python_power_tool import PythonPowerTool
+from .tools.retopology_tools import AnalyzeTopologyTool, RetopologyTool
+from .tools.lighting_tools import CreateLightTool, SetWorldTool
 from .tools.template_tools import BuildTemplateTool
 from .vision.tool import VisionObserveTool
 from .ui.panel import (
@@ -104,6 +106,14 @@ def _register_tools() -> None:
     registry.register(ListBlendObjectsTool(bridge))
     registry.register(ImportBlendTool(bridge))
     registry.register(BuildTemplateTool(bridge))
+
+    # Retopology: analyze (READ_ONLY) + remesh (SAFE_WRITE, always makes a copy)
+    registry.register(AnalyzeTopologyTool(bridge))
+    registry.register(RetopologyTool(bridge))
+
+    # Scene mood: lights + world background
+    registry.register(CreateLightTool(bridge))
+    registry.register(SetWorldTool(bridge))
 
     # Hinglish: PYTHON_EXECUTION - sirf ye zaroori hai jab structured
     # tools (object.create/transform/modifier) us geometry ko achieve
@@ -177,12 +187,14 @@ def get_skill_registry():
         from .skills.registry import SkillRegistry
         from .skills.builtins.house_builder import HouseBuilderSkill
         from .skills.builtins.product_showcase import ProductShowcaseSkill
+        from .skills.builtins.campsite import CampsiteSkill
 
         tool_caller = get_tool_caller()
 
         registry = SkillRegistry()
         registry.register(HouseBuilderSkill(tool_caller))
         registry.register(ProductShowcaseSkill(tool_caller))
+        registry.register(CampsiteSkill(tool_caller))
         _skill_registry = registry
 
     return _skill_registry

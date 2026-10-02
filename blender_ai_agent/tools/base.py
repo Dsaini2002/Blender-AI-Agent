@@ -105,6 +105,16 @@ class Tool(ABC, Generic[TInput]):
         "kind": ("primitive",),
         "object_name": ("name",),
         "position": ("location",),
+        # retopology / lighting
+        "target_face_count": ("target_faces",),
+        "face_count": ("target_faces",),
+        "faces": ("target_faces",),
+        "poly_count": ("target_faces",),
+        "ratio": ("decimate_ratio",),
+        "intensity": ("energy",),
+        "power": ("energy",),
+        "brightness": ("energy",),
+        "type_of_light": ("light_type",),
     }
 
     def _normalize_input(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
