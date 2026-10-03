@@ -46,8 +46,7 @@ class CreateObjectInput:
             self.primitive = self.object_type.upper()
             self.object_type = "MESH"
 
-        if len(self.location) != 3:
-            raise ValueError("CreateObjectInput.location must have exactly 3 values [x, y, z]")
+        self.location = _vec3(self.location, "CreateObjectInput.location")
 
 
 @dataclass
@@ -117,13 +116,13 @@ class TransformObjectInput:
         if not self.name or not isinstance(self.name, str):
             raise ValueError("TransformObjectInput.name must be a non-empty string")
 
-        for field_name, value in (
-            ("location", self.location),
-            ("rotation", self.rotation),
-            ("scale", self.scale),
-        ):
-            if value is not None and len(value) != 3:
-                raise ValueError(f"TransformObjectInput.{field_name} must have exactly 3 values [x, y, z]")
+        # Hinglish: Gemini kabhi "1, 2, 3" string, {"x":..,"y":..,"z":..} dict ya proto list bhejta hai —
+        # pehle ye sab "must have exactly 3 values" par fail hote the. Ab _vec3 inhe [x, y, z] banata hai,
+        # aur galat value par error mein asli value dikhata hai.
+        for field_name in ("location", "rotation", "scale"):
+            value = getattr(self, field_name)
+            if value is not None:
+                setattr(self, field_name, _vec3(value, f"TransformObjectInput.{field_name}"))
 
         if self.location is None and self.rotation is None and self.scale is None:
             raise ValueError("TransformObjectInput requires at least one of: location, rotation, scale")
@@ -138,8 +137,12 @@ class CreateMaterialInput:
     def __post_init__(self):
         if not self.name or not isinstance(self.name, str):
             raise ValueError("CreateMaterialInput.name must be a non-empty string")
-        if self.color is not None and len(self.color) not in (3, 4):
-            raise ValueError("CreateMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
+        if self.color is not None:
+            # Hinglish: Gemini kabhi ["0.8","0.2","0.2"] (strings), "red", "#FF0000" ya {"r":..} bhejta hai —
+            # pehle ye seedha Blender tak jaata tha: "expected sequence items of type float, not str".
+            self.color = _coerce_color(self.color, "CreateMaterialInput.color")
+            if len(self.color) not in (3, 4):
+                raise ValueError("CreateMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
 
 
 @dataclass
@@ -169,7 +172,7 @@ class ModifyMaterialInput:
         if not self.name or not isinstance(self.name, str):
             raise ValueError("ModifyMaterialInput.name must be a non-empty string")
         if self.emission_color is not None:
-            self.emission_color = _coerce_list(self.emission_color, "ModifyMaterialInput.emission_color")
+            self.emission_color = _coerce_color(self.emission_color, "ModifyMaterialInput.emission_color")
             if len(self.emission_color) not in (3, 4):
                 raise ValueError("ModifyMaterialInput.emission_color must have 3 (RGB) or 4 (RGBA) values")
         if self.emission_strength is not None:
@@ -180,12 +183,18 @@ class ModifyMaterialInput:
         # (Blender 4.x), matlab glow dikhega hi nahi — isliye sensible default.
         if self.emission_color is not None and self.emission_strength is None:
             self.emission_strength = 1.0
-        if self.color is not None and len(self.color) not in (3, 4):
-            raise ValueError("ModifyMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
-        if self.roughness is not None and not (0.0 <= self.roughness <= 1.0):
-            raise ValueError("ModifyMaterialInput.roughness must be between 0.0 and 1.0")
-        if self.metallic is not None and not (0.0 <= self.metallic <= 1.0):
-            raise ValueError("ModifyMaterialInput.metallic must be between 0.0 and 1.0")
+        if self.color is not None:
+            self.color = _coerce_color(self.color, "ModifyMaterialInput.color")
+            if len(self.color) not in (3, 4):
+                raise ValueError("ModifyMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
+        if self.roughness is not None:
+            self.roughness = _coerce_number(self.roughness, "ModifyMaterialInput.roughness")
+            if not (0.0 <= self.roughness <= 1.0):
+                raise ValueError("ModifyMaterialInput.roughness must be between 0.0 and 1.0")
+        if self.metallic is not None:
+            self.metallic = _coerce_number(self.metallic, "ModifyMaterialInput.metallic")
+            if not (0.0 <= self.metallic <= 1.0):
+                raise ValueError("ModifyMaterialInput.metallic must be between 0.0 and 1.0")
         if (self.color is None and self.roughness is None and self.metallic is None
                 and self.emission_color is None and self.emission_strength is None):
             raise ValueError(
@@ -362,10 +371,10 @@ class CreateCameraInput:
     def __post_init__(self):
         if not self.name or not isinstance(self.name, str):
             raise ValueError("CreateCameraInput.name must be a non-empty string")
-        if self.location is not None and len(self.location) != 3:
-            raise ValueError("CreateCameraInput.location must have exactly 3 values [x, y, z]")
-        if self.rotation is not None and len(self.rotation) != 3:
-            raise ValueError("CreateCameraInput.rotation must have exactly 3 values [x, y, z]")
+        if self.location is not None:
+            self.location = _vec3(self.location, "CreateCameraInput.location")
+        if self.rotation is not None:
+            self.rotation = _vec3(self.rotation, "CreateCameraInput.rotation")
 
 
 @dataclass
@@ -380,12 +389,66 @@ class SetCameraInput:
 
 @dataclass
 class RenderPreviewInput:
-    """render.preview tool ke liye input contract."""
+    """
+    render.preview tool ke liye input contract.
+
+    filepath : image ka naam (folder ignore ho sakta hai — dekho image_paths.resolve_image_path)
+    draft    : True = tez, chhota 640x360 preview (vision check ke liye kaafi)
+    width/height : pixels (16-8192). Sirf ek diya to doosra 16:9 se nikalta hai.
+    """
     filepath: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    draft: bool = False
 
     def __post_init__(self):
-        if not self.filepath or not isinstance(self.filepath, str):
+        if not self.filepath or not isinstance(self.filepath, str) or not self.filepath.strip():
             raise ValueError("RenderPreviewInput.filepath must be a non-empty string")
+
+        self.draft = _coerce_bool(self.draft, "RenderPreviewInput.draft")
+        for field_name in ("width", "height"):
+            value = getattr(self, field_name)
+            if value is not None:
+                value = _coerce_number(value, f"RenderPreviewInput.{field_name}", integer=True)
+                if not (16 <= value <= 8192):
+                    raise ValueError(f"RenderPreviewInput.{field_name} must be between 16 and 8192 pixels")
+                setattr(self, field_name, value)
+
+    def resolution(self):
+        """(width, height) jab size maanga gaya ho, warna None (scene ki apni resolution rehti hai)."""
+        if self.width is not None and self.height is not None:
+            return (self.width, self.height)
+        if self.width is not None:
+            return (self.width, max(16, round(self.width * 9 / 16)))
+        if self.height is not None:
+            return (max(16, round(self.height * 16 / 9)), self.height)
+        if self.draft:
+            return (640, 360)
+        return None
+
+
+# ---------------------------------------------------------
+# Plain-Python normalisation (Gemini SDK ke proto containers ke liye)
+# ---------------------------------------------------------
+def to_plain(value):
+    """
+    Hinglish: Gemini ka `fc.args` shallow dict(...) se aata hai, to uske andar ki lists/dicts
+    proto-plus ke `RepeatedComposite` / `MapComposite` objects hote hain. Ye print mein bilkul
+    [1.0, 0.4, 0.0] jaise dikhte hain, lekin `isinstance(x, list)` False deta hai — isi se
+    "must be a list of numbers" jaise confusing errors aaye. Ye function unhe recursively asli
+    Python list/dict/str/number mein badal deta hai. Plain data par koi asar nahi.
+    """
+    if value is None or isinstance(value, (str, bytes, bool, int, float)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): to_plain(v) for k, v in value.items()}
+    if hasattr(value, "items") and callable(value.items):          # MapComposite & dict-jaise
+        return {str(k): to_plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_plain(v) for v in value]
+    if hasattr(value, "__iter__"):                                  # RepeatedComposite & list-jaise
+        return [to_plain(v) for v in value]
+    return value
 
 # ---------------------------------------------------------
 # Lenient number coercion (LLMs often send 500.0 or "500" instead of 500)
@@ -428,13 +491,113 @@ def _coerce_bool(value, label):
 
 def _coerce_list(value, label):
     """[1,2,3] ya "1, 2, 3" ya "[1,2,3]" -> list of floats."""
+    value = to_plain(value)
+    if isinstance(value, dict):
+        # Hinglish: {"x": 0, "y": 0, "z": 3} (case-insensitive) -> [0, 0, 3]
+        lowered = {str(k).lower(): v for k, v in value.items()}
+        if all(axis in lowered for axis in ("x", "y", "z")):
+            value = [lowered["x"], lowered["y"], lowered["z"]]
+        else:
+            raise ValueError(f"{label} dict must have x, y, z keys, e.g. {{\"x\": 0, \"y\": 0, \"z\": 3}}")
     if isinstance(value, str):
         cleaned = value.strip().strip("[]()")
         parts = [p for p in cleaned.replace(";", ",").split(",") if p.strip()]
         value = parts
     if not isinstance(value, (list, tuple)):
-        raise ValueError(f"{label} must be a list of numbers")
+        raise ValueError(f"{label} must be a list of numbers like [x, y, z]")
     return [_coerce_number(v, label) for v in value]
+
+
+
+_NAMED_COLORS = {
+    "red": [1.0, 0.0, 0.0], "orange": [1.0, 0.5, 0.0], "yellow": [1.0, 0.9, 0.0],
+    "green": [0.0, 0.8, 0.1], "blue": [0.0, 0.2, 1.0], "purple": [0.5, 0.0, 1.0],
+    "pink": [1.0, 0.4, 0.7], "white": [1.0, 1.0, 1.0], "black": [0.0, 0.0, 0.0],
+    "cyan": [0.0, 1.0, 1.0], "magenta": [1.0, 0.0, 1.0], "brown": [0.4, 0.2, 0.05],
+    "gray": [0.5, 0.5, 0.5], "grey": [0.5, 0.5, 0.5], "gold": [1.0, 0.7, 0.1],
+    "amber": [1.0, 0.55, 0.0], "violet": [0.55, 0.2, 0.9], "teal": [0.0, 0.5, 0.5],
+}
+
+_NUMBER_PATTERN = r"-?\d+(?:\.\d+)?(?:e-?\d+)?|-?\.\d+"
+
+
+def _parse_color(value, label):
+    """Hinglish: Ek colour ko [r, g, b(, a)] numbers mein badalta hai — andar ka kaam, errors upar wrap hote hain."""
+    import re
+
+    value = to_plain(value)
+
+    # [[1, 0.5, 0]] ya ["orange"] jaisa ek-element wala wrapper
+    if isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], (list, tuple, dict, str)):
+        return _parse_color(value[0], label)
+
+    if isinstance(value, dict):
+        lowered = {str(k).lower(): v for k, v in value.items()}
+        for keys in (("r", "g", "b", "a"), ("red", "green", "blue", "alpha")):
+            if all(k in lowered for k in keys[:3]):
+                channels = [lowered[k] for k in keys[:3]]
+                if keys[3] in lowered:
+                    channels.append(lowered[keys[3]])
+                return [_coerce_number(c, label) for c in channels]
+        for key in ("hex", "color", "colour", "rgb", "rgba", "value", "code"):
+            if key in lowered:
+                return _parse_color(lowered[key], label)
+        raise ValueError("unsupported colour dict")
+
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _NAMED_COLORS:
+            return list(_NAMED_COLORS[text])
+
+        # "#FF8000", "#f80", "ff8000", "#FF8000FF"
+        hex_digits = text.lstrip("#")
+        if hex_digits and all(c in "0123456789abcdef" for c in hex_digits):
+            if len(hex_digits) == 3 and text.startswith("#"):
+                hex_digits = "".join(c * 2 for c in hex_digits)
+            if len(hex_digits) in (6, 8) and (text.startswith("#") or len(hex_digits) == 6):
+                return [int(hex_digits[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+
+        # "rgb(255, 128, 0)", "(1, 0.5, 0)", "1.0 0.5 0.0", "R:1 G:0.5 B:0"
+        numbers = re.findall(_NUMBER_PATTERN, text)
+        if len(numbers) in (3, 4):
+            return [float(n) for n in numbers]
+
+        # "bright orange", "glowing orange light" (sirf tab jab koi number nahi)
+        if not numbers:
+            for word in re.findall(r"[a-z]+", text):
+                if word in _NAMED_COLORS:
+                    return list(_NAMED_COLORS[word])
+        raise ValueError("unrecognised colour string")
+
+    if isinstance(value, (list, tuple)):
+        return [_coerce_number(v, label) for v in value]
+
+    raise ValueError("unsupported colour type")
+
+
+def _coerce_color(value, label):
+    """
+    Hinglish: LLM colour kai tarah se bhejte hain — [1,0.5,0], "1 0.5 0", {"r":1,"g":0.5,"b":0},
+    "#FF8000", "rgb(255,128,0)", "orange", "bright orange", [255,128,0]... sab ko [r, g, b(, a)]
+    (0-1 scale) mein badalta hai. Na samajh aaye to error mein asli value dikhata hai, taaki
+    pata chale LLM ne kya bheja.
+    """
+    try:
+        channels = _parse_color(value, label)
+    except ValueError:
+        shown = repr(to_plain(value))
+        if len(shown) > 80:
+            shown = shown[:80] + "..."
+        raise ValueError(
+            f"{label} must be [r, g, b] numbers (0-1), a hex like '#FF8000', or a colour name "
+            f"like 'orange' (got {shown})"
+        ) from None
+
+    # 0-255 scale ([255, 128, 0]) -> 0-1
+    rgb = channels[:3]
+    if rgb and max(rgb) >= 10 and max(rgb) <= 255 and all(c >= 0 and float(c).is_integer() for c in rgb):
+        channels = [c / 255.0 for c in rgb] + channels[3:]
+    return channels
 
 
 # ---------------------------------------------------------
@@ -548,7 +711,7 @@ class CreateLightInput:
         if len(self.rotation) != 3:
             raise ValueError("CreateLightInput.rotation must have exactly 3 values [x, y, z] (radians)")
 
-        self.color = _coerce_list(self.color, "CreateLightInput.color")
+        self.color = _coerce_color(self.color, "CreateLightInput.color")
         _validate_rgb(self.color, "CreateLightInput.color")
         self.color = [float(c) for c in self.color[:3]]
 
@@ -573,10 +736,357 @@ class SetWorldInput:
         if self.color is None and self.strength is None:
             raise ValueError("SetWorldInput requires at least one of: color, strength")
         if self.color is not None:
-            self.color = _coerce_list(self.color, "SetWorldInput.color")
+            self.color = _coerce_color(self.color, "SetWorldInput.color")
             _validate_rgb(self.color, "SetWorldInput.color")
             self.color = [float(c) for c in self.color[:3]]
         if self.strength is not None:
             self.strength = _coerce_number(self.strength, "SetWorldInput.strength")
             if not (0.0 <= self.strength <= 100.0):
                 raise ValueError("SetWorldInput.strength must be a number between 0.0 and 100.0")
+
+
+# ---------------------------------------------------------
+# Curves + Model library
+# ---------------------------------------------------------
+CURVE_TYPES = ("BEZIER", "POLY", "NURBS")
+CURVE_PRESETS = ("line", "circle", "arc", "spiral", "wave")
+
+
+def _preset_points(preset, radius, length, height, turns, amplitude, waves, angle_degrees, segments):
+    """Hinglish: LLM ko coordinates guess na karne pade — common shapes ke points yahin ban jaate hain."""
+    import math
+
+    if preset == "line":
+        return [[0.0, 0.0, 0.0], [length, 0.0, 0.0]]
+    if preset == "circle":
+        return [[radius * math.cos(2 * math.pi * i / segments), radius * math.sin(2 * math.pi * i / segments), 0.0]
+                for i in range(segments)]
+    if preset == "arc":
+        end = math.radians(angle_degrees)
+        return [[radius * math.cos(end * i / segments), radius * math.sin(end * i / segments), 0.0]
+                for i in range(segments + 1)]
+    if preset == "spiral":  # helix: upar chadhti hui gol curve
+        n = max(8, int(turns * segments) + 1)
+        return [[radius * math.cos(2 * math.pi * turns * i / (n - 1)),
+                 radius * math.sin(2 * math.pi * turns * i / (n - 1)),
+                 height * i / (n - 1)] for i in range(n)]
+    if preset == "wave":
+        n = max(5, int(waves * 4) + 1)
+        return [[length * i / (n - 1), amplitude * math.sin(2 * math.pi * waves * i / (n - 1)), 0.0]
+                for i in range(n)]
+    raise ValueError(f"unknown preset '{preset}'")
+
+
+@dataclass
+class CreateCurveInput:
+    """
+    curve.create tool ke liye input contract.
+
+    Ya to `points` do ([[x,y,z], ...] ya [[x,y,z,radius], ...]), ya `preset`
+    (line/circle/arc/spiral/wave). `radius` har point par thickness ko ghata-badha sakta hai
+    (tapered flame/branch/horn banane ke liye).
+    """
+    name: str
+    points: Optional[List[List[float]]] = None
+    preset: Optional[str] = None
+    curve_type: str = "BEZIER"
+    thickness: float = 0.05
+    closed: bool = False
+    location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    rotation: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    scale: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    fill_caps: bool = True
+    resolution: int = 12
+    # preset parameters
+    radius: float = 1.0
+    length: float = 2.0
+    height: float = 1.0
+    turns: float = 3.0
+    amplitude: float = 0.3
+    waves: float = 3.0
+    angle_degrees: float = 180.0
+    segments: int = 8
+
+    def __post_init__(self):
+        if not self.name or not isinstance(self.name, str):
+            raise ValueError("CreateCurveInput.name must be a non-empty string")
+
+        self.curve_type = str(self.curve_type).upper()
+        if self.curve_type not in CURVE_TYPES:
+            raise ValueError(f"CreateCurveInput.curve_type must be one of {list(CURVE_TYPES)}, got '{self.curve_type}'")
+
+        self.thickness = _coerce_number(self.thickness, "CreateCurveInput.thickness")
+        if not (0.0 <= self.thickness <= 10.0):
+            raise ValueError("CreateCurveInput.thickness must be between 0 and 10")
+        self.closed = _coerce_bool(self.closed, "CreateCurveInput.closed")
+        self.fill_caps = _coerce_bool(self.fill_caps, "CreateCurveInput.fill_caps")
+        self.resolution = _coerce_number(self.resolution, "CreateCurveInput.resolution", integer=True)
+        if not (1 <= self.resolution <= 64):
+            raise ValueError("CreateCurveInput.resolution must be an integer between 1 and 64")
+
+        for attr in ("location", "rotation", "scale"):
+            values = _coerce_list(getattr(self, attr), f"CreateCurveInput.{attr}")
+            if len(values) != 3:
+                raise ValueError(f"CreateCurveInput.{attr} must have exactly 3 values [x, y, z]")
+            setattr(self, attr, values)
+
+        for attr in ("radius", "length", "height", "turns", "amplitude", "waves", "angle_degrees"):
+            setattr(self, attr, _coerce_number(getattr(self, attr), f"CreateCurveInput.{attr}"))
+        self.segments = _coerce_number(self.segments, "CreateCurveInput.segments", integer=True)
+        if not (3 <= self.segments <= 64):
+            raise ValueError("CreateCurveInput.segments must be an integer between 3 and 64")
+
+        if self.points is None and self.preset is None:
+            raise ValueError("CreateCurveInput requires either `points` or a `preset` "
+                             f"({', '.join(CURVE_PRESETS)})")
+
+        if self.points is not None:
+            raw = to_plain(self.points)
+            if not isinstance(raw, list) or len(raw) < 2:
+                raise ValueError("CreateCurveInput.points must be a list of at least 2 points [[x, y, z], ...]")
+            cleaned = []
+            for point in raw:
+                coords = _coerce_list(point, "CreateCurveInput.points")
+                if len(coords) not in (3, 4):
+                    raise ValueError("each point in CreateCurveInput.points must be [x, y, z] or [x, y, z, radius]")
+                cleaned.append(coords)
+            self.points = cleaned
+        else:
+            self.preset = str(self.preset).lower()
+            if self.preset not in CURVE_PRESETS:
+                raise ValueError(f"CreateCurveInput.preset must be one of {list(CURVE_PRESETS)}, got '{self.preset}'")
+            self.points = _preset_points(self.preset, self.radius, self.length, self.height, self.turns,
+                                         self.amplitude, self.waves, self.angle_degrees, self.segments)
+            if self.preset == "circle":
+                self.closed = True
+
+
+@dataclass
+class ListLibraryInput:
+    """library.list tool ke liye input contract."""
+    category: Optional[str] = None
+
+    def __post_init__(self):
+        if self.category is not None:
+            self.category = str(self.category).strip().lower() or None
+
+
+@dataclass
+class PlaceModelInput:
+    """
+    library.place tool ke liye input contract — library ke ek ready-made model
+    (campfire, pine_tree, tent...) ko scene mein ek hi call se banata hai.
+    """
+    model: str
+    location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    scale: float = 1.0
+    yaw_degrees: float = 0.0
+    prefix: str = ""
+    colors: Optional[dict] = None
+
+    def __post_init__(self):
+        if not self.model or not isinstance(self.model, str):
+            raise ValueError("PlaceModelInput.model must be a non-empty string")
+        self.model = self.model.strip().lower().replace(" ", "_").replace("-", "_")
+
+        self.location = _coerce_list(self.location, "PlaceModelInput.location")
+        if len(self.location) != 3:
+            raise ValueError("PlaceModelInput.location must have exactly 3 values [x, y, z]")
+
+        self.scale = _coerce_number(self.scale, "PlaceModelInput.scale")
+        if not (0.05 <= self.scale <= 50.0):
+            raise ValueError("PlaceModelInput.scale must be between 0.05 and 50")
+        self.yaw_degrees = _coerce_number(self.yaw_degrees, "PlaceModelInput.yaw_degrees")
+
+        if not isinstance(self.prefix, str):
+            raise ValueError("PlaceModelInput.prefix must be a string")
+
+        if self.colors is not None:
+            plain = to_plain(self.colors)
+            if not isinstance(plain, dict):
+                raise ValueError("PlaceModelInput.colors must be an object like {\"leaves\": [0.1, 0.4, 0.1]}")
+            self.colors = {str(k): _coerce_color(v, f"PlaceModelInput.colors[{k}]")[:3] for k, v in plain.items()}
+
+
+# ---------------------------------------------------------
+# Downloaded (local) GitHub CC0 models
+# ---------------------------------------------------------
+@dataclass
+class SearchLocalAssetsInput:
+    """asset.search_local ke liye input contract."""
+    query: str
+    limit: int = 8
+    project: Optional[str] = None
+
+    def __post_init__(self):
+        if not self.query or not isinstance(self.query, str) or not self.query.strip():
+            raise ValueError("SearchLocalAssetsInput.query must be a non-empty string")
+        self.query = self.query.strip()
+        self.limit = _coerce_number(self.limit, "SearchLocalAssetsInput.limit", integer=True)
+        if not (1 <= self.limit <= 30):
+            raise ValueError("SearchLocalAssetsInput.limit must be an integer between 1 and 30")
+        if self.project is not None:
+            self.project = str(self.project).strip().lower() or None
+
+
+@dataclass
+class PlaceLocalAssetInput:
+    """asset.place_local ke liye input contract — `asset_id` YA `query` do."""
+    asset_id: Optional[str] = None
+    query: Optional[str] = None
+    location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    scale: float = 1.0
+    yaw_degrees: float = 0.0
+
+    def __post_init__(self):
+        if not (self.asset_id and str(self.asset_id).strip()) and not (self.query and str(self.query).strip()):
+            raise ValueError("PlaceLocalAssetInput requires `asset_id` (from asset.search_local) or `query`")
+        self.asset_id = str(self.asset_id).strip() if self.asset_id else None
+        self.query = str(self.query).strip() if self.query else None
+        self.location = _coerce_list(self.location, "PlaceLocalAssetInput.location")
+        if len(self.location) != 3:
+            raise ValueError("PlaceLocalAssetInput.location must have exactly 3 values [x, y, z]")
+        self.scale = _coerce_number(self.scale, "PlaceLocalAssetInput.scale")
+        if not (0.01 <= self.scale <= 100.0):
+            raise ValueError("PlaceLocalAssetInput.scale must be between 0.01 and 100")
+        self.yaw_degrees = _coerce_number(self.yaw_degrees, "PlaceLocalAssetInput.yaw_degrees")
+
+
+# ---------------------------------------------------------
+# Vectors + image paths (existing tools ko bhi lenient banane ke liye)
+# ---------------------------------------------------------
+def _vec3(value, label):
+    """[x, y, z] chahiye. "1, 2, 3", {"x","y","z"}, proto list, ints/floats sab chalte hain."""
+    plain = to_plain(value)
+    try:
+        coords = _coerce_list(plain, label)
+    except ValueError:
+        coords = None
+    if coords is None or len(coords) != 3:
+        shown = repr(plain)
+        if len(shown) > 80:
+            shown = shown[:80] + "..."
+        raise ValueError(f"{label} must have exactly 3 values [x, y, z] (got {shown})")
+    return coords
+
+
+# ---------------------------------------------------------
+# Custom mesh (vertices + faces)
+# ---------------------------------------------------------
+@dataclass
+class CreateMeshInput:
+    """
+    mesh.create tool ke liye input contract — apna khud ka shape (triangle, wedge, roof, ramp...)
+    vertices + faces se banao. Primitives (cube/cone...) jo nahi bana sakte, wo yahan se.
+
+    vertices : [[x,y,z], ...]       (kam se kam 3)
+    faces    : [[i,j,k,...], ...]   har face vertices ke index (0 se shuru), kam se kam 3 alag index
+    """
+    name: str
+    vertices: List[List[float]]
+    faces: List[List[int]]
+    location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    rotation: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    scale: List[float] = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    shade_smooth: bool = False
+
+    MAX_ELEMENTS = 5000
+
+    def __post_init__(self):
+        if not self.name or not isinstance(self.name, str):
+            raise ValueError("CreateMeshInput.name must be a non-empty string")
+
+        raw_vertices = to_plain(self.vertices)
+        if not isinstance(raw_vertices, list) or len(raw_vertices) < 3:
+            raise ValueError("CreateMeshInput.vertices must be a list of at least 3 points [[x, y, z], ...]")
+        if len(raw_vertices) > self.MAX_ELEMENTS:
+            raise ValueError(f"CreateMeshInput.vertices has too many points (max {self.MAX_ELEMENTS})")
+        self.vertices = [_vec3(v, "CreateMeshInput.vertices[]") for v in raw_vertices]
+
+        raw_faces = to_plain(self.faces)
+        if not isinstance(raw_faces, list) or not raw_faces:
+            raise ValueError("CreateMeshInput.faces must be a non-empty list of index lists like [[0, 1, 2]]")
+        if len(raw_faces) > self.MAX_ELEMENTS:
+            raise ValueError(f"CreateMeshInput.faces has too many faces (max {self.MAX_ELEMENTS})")
+
+        cleaned = []
+        for number, face in enumerate(raw_faces):
+            indices = _coerce_list(face, "CreateMeshInput.faces[]")
+            indices = [_coerce_number(i, "CreateMeshInput.faces[]", integer=True) for i in indices]
+            if len(indices) < 3 or len(set(indices)) != len(indices):
+                raise ValueError(f"CreateMeshInput.faces[{number}] needs at least 3 different vertex indices, got {indices}")
+            if any(i < 0 or i >= len(self.vertices) for i in indices):
+                raise ValueError(
+                    f"CreateMeshInput.faces[{number}] uses a vertex index outside 0..{len(self.vertices) - 1}: {indices}")
+            cleaned.append(indices)
+        self.faces = cleaned
+
+        self.location = _vec3(self.location, "CreateMeshInput.location")
+        self.rotation = _vec3(self.rotation, "CreateMeshInput.rotation")
+        self.scale = _vec3(self.scale, "CreateMeshInput.scale")
+        self.shade_smooth = _coerce_bool(self.shade_smooth, "CreateMeshInput.shade_smooth")
+
+
+# ---------------------------------------------------------
+# Mesh damage (broken / chipped / dented / rough)
+# ---------------------------------------------------------
+_REGION_SYNONYMS = {
+    "upper": "top", "above": "top", "up": "top", "tip": "top", "neck": "top", "head": "top", "crown": "top",
+    "lid": "top", "rim": "top", "mouth": "top", "opening": "top",
+    "lower": "bottom", "base": "bottom", "down": "bottom", "foot": "bottom", "under": "bottom",
+    "right side": "right", "left side": "left", "whole": "all", "entire": "all", "everywhere": "all", "full": "all",
+}
+_STYLE_SYNONYMS = {
+    "break": "broken", "shattered": "broken", "shatter": "broken", "cracked": "broken", "crack": "broken",
+    "damaged": "broken", "damage": "broken", "smashed": "broken", "jagged": "broken", "snapped": "broken",
+    "chip": "chipped", "chipping": "chipped", "notched": "chipped",
+    "dent": "dented", "dents": "dented", "crushed": "dented", "squashed": "dented", "bent": "dented",
+    "worn": "rough", "scratched": "rough", "weathered": "rough", "bumpy": "rough", "old": "rough", "aged": "rough",
+}
+
+
+@dataclass
+class DamageMeshInput:
+    """
+    mesh.damage tool ke liye input contract — kisi bhi mesh ka ek hissa toota/chipped/pichka/khurdura banata hai.
+
+    region   : top | bottom | left | right | front | back | all   ("neck", "lid", "rim" -> top; "base" -> bottom)
+    style    : broken | chipped | dented | rough                  ("cracked", "shattered" -> broken)
+    portion  : region object ki kitni lambai ko cover kare (0.02-1.0, default 0.25 = upar ka chautha hissa)
+    strength : kitna kharab (0.01-0.6, default 0.15 = halka sa)
+    detail   : extra mesh-cuts (0-2) taaki low-poly model mein toot ka asar saaf dikhe
+    """
+    object_name: str
+    region: str = "top"
+    style: str = "broken"
+    portion: float = 0.25
+    strength: float = 0.15
+    seed: int = 1
+    detail: int = 1
+
+    def __post_init__(self):
+        from .mesh_damage import REGIONS, STYLES
+
+        if not self.object_name or not isinstance(self.object_name, str):
+            raise ValueError("DamageMeshInput.object_name must be a non-empty string")
+
+        region = str(self.region).strip().lower().replace("_", " ")
+        self.region = _REGION_SYNONYMS.get(region, region)
+        if self.region not in REGIONS:
+            raise ValueError(f"DamageMeshInput.region must be one of {list(REGIONS)}, got '{self.region}'")
+
+        style = str(self.style).strip().lower()
+        self.style = _STYLE_SYNONYMS.get(style, style)
+        if self.style not in STYLES:
+            raise ValueError(f"DamageMeshInput.style must be one of {list(STYLES)}, got '{self.style}'")
+
+        self.portion = _coerce_number(self.portion, "DamageMeshInput.portion")
+        if not (0.02 <= self.portion <= 1.0):
+            raise ValueError("DamageMeshInput.portion must be between 0.02 and 1.0")
+        self.strength = _coerce_number(self.strength, "DamageMeshInput.strength")
+        if not (0.01 <= self.strength <= 0.6):
+            raise ValueError("DamageMeshInput.strength must be between 0.01 and 0.6")
+        self.seed = _coerce_number(self.seed, "DamageMeshInput.seed", integer=True)
+        self.detail = _coerce_number(self.detail, "DamageMeshInput.detail", integer=True)
+        if not (0 <= self.detail <= 2):
+            raise ValueError("DamageMeshInput.detail must be 0, 1 or 2")

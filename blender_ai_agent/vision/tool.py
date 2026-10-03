@@ -7,12 +7,17 @@ object.create ya scene.inspect: `tool.execute({...})`.
 
 Architecture rule maintain hoti hai: Agent ko VisionAnalyzer, Capture,
 ya VisionProvider ka pata nahi — sirf "vision.observe" tool naam pata hai.
+
+Advanced: filepath ab render.preview jaise hi resolve hota hai (image_paths.resolve_image_path), isliye
+"render ne ek jagah save kiya, vision ne doosri jagah dhoondha" wala Errno 2 nahi aata. Phir bhi file na mile
+to ek baar Temp folder mein dobara koshish hoti hai.
 """
 
 import os
 import tempfile
 from dataclasses import dataclass, field
 
+from ..image_paths import describe_image, resolve_image_path
 from ..tools.base import Permission, Tool, ToolResult
 
 
@@ -42,18 +47,29 @@ class VisionObserveInput:
 
 class VisionObserveTool(Tool):
     name = "vision.observe"
-    description = "Captures the current scene visually and returns a structured observation."
+    description = (
+        "Captures the current scene visually and returns a structured observation. Use a plain file name "
+        "(or the exact `filepath` render.preview returned); any folder is ignored on Windows."
+    )
     permission = Permission.READ_ONLY
     input_model = VisionObserveInput
 
     def __init__(self, analyzer):
         self._analyzer = analyzer
 
+    def _observe(self, filepath: str, source: str):
+        try:
+            return self._analyzer.observe(filepath=filepath, context={"source": source})
+        except FileNotFoundError:
+            # Hinglish: aakhri suraksha — file kahin aur ban gayi ho to Temp folder mein ek baar aur try karo.
+            fallback = os.path.join(tempfile.gettempdir(), os.path.basename(filepath))
+            if os.path.normcase(fallback) == os.path.normcase(filepath):
+                raise
+            return self._analyzer.observe(filepath=fallback, context={"source": source})
+
     def run(self, validated_input: VisionObserveInput) -> ToolResult:
-        observation = self._analyzer.observe(
-            filepath=validated_input.filepath,
-            context={"source": validated_input.source},
-        )
+        filepath = resolve_image_path(validated_input.filepath, "vision_observe.png")
+        observation = self._observe(filepath, validated_input.source)
 
         result_data = {
             "description": observation.description,
@@ -69,5 +85,10 @@ class VisionObserveTool(Tool):
             # action lena hai ya nahi — Step 5.17 human-in-the-loop
             # philosophy ke hisaab se.
             result_data["low_confidence_warning"] = True
+
+        # Saboot: jis image ko dekha gaya wo asal mein disk par hai (sirf tab jodte hain jab file ho).
+        image = describe_image(filepath)
+        if image:
+            result_data["image"] = {"filepath": filepath, **image}
 
         return ToolResult.ok(result_data)

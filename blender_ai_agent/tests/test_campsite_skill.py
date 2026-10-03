@@ -4,13 +4,13 @@ import math
 import unittest
 
 from blender_ai_agent.agent.tool_caller import ToolCaller
+from blender_ai_agent.inspectors.scene_inspector import SceneInspector
 from blender_ai_agent.skills.builtins.campsite import CampsiteSkill
 from blender_ai_agent.skills.builtins.house_builder import HouseBuilderSkill
 from blender_ai_agent.skills.registry import SkillRegistry
 from blender_ai_agent.tools.camera_tools import CreateCameraTool, SetCameraTool
 from blender_ai_agent.tools.lighting_tools import CreateLightTool, SetWorldTool
 from blender_ai_agent.tools.material_tools import AssignMaterialTool, CreateMaterialTool, ModifyMaterialTool
-from blender_ai_agent.inspectors.scene_inspector import SceneInspector
 from blender_ai_agent.tools.object_tools import CreateObjectTool, DeleteObjectTool, TransformObjectTool
 from blender_ai_agent.tools.registry import ToolRegistry
 from blender_ai_agent.tools.scene_tools import SceneInspectTool
@@ -34,17 +34,17 @@ class TestCampsiteRouting(unittest.TestCase):
 
     def test_can_handle_camping_requests(self):
         skill, _ = build_skill()
-        for text in ("make a campsite", "build a campfire scene", "create a tent", "camping at night",
-                     "camp site please", "bonfire"):
+        for text in ("make a campsite", "create a camping scene", "camping at night", "camp site please"):
             self.assertEqual(skill.can_handle(text), 1.0, text)
 
     def test_ignores_unrelated_requests(self):
         skill, _ = build_skill()
-        for text in ("make a house", "start a campaign", "create a table", "add some content"):
+        # single props (campfire, tent...) belong to the model library, not the whole campsite scene
+        for text in ("make a house", "start a campaign", "create a table", "add some content",
+                     "make a campfire", "add a tent", "bonfire"):
             self.assertEqual(skill.can_handle(text), 0.0, text)
 
     def test_registry_picks_campsite_over_house(self):
-        bridge = FakeBridge()
         caller = ToolCaller(ToolRegistry())
         registry = SkillRegistry()
         registry.register(HouseBuilderSkill(caller))
@@ -92,6 +92,27 @@ class TestCampsiteBuild(unittest.TestCase):
             self.assertAlmostEqual(a, b, places=6)
         self.assertAlmostEqual(tl[2], 1.1, places=6)  # ridge height h
 
+    def test_tent_has_two_end_triangles_at_both_ends(self):
+        skill, bridge = build_skill()
+        result = skill.execute({"camp_name": "C"})
+
+        self.assertIn("C_EndFront", result.data["parts"]["tent"])
+        self.assertIn("C_EndBack", result.data["parts"]["tent"])
+        front, back = bridge.get_object("C_EndFront"), bridge.get_object("C_EndBack")
+        # thin along the tent's length, turned 45 degrees into a diamond whose lower half is under the ground
+        for cap in (front, back):
+            self.assertAlmostEqual(cap.rotation_euler[0], math.pi / 4)
+            self.assertLess(cap.scale[0], 0.1)
+            self.assertAlmostEqual(cap.scale[1], cap.scale[2])
+            self.assertEqual(cap.location[2], 0.0)
+        # the two caps sit at opposite ends, centred on the tent
+        left, right = bridge.get_object("C_PanelLeft"), bridge.get_object("C_PanelRight")
+        centre = [(left.location[i] + right.location[i]) / 2 for i in (0, 1)]
+        for i in (0, 1):
+            self.assertAlmostEqual((front.location[i] + back.location[i]) / 2, centre[i], places=6)
+        self.assertAlmostEqual(
+            math.hypot(front.location[0] - back.location[0], front.location[1] - back.location[1]), 2.4)
+
     def test_flames_are_emissive_and_wood_is_not(self):
         skill, bridge = build_skill()
         skill.execute({"camp_name": "C"})
@@ -122,6 +143,20 @@ class TestCampsiteBuild(unittest.TestCase):
         self.assertIsNotNone(bridge.get_object("C_RimPurple"))
         self.assertLess(bridge.world["strength"], 0.5)
         self.assertLess(sum(bridge.world["color"]), 0.5)  # dark sky
+
+    def test_night_is_dark_and_fire_dominates(self):
+        """Screenshot feedback: scene looked pale/pink; fire must be the main light, moon & rims subtle."""
+        skill, bridge = build_skill()
+        skill.execute({"camp_name": "C"})
+
+        fire = bridge.get_object("C_FireLight").light_energy
+        self.assertGreater(fire, bridge.get_object("C_RimGreen").light_energy)
+        self.assertGreater(fire, bridge.get_object("C_RimPurple").light_energy)
+        self.assertLessEqual(bridge.get_object("C_MoonLight").light_energy, 0.5)
+        self.assertLessEqual(bridge.world["strength"], 0.15)
+        # flames must not be so strong that tone-mapping washes them out to white
+        self.assertLessEqual(bridge.get_material("C_FlameOuter_Mat").emission_strength, 6.0)
+        self.assertLessEqual(bridge.get_material("C_FlameInner_Mat").emission_strength, 8.0)
 
     def test_day_mode_uses_bright_sky_and_no_moon(self):
         skill, bridge = build_skill()

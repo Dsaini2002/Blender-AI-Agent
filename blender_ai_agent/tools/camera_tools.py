@@ -3,8 +3,13 @@ Camera / Render Tools — Step 2.7
 ===================================
 Hinglish: Same pattern. RenderPreviewTool khaas hai kyunki iska
 output ek IMAGE FILE hai — ye Phase 5 (Vision) ke liye foundation hai.
+
+Advanced: render ab (1) "draft" / width / height se chhota-tez preview le sakta hai (vision check ke liye
+kaafi hai, aur jaldi hota hai), aur (2) result mein file ka saboot deta hai (size + pixel) jab file asal mein
+ban gayi ho.
 """
 
+from ..image_paths import describe_image
 from .base import Permission, Tool, ToolResult
 from .models import CreateCameraInput, RenderPreviewInput, SetCameraInput
 
@@ -53,7 +58,13 @@ class SetCameraTool(Tool):
 
 class RenderPreviewTool(Tool):
     name = "render.preview"
-    description = "Renders the current scene and saves it to a file."
+    description = (
+        "Renders the current scene and saves it to an image file. Use a plain file name like "
+        "'room_preview.png' (any folder you give is ignored on Windows; the file goes to the temp folder). "
+        "The result's `filepath` is the real saved path - pass exactly that to vision.observe. "
+        "Optional: draft=true for a fast small 640x360 preview (enough for a visual check), or width/height "
+        "in pixels. When the file was really written the result also shows size_bytes and width/height."
+    )
     permission = Permission.SAFE_WRITE
     input_model = RenderPreviewInput
 
@@ -61,5 +72,14 @@ class RenderPreviewTool(Tool):
         self._bridge = bridge
 
     def run(self, validated_input: RenderPreviewInput) -> ToolResult:
-        path = self._bridge.render_preview(validated_input.filepath)
-        return ToolResult.ok({"filepath": path})
+        # Hinglish: resolution tabhi bhejte hain jab maangi gayi ho — purana bridge/fake bina badlaav chalta rahe.
+        kwargs = {}
+        resolution = validated_input.resolution()
+        if resolution is not None:
+            kwargs["resolution"] = resolution
+
+        path = self._bridge.render_preview(validated_input.filepath, **kwargs)
+
+        data = {"filepath": path}
+        data.update(describe_image(path))
+        return ToolResult.ok(data)

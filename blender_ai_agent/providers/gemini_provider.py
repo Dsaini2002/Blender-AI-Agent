@@ -18,6 +18,7 @@ import time
 
 from .base import ModelProvider
 from ..agent.models import ModelResponse, ToolCall, Usage
+from ..tools.models import to_plain
 
 
 class RateLimited(Exception):
@@ -159,7 +160,9 @@ class GeminiProvider(ModelProvider):
             for part in candidate.content.parts:
                 if hasattr(part, "function_call") and part.function_call and part.function_call.name:
                     fc = part.function_call
-                    arguments = dict(fc.args) if fc.args else {}
+                    # Hinglish: proto containers (RepeatedComposite/MapComposite) ko asli
+                    # Python list/dict mein badlo — warna isinstance(x, list) checks fail hote hain.
+                    arguments = to_plain(dict(fc.args)) if fc.args else {}
                     tool_calls.append(ToolCall(tool_name=fc.name, arguments=arguments))
                 elif hasattr(part, "text") and part.text:
                     text_content = part.text

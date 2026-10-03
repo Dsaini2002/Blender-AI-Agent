@@ -380,6 +380,267 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
+    # Custom mesh (vertices + faces)
+    # ---------------------------------------------------------
+    def create_mesh(self, name: str, vertices, faces, location=None, rotation=None, scale=None,
+                    shade_smooth: bool = False):
+        """
+        Hinglish: vertices + faces se seedha mesh object banata hai (bpy.data, bpy.ops nahi). Isse cube/cone jaisi
+        primitives se na bannewale shape (triangle, wedge, roof...) ban jaate hain.
+        """
+        def _do():
+            mesh = bpy.data.meshes.new(name)
+            mesh.from_pydata([tuple(v) for v in vertices], [], [tuple(f) for f in faces])
+            mesh.update()
+            mesh.validate()
+            if shade_smooth:
+                for polygon in mesh.polygons:
+                    polygon.use_smooth = True
+
+            obj = bpy.data.objects.new(name=name, object_data=mesh)
+            bpy.context.collection.objects.link(obj)
+
+            if location is not None:
+                obj.location = location
+            if rotation is not None:
+                obj.rotation_euler = rotation
+            if scale is not None:
+                obj.scale = scale
+            return obj
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Mesh damage (broken / chipped / dented / rough)
+    # ---------------------------------------------------------
+    def damage_mesh(self, object_name: str, region: str = "top", portion: float = 0.25, strength: float = 0.15,
+                    style: str = "broken", seed: int = 1, detail: int = 1):
+        """
+        Hinglish: Mesh (ya imported model ke saare mesh-children) ka ek hissa toota/chipped/pichka banata hai.
+        Region WORLD axes mein dekhta hai ("top" = asal mein sabse upar), vertices ko hilata hai aur kuch faces hata
+        deta hai. Mesh dobara nahi banta, isliye UV aur materials bache rehte hain. Algorithm tools/mesh_damage.py mein.
+        """
+        def _do():
+            import bmesh
+            from mathutils import Vector
+
+            from ..tools.mesh_damage import plan_damage, region_vertex_indices
+
+            root = bpy.data.objects.get(object_name)
+            if root is None:
+                return None
+            targets = [root] if root.type == "MESH" else [c for c in root.children_recursive if c.type == "MESH"]
+            if not targets:
+                return None
+
+            bpy.context.view_layer.update()          # matrix_world taaza ho
+
+            parts = []                               # (obj, bm, inverse_matrix, vertex_offset, face_offset)
+            world, faces = [], []
+            try:
+                for obj in targets:
+                    if obj.data.users > 1:           # shared mesh ko sirf isi object ke liye alag kar do
+                        obj.data = obj.data.copy()
+                    matrix = obj.matrix_world.copy()
+                    bm = bmesh.new()
+                    bm.from_mesh(obj.data)
+
+                    if detail > 0 and len(targets) == 1:      # low-poly mein toot saaf dikhne ke liye extra cuts
+                        try:
+                            bm.verts.ensure_lookup_table()
+                            local = [tuple(matrix @ v.co) for v in bm.verts]
+                            in_region = region_vertex_indices(local, region, portion)
+                            edges = [e for e in bm.edges
+                                     if e.verts[0].index in in_region and e.verts[1].index in in_region]
+                            if edges:
+                                bmesh.ops.subdivide_edges(bm, edges=edges, cuts=int(detail), use_grid_fill=True)
+                        except Exception:  # noqa: BLE001 — cuts na lage to bhi damage chalega
+                            pass
+
+                    bm.verts.ensure_lookup_table()
+                    bm.faces.ensure_lookup_table()
+                    vertex_offset, face_offset = len(world), len(faces)
+                    world.extend(tuple(matrix @ v.co) for v in bm.verts)
+                    faces.extend([vertex_offset + v.index for v in f.verts] for f in bm.faces)
+                    parts.append((obj, bm, matrix.inverted(), vertex_offset, face_offset))
+
+                plan = plan_damage(world, faces, region, portion, strength, style, seed)
+
+                removed_total = 0
+                for obj, bm, inverse, vertex_offset, face_offset in parts:
+                    vertex_count, face_count = len(bm.verts), len(bm.faces)
+                    for global_index, position in plan.moves.items():
+                        if vertex_offset <= global_index < vertex_offset + vertex_count:
+                            bm.verts[global_index - vertex_offset].co = inverse @ Vector(position)
+                    doomed = [bm.faces[g - face_offset] for g in plan.remove_faces
+                              if face_offset <= g < face_offset + face_count]
+                    if doomed:
+                        bmesh.ops.delete(bm, geom=doomed, context="FACES")
+                        removed_total += len(doomed)
+                    bm.normal_update()
+                    bm.to_mesh(obj.data)
+                    obj.data.update()
+            finally:
+                for _, bm, _, _, _ in parts:
+                    bm.free()
+
+            return {
+                "object": root.name,
+                "meshes": [o.name for o in targets],
+                "affected_vertices": plan.affected,
+                "moved_vertices": len(plan.moves),
+                "removed_faces": removed_total,
+            }
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Advanced mesh editing (mesh.edit / mesh.script): snapshot -> (worker thread mein compute) -> apply
+    # ---------------------------------------------------------
+    def snapshot_mesh(self, object_name: str):
+        """
+        Hinglish: Mesh (ya imported model ke saare mesh-children) ke WORLD vertices + faces padhta hai. Bhaari hisaab
+        (mesh_engine) Blender ke main thread par nahi, tool ke worker thread par hota hai, taaki Blender atke nahi.
+        """
+        def _do():
+            root = bpy.data.objects.get(object_name)
+            if root is None:
+                return None
+            targets = [root] if root.type == "MESH" else [c for c in root.children_recursive if c.type == "MESH"]
+            if not targets:
+                return None
+            bpy.context.view_layer.update()
+            parts = []
+            for obj in targets:
+                matrix = obj.matrix_world.copy()
+                mesh = obj.data
+                parts.append({
+                    "name": obj.name,
+                    "vertices": [tuple(matrix @ v.co) for v in mesh.vertices],
+                    "faces": [list(p.vertices) for p in mesh.polygons],
+                })
+            return {"root": root.name, "parts": parts}
+
+        return run_on_main_thread(_do)
+
+    def apply_mesh_edit(self, results):
+        """
+        Hinglish: mesh_edit_runner ke natije mesh par lagata hai. Teen tareeke:
+          1. sirf vertices hile  -> vertex coordinates badlo (UV, material sab bache)
+          2. vertices + faces hate -> bmesh se faces delete (UV bache)
+          3. topology badli (subdivide/cut/extrude/shatter) -> mesh dobara banao; material per-face bacha rehta hai,
+             UV reset ho jaate hain (summary mein uv_preserved: False)
+        """
+        def _do():
+            import bmesh
+            from mathutils import Vector
+
+            summary = {"meshes": [], "strategy": [], "uv_preserved": True, "removed_faces": 0,
+                       "vertex_count": 0, "face_count": 0}
+            for item in results:
+                obj = bpy.data.objects.get(item["name"])
+                if obj is None or obj.type != "MESH":
+                    continue
+                if obj.data.users > 1:
+                    obj.data = obj.data.copy()
+                mesh = obj.data
+                inverse = obj.matrix_world.inverted()
+
+                if not item["topology_changed"]:
+                    removed = item["removed_faces"]
+                    if removed:
+                        bm = bmesh.new()
+                        bm.from_mesh(mesh)
+                        bm.verts.ensure_lookup_table()
+                        bm.faces.ensure_lookup_table()
+                        for index, position in enumerate(item["vertices"]):
+                            bm.verts[index].co = inverse @ Vector(position)
+                        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in removed], context="FACES")
+                        bm.normal_update()
+                        bm.to_mesh(mesh)
+                        bm.free()
+                        summary["removed_faces"] += len(removed)
+                        strategy = "moved vertices + removed faces (UVs kept)"
+                    else:
+                        for index, position in enumerate(item["vertices"]):
+                            mesh.vertices[index].co = inverse @ Vector(position)
+                        strategy = "moved vertices (UVs kept)"
+                    mesh.update()
+                else:
+                    old_materials = [p.material_index for p in mesh.polygons]
+                    local = [tuple(inverse @ Vector(p)) for p in item["vertices"]]
+                    mesh.clear_geometry()
+                    mesh.from_pydata(local, [], [list(f) for f in item["faces"]])
+                    mesh.update()
+                    if old_materials:
+                        for polygon, source in zip(mesh.polygons, item["face_source"]):
+                            polygon.material_index = old_materials[source] if 0 <= source < len(old_materials) else old_materials[0]
+                    summary["uv_preserved"] = False
+                    strategy = "rebuilt mesh (materials kept, UVs reset)"
+
+                summary["meshes"].append(obj.name)
+                summary["strategy"].append(strategy)
+                summary["vertex_count"] += len(mesh.vertices)
+                summary["face_count"] += len(mesh.polygons)
+            return summary
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Curves
+    # ---------------------------------------------------------
+    def create_curve(self, name: str, points, curve_type: str = "BEZIER", thickness: float = 0.05,
+                     closed: bool = False, location=None, rotation=None, scale=None,
+                     fill_caps: bool = True, resolution: int = 12):
+        """
+        Hinglish: Ek curve object banata hai (Bezier/Poly/NURBS). `points` = [[x,y,z(,radius)], ...].
+        Har point ka `radius` bevel (thickness) ko us jagah ghata/badha deta hai — isi se
+        flame/branch jaise tapered shapes bante hain. bpy.ops nahi, seedha bpy.data.
+        """
+        def _do():
+            curve_data = bpy.data.curves.new(name=name, type="CURVE")
+            curve_data.dimensions = "3D"
+            curve_data.resolution_u = int(resolution)
+            curve_data.bevel_depth = float(thickness)
+            curve_data.bevel_resolution = 4
+            curve_data.use_fill_caps = bool(fill_caps)
+
+            spline = curve_data.splines.new(curve_type)
+            count = len(points)
+
+            if curve_type == "BEZIER":
+                spline.bezier_points.add(count - 1)
+                for bezier_point, point in zip(spline.bezier_points, points):
+                    bezier_point.co = (point[0], point[1], point[2])
+                    bezier_point.radius = point[3] if len(point) > 3 else 1.0
+                    bezier_point.handle_left_type = "AUTO"
+                    bezier_point.handle_right_type = "AUTO"
+            else:
+                spline.points.add(count - 1)
+                for spline_point, point in zip(spline.points, points):
+                    spline_point.co = (point[0], point[1], point[2], 1.0)
+                    spline_point.radius = point[3] if len(point) > 3 else 1.0
+                if curve_type == "NURBS":
+                    spline.order_u = min(4, count)
+                    spline.use_endpoint_u = True
+
+            spline.use_cyclic_u = bool(closed)
+
+            obj = bpy.data.objects.new(name=name, object_data=curve_data)
+            bpy.context.collection.objects.link(obj)
+
+            if location is not None:
+                obj.location = location
+            if rotation is not None:
+                obj.rotation_euler = rotation
+            if scale is not None:
+                obj.scale = scale
+
+            return obj
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
     # Modifier level — Step 2.6
     # ---------------------------------------------------------
     def add_modifier(self, object_name: str, modifier_name: str, modifier_type: str = "BEVEL"):
@@ -594,24 +855,48 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    def render_preview(self, filepath: str) -> str:
+    def render_preview(self, filepath: str, resolution=None) -> str:
         """
-        Current scene ka render leta hai aur diye gaye filepath pe
-        save karta hai. Agar path invalid/inaccessible ho (jaise
-        root C:\\), safe temp folder mein fallback karta hai.
+        Current scene ka render leta hai aur ek POORE (absolute) path par save karta hai, wahi path return karta hai.
+
+        Hinglish: Pehle "/tmp/x.png" jaisa path Blender ke drive (C:\\tmp) par save hota tha, jabki Python/vision
+        use doosre drive par dhoondhta tha. Ab image_paths.resolve_image_path har tool ke liye ek hi pakka path
+        banata hai. Render ke baad file asal mein bani ya nahi, ye bhi check hota hai. `resolution=(w, h)` se
+        chhota/tez preview mil sakta hai; scene ki apni settings render ke baad wapas rakh di jaati hain.
         """
         import os
         import tempfile
 
+        from ..image_paths import image_format_for, resolve_image_path
+
+        filepath = resolve_image_path(filepath, "preview.png")
         directory = os.path.dirname(filepath)
-        if not directory or not os.access(directory if os.path.isdir(directory) else tempfile.gettempdir(), os.W_OK):
-            filename = os.path.basename(filepath) or "preview.png"
-            filepath = os.path.join(tempfile.gettempdir(), filename)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError:
+            pass
+        if not os.path.isdir(directory) or not os.access(directory, os.W_OK):
+            # Folder likhne layak nahi (jaise C:\\ ka root) -> safe Temp folder
+            filepath = os.path.join(tempfile.gettempdir(), os.path.basename(filepath))
 
         def _do():
             scene = bpy.context.scene
-            scene.render.filepath = filepath
-            bpy.ops.render.render(write_still=True)
+            render = scene.render
+            saved = (render.filepath, render.resolution_x, render.resolution_y,
+                     render.resolution_percentage, render.image_settings.file_format)
+            try:
+                render.filepath = filepath
+                render.image_settings.file_format = image_format_for(filepath)
+                if resolution is not None:
+                    render.resolution_x, render.resolution_y = int(resolution[0]), int(resolution[1])
+                    render.resolution_percentage = 100
+                bpy.ops.render.render(write_still=True)
+            finally:
+                (render.filepath, render.resolution_x, render.resolution_y,
+                 render.resolution_percentage, render.image_settings.file_format) = saved
+
+            if not os.path.isfile(filepath):
+                raise RuntimeError(f"Render finished but no image was written at {filepath}")
             return filepath
 
         return run_on_main_thread(_do)

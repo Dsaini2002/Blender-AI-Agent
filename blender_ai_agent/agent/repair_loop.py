@@ -25,6 +25,7 @@ from .models import Message, ModelRequest, ToolCall
 from .prompts import SYSTEM_PROMPT
 from .state import ConversationState
 from ..reliability.errors import classify_tool_error, classify_validation_error
+from ..reliability.friendly_errors import friendly_error_message, is_quota_error
 from ..reliability.retry import RetryPolicy
 from ..reliability.transaction import TransactionManager
 from ..tools.base import ToolResult
@@ -112,6 +113,9 @@ class RepairableExecutionLoop:
         vision_checked = False
         vision_iterations = 0
         last_vision_issues = None  # None = not yet checked; [] = checked, clean; [...] = issues to fix
+        # Hinglish: vision.observe ka API quota khatam ho jaye to wo OPTIONAL check hai —
+        # poora build rollback nahi hona chahiye. Is flag ke baad vision dobara try nahi hota.
+        vision_unavailable_reason = None
 
         for turn in range(1, self._max_iterations + 1):
             request = self._build_request(state, executed_steps)
@@ -169,7 +173,7 @@ class RepairableExecutionLoop:
                 state.add_assistant_message(response.content)
                 transaction.commit()
                 return RepairRunResult(
-                    reply_text=response.content,
+                    reply_text=self._with_quota_note(response.content, vision_unavailable_reason),
                     executed_steps=executed_steps,
                     turns_used=turn,
                     stopped_reason="stop",
@@ -181,6 +185,14 @@ class RepairableExecutionLoop:
             new_work_this_turn = 0
 
             for step in plan.steps:
+                if vision_unavailable_reason and step.tool_call.tool_name == "vision.observe":
+                    skipped_tool_calls += 1
+                    state.add_tool_result_message(
+                        step.tool_call,
+                        ToolResult.ok({"skipped": True, "note": "vision.observe skipped: API quota exhausted."}),
+                    )
+                    continue
+
                 skip_note = self._skip_reason(step.tool_call, done_keys, render_count)
                 if skip_note is not None:
                     # Hinglish: Model wahi kaam dobara maang raha hai (ya extra
@@ -208,6 +220,21 @@ class RepairableExecutionLoop:
                 executed_steps.append(record)
                 repairs_attempted += repaired_count
                 state_result = record.tool_result
+                vision_quota_hit = (
+                    not record.tool_result.success
+                    and record.tool_call.tool_name == "vision.observe"
+                    and is_quota_error(record.tool_result.error)
+                )
+                if vision_quota_hit:
+                    vision_unavailable_reason = record.tool_result.error
+                    vision_iterations = self.MAX_VISION_ITERATIONS  # nudge band: dobara vision ke liye mat dhakelo
+                    new_work_this_turn -= 1  # ye "naya kaam" nahi tha
+                    self._logger.error("task.vision_quota_exhausted", task_id=task_id)
+                    state.add_tool_result_message(record.tool_call, ToolResult.fail(
+                        "vision.observe is unavailable right now (API quota exhausted). Do NOT call it again. "
+                        "Skip visual verification and finish with a short text summary of what you built."
+                    ))
+                    continue
                 if not state_result.success:
                     # Hinglish: Model ko error ke saath scene ke ASLI object
                     # naam bhi do, taaki wo stale naam (jo user ne manually
@@ -227,7 +254,9 @@ class RepairableExecutionLoop:
                     self._logger.error("task.failed_after_repair", task_id=task_id, tool=record.tool_call.tool_name)
                     transaction.rollback()
                     return RepairRunResult(
-                        reply_text=f"Task failed: {record.tool_result.error}",
+                        reply_text=friendly_error_message(record.tool_result.error, tool_name=record.tool_call.tool_name)
+                        if is_quota_error(record.tool_result.error)
+                        else f"Task failed: {friendly_error_message(record.tool_result.error)}",
                         executed_steps=executed_steps,
                         turns_used=turn,
                         stopped_reason="rollback",
@@ -243,11 +272,11 @@ class RepairableExecutionLoop:
                     transaction.commit()
                     self._logger.info("task.no_progress_stop", task_id=task_id)
                     return RepairRunResult(
-                        reply_text=(
+                        reply_text=self._with_quota_note((
                             f"Done. {len(executed_steps)} tool call(s) completed in {turn} turn(s). "
                             "The model kept repeating steps that were already finished, "
                             "so I stopped early - your scene has NOT been undone."
-                        ),
+                        ), vision_unavailable_reason),
                         executed_steps=executed_steps,
                         turns_used=turn,
                         stopped_reason="no_progress",
@@ -281,7 +310,7 @@ class RepairableExecutionLoop:
             "The scene has NOT been undone - send 'continue' to keep going."
         )
         return RepairRunResult(
-            reply_text=summary,
+            reply_text=self._with_quota_note(summary, vision_unavailable_reason),
             executed_steps=executed_steps,
             turns_used=self._max_iterations,
             stopped_reason="max_iterations_reached",
@@ -293,6 +322,14 @@ class RepairableExecutionLoop:
     # ---------------------------------------------------------
     # Private helpers
     # ---------------------------------------------------------
+    @staticmethod
+    def _with_quota_note(reply: Optional[str], vision_unavailable_reason: Optional[str]) -> Optional[str]:
+        """Hinglish: Vision quota khatam hua tha to reply ke ant mein ek saaf note jodo."""
+        if not vision_unavailable_reason:
+            return reply
+        note = friendly_error_message(vision_unavailable_reason, tool_name="vision.observe")
+        return f"{reply or 'Done.'}\n\n{note}"
+
     def _execute_with_repair(self, tool_call: ToolCall, task_id: str):
         """
         Hinglish: Ek tool call execute karta hai, validate karta hai,

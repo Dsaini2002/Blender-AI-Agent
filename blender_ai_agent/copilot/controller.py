@@ -14,10 +14,12 @@ etc.) mein nahi ghusta — sirf `agent.run(user_message, state)` ya
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from .messages import MessageRole
+from .step_progress import ProgressTracker, format_duration, get_tracker
 from .session import CopilotSession
+from .task_splitter import split_task
 from ..agent.prompts import SYSTEM_PROMPT
 from ..agent.state import ConversationState
 
@@ -33,8 +35,15 @@ class SubmitResult:
 class CopilotController:
 
     def __init__(self, agent, session: Optional[CopilotSession] = None, skill_registry=None,
-                 tool_caller=None):
+                 tool_caller=None, tracker: Optional[ProgressTracker] = None, auto_split: bool = True,
+                 split_min_parts: int = 3, split_max_parts: int = 10):
         self._agent = agent
+        # Hinglish: Progress + bade task ko steps mein todna. auto_split=False ya request chhoti ho to
+        # pehle jaisa hi ek baar mein chalta hai.
+        self._tracker = tracker if tracker is not None else get_tracker()
+        self._auto_split = auto_split
+        self._split_min_parts = split_min_parts
+        self._split_max_parts = split_max_parts
         self.session = session if session is not None else CopilotSession()
         self._cancelled = False
         self._conversation_state = ConversationState(system_prompt=SYSTEM_PROMPT)
@@ -63,6 +72,10 @@ class CopilotController:
 
         Agar submit() call hone se PEHLE hi cancel() ho chuka tha,
         Agent ko call hi nahi karte — turant cancelled result de dete hain.
+
+        Bada request (kam se kam 3 alag kaam: lines / "then" / "phir" / numbering) apne aap chhote steps mein
+        tootkar EK-EK karke chalta hai; har step ke baad progress (percent + bacha hua time) dikhta hai, aur
+        ek step fail ho to baaki chalte rehte hain (har step ka apna rollback hota hai).
         """
         if self._cancelled:
             self.session.add_error_message("Task was cancelled.")
@@ -70,6 +83,128 @@ class CopilotController:
 
         self.session.add_user_message(user_input)
 
+        parts = self._plan(user_input)
+        if len(parts) > 1:
+            return self._run_steps(user_input, parts, on_progress)
+
+        # Hinglish: Chhota/single request — bilkul pehle jaisa: on_progress ASLI haath mein logger tak jaata hai
+        # (koi wrapper nahi, koi extra call nahi). Sirf tracker mein elapsed time darj hota hai taaki panel
+        # "Working 0:12 (usually ~0:20)" dikha sake.
+        self._tracker.begin(user_input)
+        try:
+            result = self._run_one(user_input, on_progress)
+        except BaseException:
+            self._tracker.finish(ok=False)
+            raise
+        self._tracker.finish(ok=result.success)
+        return result
+
+    # ---------------------------------------------------------
+    # Steps + progress
+    # ---------------------------------------------------------
+    def _plan(self, user_input: str) -> List[str]:
+        if not self._auto_split:
+            return [user_input]
+        return split_task(user_input, min_parts=self._split_min_parts, max_parts=self._split_max_parts)
+
+    def _predict_kind(self, part: str) -> str:
+        """'skill' = bina LLM ke tez chalne wala (campfire, tent...), warna 'agent' (LLM wala, dheera)."""
+        try:
+            if self._skill_registry is not None and self._tool_caller is not None \
+                    and self._skill_registry.find_best_match(part) is not None:
+                return "skill"
+        except Exception:  # noqa: BLE001 — sirf andaza hai, kabhi task na roke
+            pass
+        return "agent"
+
+    def _progress_callback(self, on_progress):
+        """Agent ke logger events ko tracker mein ginta hai aur panel ko ek compact progress line bhejta hai."""
+        tracker = self._tracker
+
+        def callback(event, data=None):
+            tracker.note_event(event)
+            if on_progress is not None:
+                on_progress(tracker.status_line(event) or str(event), data or {})
+
+        return callback
+
+    def _push_status(self, on_progress, text: Optional[str] = None) -> None:
+        if on_progress is not None:
+            on_progress(text or self._tracker.status_line(), {})
+
+    @staticmethod
+    def _is_quota_text(text: Optional[str]) -> bool:
+        try:
+            from ..reliability.friendly_errors import is_quota_error
+            return is_quota_error(text)
+        except ImportError:  # pragma: no cover
+            return "quota" in (text or "").lower()
+
+    def _run_steps(self, user_input: str, parts: List[str], on_progress) -> SubmitResult:
+        tracker = self._tracker
+        tracker.begin(user_input, steps=parts, kinds=[self._predict_kind(p) for p in parts])
+        callback = self._progress_callback(on_progress)
+
+        plan = tracker.snapshot()
+        intro = (f"Is request ko {len(parts)} steps mein baanta gaya — ek-ek karke chalega "
+                 f"(andaaza ~{format_duration(plan.eta)}).")
+        self.session.add_assistant_message(intro)
+        self._push_status(on_progress)
+
+        results: List[SubmitResult] = []
+        stopped_reason = ""
+        for index, part in enumerate(parts):
+            if self._cancelled:
+                stopped_reason = "cancelled"
+                break
+
+            tracker.start_step(index)
+            self._push_status(on_progress)
+            try:
+                result = self._run_one(part, callback)
+            except Exception as exc:  # noqa: BLE001 — ek step ki crash baaki steps ko na roke
+                from ..reliability.friendly_errors import friendly_error_message
+                result = SubmitResult(reply_text=friendly_error_message(str(exc)), success=False)
+                self.session.add_error_message(result.reply_text)
+
+            tracker.finish_step(index, result.success, note="" if result.success else (result.reply_text or "")[:200])
+            results.append(result)
+            self._push_status(on_progress)
+
+            if not result.success and self._is_quota_text(result.reply_text):
+                stopped_reason = "quota"          # quota khatam -> aage ke steps bhi fail honge, rok do
+                break
+
+        tracker.skip_remaining(note=stopped_reason or "skipped")
+        all_ok = len(results) == len(parts) and all(r.success for r in results)
+        tracker.finish(ok=all_ok)
+        self._push_status(on_progress)
+
+        summary = self._summarize(parts, results, stopped_reason)
+        if all_ok:
+            self.session.add_assistant_message(summary)
+        else:
+            self.session.add_error_message(summary)
+        return SubmitResult(reply_text=summary, success=all_ok)
+
+    def _summarize(self, parts: List[str], results: List[SubmitResult], stopped_reason: str) -> str:
+        snap = self._tracker.snapshot()
+        done = sum(1 for r in results if r.success)
+        lines = [f"Done {done}/{len(parts)} steps in {format_duration(snap.elapsed)}."]
+        for index, part in enumerate(parts):
+            if index < len(results):
+                if results[index].success:
+                    lines.append(f"✓ {index + 1}. {part}")
+                else:
+                    reason = (results[index].reply_text or "failed").strip().splitlines()[0][:160]
+                    lines.append(f"✗ {index + 1}. {part} — {reason}")
+            else:
+                why = {"quota": "skipped: quota khatam", "cancelled": "skipped: cancelled"}.get(stopped_reason, "skipped")
+                lines.append(f"- {index + 1}. {part} ({why})")
+        return "\n".join(lines)
+
+    def _run_one(self, user_input: str, on_progress=None) -> SubmitResult:
+        """Ek hi request/step: pehle Skill fast-path, warna LLM Agent (purana flow, jaisa tha waisa)."""
         skill_result = self._try_skill_fast_path(user_input)
         if skill_result is not None:
             return skill_result
@@ -80,6 +215,16 @@ class CopilotController:
 
         try:
             run_result = self._agent.run(user_input, state=self._conversation_state)
+        except Exception as exc:  # noqa: BLE001
+            # Hinglish: Provider ka quota/rate-limit error user ko lamba protobuf dump
+            # nahi, ek saaf message dikhana chahiye. Baaki saari exceptions pehle jaisi hi
+            # upar jaati hain (worker thread unhe "Unexpected error" ki tarah dikhata hai).
+            from ..reliability.friendly_errors import friendly_error_message, is_quota_error
+            if not is_quota_error(str(exc)):
+                raise
+            friendly = friendly_error_message(str(exc))
+            self.session.add_error_message(friendly)
+            return SubmitResult(reply_text=friendly, success=False)
         finally:
             if logger is not None:
                 logger.callback = None
@@ -148,7 +293,7 @@ class CopilotController:
             "grey": [0.5, 0.5, 0.5, 1.0], "gray": [0.5, 0.5, 0.5, 1.0],
         }
         text = user_input.lower()
-        context: dict = {}
+        context: dict = {"task": user_input}  # Hinglish: library_props skill ko asli request text chahiye
 
         # Hinglish: "delete the default cube" / "remove the cube and light" jaisa
         # explicit kehna = user ki permission. Tabhi skill startup Cube/Light delete karti hai.

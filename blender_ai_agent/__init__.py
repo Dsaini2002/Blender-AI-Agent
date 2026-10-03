@@ -45,8 +45,16 @@ from .tools.asset_tools import ImportBlendTool, ImportModelTool, ListBlendObject
 from .tools.python_power_tool import PythonPowerTool
 from .tools.retopology_tools import AnalyzeTopologyTool, RetopologyTool
 from .tools.lighting_tools import CreateLightTool, SetWorldTool
+from .tools.curve_tools import CreateCurveTool
+from .tools.mesh_tools import CreateMeshTool, DamageMeshTool
+from .tools.mesh_advanced_tools import (
+    MeshEditTool, MeshHelpTool, MeshLatheTool, MeshPrismTool, MeshScriptTool, MeshSdfTool, MeshTerrainTool,
+)
+from .tools.library_tools import LibraryListTool, LibraryPlaceTool
+from .tools.local_assets_tools import PlaceLocalAssetTool, SearchLocalAssetsTool
 from .tools.template_tools import BuildTemplateTool
 from .vision.tool import VisionObserveTool
+from .ui.progress_panel import AIAGENT_PT_progress, register_progress_timer, unregister_progress_timer
 from .ui.panel import (
     AIAgentPanel,
     AIAGENT_OT_inspect_scene,
@@ -114,6 +122,24 @@ def _register_tools() -> None:
     # Scene mood: lights + world background
     registry.register(CreateLightTool(bridge))
     registry.register(SetWorldTool(bridge))
+
+    # Curves + ready-made model library (campfire, trees, tent...)
+    registry.register(CreateCurveTool(bridge))
+    registry.register(CreateMeshTool(bridge))   # custom vertices+faces shapes
+    registry.register(DamageMeshTool(bridge))   # broken / chipped / dented / rough
+
+    # Advanced mesh toolkit: edit ANY object (preset / operators / formula) + generators (lathe, terrain, sdf, prism)
+    registry.register(MeshEditTool(bridge))
+    registry.register(MeshScriptTool(bridge))
+    registry.register(MeshLatheTool(bridge))
+    registry.register(MeshTerrainTool(bridge))
+    registry.register(MeshSdfTool(bridge))
+    registry.register(MeshPrismTool(bridge))
+    registry.register(MeshHelpTool(bridge))
+    registry.register(LibraryListTool(bridge))
+    registry.register(LibraryPlaceTool(bridge))
+    registry.register(SearchLocalAssetsTool(bridge))
+    registry.register(PlaceLocalAssetTool(bridge))
 
     # Hinglish: PYTHON_EXECUTION - sirf ye zaroori hai jab structured
     # tools (object.create/transform/modifier) us geometry ko achieve
@@ -188,6 +214,7 @@ def get_skill_registry():
         from .skills.builtins.house_builder import HouseBuilderSkill
         from .skills.builtins.product_showcase import ProductShowcaseSkill
         from .skills.builtins.campsite import CampsiteSkill
+        from .skills.builtins.library_props import LibraryPropSkill
 
         tool_caller = get_tool_caller()
 
@@ -195,6 +222,7 @@ def get_skill_registry():
         registry.register(HouseBuilderSkill(tool_caller))
         registry.register(ProductShowcaseSkill(tool_caller))
         registry.register(CampsiteSkill(tool_caller))
+        registry.register(LibraryPropSkill(tool_caller))
         _skill_registry = registry
 
     return _skill_registry
@@ -304,12 +332,14 @@ classes = (
     AIAGENT_OT_switch_provider,
     AIAGENT_OT_run_inspection,
     AIAgentPanel,
+    AIAGENT_PT_progress,   # AI Copilot panel ke andar progress bar + ETA (parent = AIAGENT_PT_panel)
 )
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    register_progress_timer()
     bpy.types.Scene.aiagent_provider_choice = bpy.props.EnumProperty(
         name="Provider",
         description="Choose which AI provider to use",
@@ -359,6 +389,11 @@ def register():
         name="Copilot Running",
         default=False,
     )
+    # Hinglish: Last failure ka saaf (friendly) message — panel mein dikhta hai.
+    bpy.types.Scene.aiagent_last_error = bpy.props.StringProperty(
+        name="Last Error",
+        default="",
+    )
     bpy.types.Scene.aiagent_status_text = bpy.props.StringProperty(
         name="Copilot Status",
         default="",
@@ -386,6 +421,7 @@ def register():
 def unregister():
     global _bridge, _registry, _copilot_controller, _tools_registered
     global _tool_caller, _skill_registry, _provider_registry
+    unregister_progress_timer()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.aiagent_provider_choice
@@ -395,6 +431,7 @@ def unregister():
     del bpy.types.Scene.aiagent_copilot_input
     del bpy.types.Scene.aiagent_is_running
     del bpy.types.Scene.aiagent_status_text
+    del bpy.types.Scene.aiagent_last_error
     del bpy.types.Scene.aiagent_qa_report_text
     del bpy.types.Scene.aiagent_qa_passed
     del bpy.types.Scene.aiagent_qa_retries

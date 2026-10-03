@@ -1,0 +1,2821 @@
+{
+ "_comment": "Prefab model library. Every model is assembled from primitives + curves by library.place. offsets/points are meters, rotations radians, origin = ground centre, +Z up.",
+ "models": {
+  "campfire": {
+   "category": "fire",
+   "size": [
+    1.6,
+    1.6,
+    1.0
+   ],
+   "description": "Stone-ring campfire with 3 crossed logs, glowing embers, 8 curved tapered flame tongues (made from curves) and a warm orange point light.",
+   "aliases": [
+    "campfire",
+    "camp fire",
+    "bonfire",
+    "fire",
+    "fireplace",
+    "aag"
+   ],
+   "materials": {
+    "stone": {
+     "color": [
+      0.45,
+      0.42,
+      0.5
+     ]
+    },
+    "wood": {
+     "color": [
+      0.25,
+      0.1,
+      0.06
+     ]
+    },
+    "ember": {
+     "color": [
+      1.0,
+      0.25,
+      0.03
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.25,
+       0.03
+      ],
+      "strength": 3.0
+     }
+    },
+    "flame_outer": {
+     "color": [
+      1.0,
+      0.25,
+      0.02
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.25,
+       0.02
+      ],
+      "strength": 4.0
+     }
+    },
+    "flame_inner": {
+     "color": [
+      1.0,
+      0.7,
+      0.1
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.7,
+       0.1
+      ],
+      "strength": 6.0
+     }
+    }
+   },
+   "parts": [
+    {
+     "name": "stone1",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.75,
+      0.0,
+      0.08
+     ],
+     "scale": [
+      0.16,
+      0.144,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0.0
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone2",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.5303,
+      0.5303,
+      0.08
+     ],
+     "scale": [
+      0.18,
+      0.162,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0.7854
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone3",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.0,
+      0.75,
+      0.08
+     ],
+     "scale": [
+      0.17,
+      0.153,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      1.5708
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone4",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.5303,
+      0.5303,
+      0.08
+     ],
+     "scale": [
+      0.16,
+      0.144,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      2.3562
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone5",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.75,
+      0.0,
+      0.08
+     ],
+     "scale": [
+      0.18,
+      0.162,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      3.1416
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone6",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.5303,
+      -0.5303,
+      0.08
+     ],
+     "scale": [
+      0.17,
+      0.153,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      3.927
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone7",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.0,
+      -0.75,
+      0.08
+     ],
+     "scale": [
+      0.16,
+      0.144,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      4.7124
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "stone8",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.5303,
+      -0.5303,
+      0.08
+     ],
+     "scale": [
+      0.18,
+      0.162,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      5.4978
+     ],
+     "material": "stone"
+    },
+    {
+     "name": "log1",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.13
+     ],
+     "scale": [
+      0.08,
+      0.08,
+      0.45
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      0.0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "log2",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.13
+     ],
+     "scale": [
+      0.08,
+      0.08,
+      0.45
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      1.0472
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "log3",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.13
+     ],
+     "scale": [
+      0.08,
+      0.08,
+      0.45
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      2.0944
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "embers",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0,
+      0,
+      0.1
+     ],
+     "scale": [
+      0.38,
+      0.38,
+      0.07
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "ember"
+    },
+    {
+     "name": "flame_outer1",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.048,
+       0,
+       0.273,
+       0.95
+      ],
+      [
+       0.112,
+       0,
+       0.546,
+       0.6
+      ],
+      [
+       0.16,
+       0,
+       0.78,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.1,
+     "closed": false,
+     "offset": [
+      0.1337,
+      0.0414,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0.3
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_outer2",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.057,
+       0,
+       0.217,
+       0.95
+      ],
+      [
+       0.133,
+       0,
+       0.434,
+       0.6
+      ],
+      [
+       0.19,
+       0,
+       0.62,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.1,
+     "closed": false,
+     "offset": [
+      0.002,
+      0.14,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      1.5566
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_outer3",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.048,
+       0,
+       0.245,
+       0.95
+      ],
+      [
+       0.112,
+       0,
+       0.49,
+       0.6
+      ],
+      [
+       0.16,
+       0,
+       0.7,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.1,
+     "closed": false,
+     "offset": [
+      -0.1325,
+      0.0451,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      2.8133
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_outer4",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.057,
+       0,
+       0.1925,
+       0.95
+      ],
+      [
+       0.133,
+       0,
+       0.385,
+       0.6
+      ],
+      [
+       0.19,
+       0,
+       0.55,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.1,
+     "closed": false,
+     "offset": [
+      -0.0839,
+      -0.1121,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      4.0699
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_outer5",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.048,
+       0,
+       0.231,
+       0.95
+      ],
+      [
+       0.112,
+       0,
+       0.462,
+       0.6
+      ],
+      [
+       0.16,
+       0,
+       0.66,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.1,
+     "closed": false,
+     "offset": [
+      0.0807,
+      -0.1144,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      5.3265
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_inner1",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.018,
+       0,
+       0.175,
+       0.95
+      ],
+      [
+       0.042,
+       0,
+       0.35,
+       0.6
+      ],
+      [
+       0.06,
+       0,
+       0.5,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      0.0311,
+      0.0392,
+      0.12
+     ],
+     "rotation": [
+      0,
+      0,
+      0.9
+     ],
+     "material": "flame_inner"
+    },
+    {
+     "name": "flame_inner2",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.018,
+       0,
+       0.154,
+       0.95
+      ],
+      [
+       0.042,
+       0,
+       0.308,
+       0.6
+      ],
+      [
+       0.06,
+       0,
+       0.44,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      -0.0495,
+      0.0073,
+      0.12
+     ],
+     "rotation": [
+      0,
+      0,
+      2.9944
+     ],
+     "material": "flame_inner"
+    },
+    {
+     "name": "flame_inner3",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.018,
+       0,
+       0.133,
+       0.95
+      ],
+      [
+       0.042,
+       0,
+       0.266,
+       0.6
+      ],
+      [
+       0.06,
+       0,
+       0.38,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      0.0184,
+      -0.0465,
+      0.12
+     ],
+     "rotation": [
+      0,
+      0,
+      5.0888
+     ],
+     "material": "flame_inner"
+    }
+   ],
+   "lights": [
+    {
+     "name": "light",
+     "type": "POINT",
+     "offset": [
+      0,
+      0,
+      0.8
+     ],
+     "color": [
+      1.0,
+      0.5,
+      0.15
+     ],
+     "energy": 900,
+     "size": 0.3,
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  "torch": {
+   "category": "fire",
+   "size": [
+    0.3,
+    0.3,
+    1.7
+   ],
+   "description": "Hand torch: wooden stick, cloth wrap, 4 curved flame tongues and a warm point light.",
+   "aliases": [
+    "torch",
+    "mashal"
+   ],
+   "materials": {
+    "wood": {
+     "color": [
+      0.3,
+      0.15,
+      0.08
+     ]
+    },
+    "cloth": {
+     "color": [
+      0.12,
+      0.08,
+      0.06
+     ]
+    },
+    "flame_outer": {
+     "color": [
+      1.0,
+      0.25,
+      0.02
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.25,
+       0.02
+      ],
+      "strength": 4.0
+     }
+    },
+    "flame_inner": {
+     "color": [
+      1.0,
+      0.7,
+      0.1
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.7,
+       0.1
+      ],
+      "strength": 6.0
+     }
+    }
+   },
+   "parts": [
+    {
+     "name": "stick",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.6
+     ],
+     "scale": [
+      0.05,
+      0.05,
+      0.6
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "wrap",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      1.18
+     ],
+     "scale": [
+      0.085,
+      0.085,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cloth"
+    },
+    {
+     "name": "flame1",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.021,
+       0,
+       0.14,
+       0.95
+      ],
+      [
+       0.049,
+       0,
+       0.28,
+       0.6
+      ],
+      [
+       0.07,
+       0,
+       0.4,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      0.03,
+      0.0,
+      1.25
+     ],
+     "rotation": [
+      0,
+      0,
+      0.0
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame2",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.021,
+       0,
+       0.1225,
+       0.95
+      ],
+      [
+       0.049,
+       0,
+       0.245,
+       0.6
+      ],
+      [
+       0.07,
+       0,
+       0.35,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      -0.015,
+      0.026,
+      1.25
+     ],
+     "rotation": [
+      0,
+      0,
+      2.0944
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame3",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.021,
+       0,
+       0.105,
+       0.95
+      ],
+      [
+       0.049,
+       0,
+       0.21,
+       0.6
+      ],
+      [
+       0.07,
+       0,
+       0.3,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.06,
+     "closed": false,
+     "offset": [
+      -0.015,
+      -0.026,
+      1.25
+     ],
+     "rotation": [
+      0,
+      0,
+      4.1888
+     ],
+     "material": "flame_outer"
+    },
+    {
+     "name": "flame_core",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.0,
+       0,
+       0.098,
+       0.95
+      ],
+      [
+       0.0,
+       0,
+       0.196,
+       0.6
+      ],
+      [
+       0.0,
+       0,
+       0.28,
+       0.12
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.04,
+     "closed": false,
+     "offset": [
+      0.0,
+      0.0,
+      1.27
+     ],
+     "rotation": [
+      0,
+      0,
+      0.0
+     ],
+     "material": "flame_inner"
+    }
+   ],
+   "lights": [
+    {
+     "name": "light",
+     "type": "POINT",
+     "offset": [
+      0,
+      0,
+      1.5
+     ],
+     "color": [
+      1.0,
+      0.5,
+      0.15
+     ],
+     "energy": 250,
+     "size": 0.15,
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  "lantern": {
+   "category": "light",
+   "size": [
+    0.35,
+    0.35,
+    0.75
+   ],
+   "description": "Glowing lantern: base, cap, emissive glass, curved bezier handle and a warm point light.",
+   "aliases": [
+    "lantern"
+   ],
+   "materials": {
+    "metal": {
+     "color": [
+      0.12,
+      0.12,
+      0.14
+     ]
+    },
+    "glass": {
+     "color": [
+      1.0,
+      0.75,
+      0.3
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.7,
+       0.25
+      ],
+      "strength": 6.0
+     }
+    }
+   },
+   "parts": [
+    {
+     "name": "base",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.03
+     ],
+     "scale": [
+      0.14,
+      0.14,
+      0.03
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    },
+    {
+     "name": "cap",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.46
+     ],
+     "scale": [
+      0.15,
+      0.15,
+      0.03
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    },
+    {
+     "name": "glass",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.245
+     ],
+     "scale": [
+      0.11,
+      0.11,
+      0.185
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "glass"
+    },
+    {
+     "name": "handle",
+     "kind": "curve",
+     "points": [
+      [
+       -0.12,
+       0,
+       0.49
+      ],
+      [
+       -0.1,
+       0,
+       0.68
+      ],
+      [
+       0.1,
+       0,
+       0.68
+      ],
+      [
+       0.12,
+       0,
+       0.49
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.012,
+     "closed": false,
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    }
+   ],
+   "lights": [
+    {
+     "name": "light",
+     "type": "POINT",
+     "offset": [
+      0,
+      0,
+      0.25
+     ],
+     "color": [
+      1.0,
+      0.65,
+      0.25
+     ],
+     "energy": 150,
+     "size": 0.1,
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  "pine_tree": {
+   "category": "nature",
+   "size": [
+    2.6,
+    2.6,
+    4.3
+   ],
+   "description": "Low-poly pine tree: trunk plus 3 stacked cones (about 4.3 m tall).",
+   "aliases": [
+    "pine tree",
+    "pine",
+    "fir tree",
+    "christmas tree"
+   ],
+   "materials": {
+    "trunk": {
+     "color": [
+      0.25,
+      0.1,
+      0.08
+     ]
+    },
+    "leaves": {
+     "color": [
+      0.09,
+      0.22,
+      0.22
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "trunk",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.5
+     ],
+     "scale": [
+      0.15,
+      0.15,
+      0.5
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "trunk"
+    },
+    {
+     "name": "tier1",
+     "kind": "mesh",
+     "primitive": "CONE",
+     "offset": [
+      0,
+      0,
+      1.65
+     ],
+     "scale": [
+      1.3,
+      1.3,
+      0.75
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "tier2",
+     "kind": "mesh",
+     "primitive": "CONE",
+     "offset": [
+      0,
+      0,
+      2.65
+     ],
+     "scale": [
+      1.0,
+      1.0,
+      0.75
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "tier3",
+     "kind": "mesh",
+     "primitive": "CONE",
+     "offset": [
+      0,
+      0,
+      3.55
+     ],
+     "scale": [
+      0.7,
+      0.7,
+      0.75
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    }
+   ],
+   "lights": []
+  },
+  "round_tree": {
+   "category": "nature",
+   "size": [
+    2.6,
+    2.6,
+    3.7
+   ],
+   "description": "Round-canopy tree: trunk, two tapered curved branches and 4 overlapping foliage blobs (about 3.7 m tall).",
+   "aliases": [
+    "tree",
+    "round tree",
+    "oak tree"
+   ],
+   "materials": {
+    "trunk": {
+     "color": [
+      0.28,
+      0.14,
+      0.08
+     ]
+    },
+    "leaves": {
+     "color": [
+      0.15,
+      0.42,
+      0.12
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "trunk",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.9
+     ],
+     "scale": [
+      0.18,
+      0.18,
+      0.9
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "trunk"
+    },
+    {
+     "name": "branch1",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.3,
+       0,
+       0.35,
+       0.8
+      ],
+      [
+       0.75,
+       0,
+       0.7,
+       0.4
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.09,
+     "closed": false,
+     "offset": [
+      0,
+      0,
+      1.3
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "trunk"
+    },
+    {
+     "name": "branch2",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0,
+       1.0
+      ],
+      [
+       0.3,
+       0,
+       0.35,
+       0.8
+      ],
+      [
+       0.75,
+       0,
+       0.7,
+       0.4
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.09,
+     "closed": false,
+     "offset": [
+      0,
+      0,
+      1.2
+     ],
+     "rotation": [
+      0,
+      0,
+      3.1416
+     ],
+     "material": "trunk"
+    },
+    {
+     "name": "crown_main",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0,
+      0,
+      2.5
+     ],
+     "scale": [
+      1.15,
+      1.15,
+      0.95
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "crown_side1",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.75,
+      0.2,
+      2.15
+     ],
+     "scale": [
+      0.8,
+      0.8,
+      0.7
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "crown_side2",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.7,
+      -0.3,
+      2.2
+     ],
+     "scale": [
+      0.8,
+      0.8,
+      0.7
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "crown_top",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0,
+      0,
+      3.15
+     ],
+     "scale": [
+      0.7,
+      0.7,
+      0.55
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    }
+   ],
+   "lights": []
+  },
+  "bush": {
+   "category": "nature",
+   "size": [
+    1.4,
+    1.0,
+    0.8
+   ],
+   "description": "Low-poly bush made of 3 overlapping blobs.",
+   "aliases": [
+    "bush",
+    "shrub"
+   ],
+   "materials": {
+    "leaves": {
+     "color": [
+      0.12,
+      0.38,
+      0.14
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "blob1",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0,
+      0,
+      0.35
+     ],
+     "scale": [
+      0.5,
+      0.5,
+      0.4
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "blob2",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.45,
+      0.1,
+      0.28
+     ],
+     "scale": [
+      0.4,
+      0.4,
+      0.32
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    },
+    {
+     "name": "blob3",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      -0.4,
+      -0.05,
+      0.26
+     ],
+     "scale": [
+      0.38,
+      0.38,
+      0.3
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leaves"
+    }
+   ],
+   "lights": []
+  },
+  "rock": {
+   "category": "nature",
+   "size": [
+    1.4,
+    1.1,
+    0.7
+   ],
+   "description": "Boulder: a large flattened rock with a smaller one leaning on it.",
+   "aliases": [
+    "rock",
+    "stone",
+    "boulder"
+   ],
+   "materials": {
+    "rock": {
+     "color": [
+      0.32,
+      0.3,
+      0.5
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "main",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0,
+      0,
+      0.28
+     ],
+     "scale": [
+      0.7,
+      0.55,
+      0.4
+     ],
+     "rotation": [
+      0,
+      0,
+      0.5
+     ],
+     "material": "rock"
+    },
+    {
+     "name": "small",
+     "kind": "mesh",
+     "primitive": "ICOSPHERE",
+     "offset": [
+      0.65,
+      0.35,
+      0.14
+     ],
+     "scale": [
+      0.3,
+      0.26,
+      0.2
+     ],
+     "rotation": [
+      0,
+      0,
+      1.1
+     ],
+     "material": "rock"
+    }
+   ],
+   "lights": []
+  },
+  "log_seat": {
+   "category": "camp",
+   "size": [
+    1.4,
+    0.45,
+    0.45
+   ],
+   "description": "Lying log you can sit on (about 1.4 m long).",
+   "aliases": [
+    "log",
+    "log seat"
+   ],
+   "materials": {
+    "wood": {
+     "color": [
+      0.55,
+      0.18,
+      0.12
+     ]
+    },
+    "ring": {
+     "color": [
+      0.8,
+      0.6,
+      0.4
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "trunk",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.23
+     ],
+     "scale": [
+      0.22,
+      0.22,
+      0.7
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "end1",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0.7,
+      0,
+      0.23
+     ],
+     "scale": [
+      0.19,
+      0.19,
+      0.02
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      0
+     ],
+     "material": "ring"
+    },
+    {
+     "name": "end2",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      -0.7,
+      0,
+      0.23
+     ],
+     "scale": [
+      0.19,
+      0.19,
+      0.02
+     ],
+     "rotation": [
+      0,
+      1.5708,
+      0
+     ],
+     "material": "ring"
+    }
+   ],
+   "lights": []
+  },
+  "stool": {
+   "category": "camp",
+   "size": [
+    0.7,
+    0.7,
+    0.58
+   ],
+   "description": "Folding camp stool: blue seat and 4 thin metal legs.",
+   "aliases": [
+    "stool",
+    "folding stool",
+    "camp stool"
+   ],
+   "materials": {
+    "seat": {
+     "color": [
+      0.2,
+      0.5,
+      0.8
+     ]
+    },
+    "leg": {
+     "color": [
+      0.7,
+      0.72,
+      0.8
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "seat",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      0,
+      0,
+      0.55
+     ],
+     "scale": [
+      0.32,
+      0.32,
+      0.03
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "seat"
+    },
+    {
+     "name": "leg1",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0.26,
+      0.26,
+      0.27
+     ],
+     "scale": [
+      0.025,
+      0.025,
+      0.27
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leg"
+    },
+    {
+     "name": "leg2",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0.26,
+      -0.26,
+      0.27
+     ],
+     "scale": [
+      0.025,
+      0.025,
+      0.27
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leg"
+    },
+    {
+     "name": "leg3",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      -0.26,
+      0.26,
+      0.27
+     ],
+     "scale": [
+      0.025,
+      0.025,
+      0.27
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leg"
+    },
+    {
+     "name": "leg4",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      -0.26,
+      -0.26,
+      0.27
+     ],
+     "scale": [
+      0.025,
+      0.025,
+      0.27
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "leg"
+    }
+   ],
+   "lights": []
+  },
+  "tent": {
+   "category": "camp",
+   "size": [
+    4.1,
+    2.0,
+    1.1
+   ],
+   "description": "A-frame camping tent made of real flat panels: blue/green slopes, two closed triangular ends and a floor, with two guy ropes (curves) and stakes. Sits flat on the ground, no ground plane needed.",
+   "aliases": [
+    "tent"
+   ],
+   "materials": {
+    "left": {
+     "color": [
+      0.3,
+      0.5,
+      0.7
+     ]
+    },
+    "right": {
+     "color": [
+      0.3,
+      0.7,
+      0.4
+     ]
+    },
+    "end": {
+     "color": [
+      0.22,
+      0.4,
+      0.3
+     ]
+    },
+    "rope": {
+     "color": [
+      0.75,
+      0.7,
+      0.55
+     ]
+    },
+    "floor": {
+     "color": [
+      0.12,
+      0.14,
+      0.12
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "panel_left",
+     "kind": "mesh_data",
+     "vertices": [
+      [
+       -1.2,
+       -1.0,
+       0
+      ],
+      [
+       1.2,
+       -1.0,
+       0
+      ],
+      [
+       1.2,
+       0,
+       1.1
+      ],
+      [
+       -1.2,
+       0,
+       1.1
+      ]
+     ],
+     "faces": [
+      [
+       0,
+       1,
+       2,
+       3
+      ]
+     ],
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1,
+      1
+     ],
+     "material": "left"
+    },
+    {
+     "name": "panel_right",
+     "kind": "mesh_data",
+     "vertices": [
+      [
+       -1.2,
+       1.0,
+       0
+      ],
+      [
+       1.2,
+       1.0,
+       0
+      ],
+      [
+       1.2,
+       0,
+       1.1
+      ],
+      [
+       -1.2,
+       0,
+       1.1
+      ]
+     ],
+     "faces": [
+      [
+       0,
+       3,
+       2,
+       1
+      ]
+     ],
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1,
+      1
+     ],
+     "material": "right"
+    },
+    {
+     "name": "end_front",
+     "kind": "mesh_data",
+     "vertices": [
+      [
+       1.2,
+       -1.0,
+       0
+      ],
+      [
+       1.2,
+       1.0,
+       0
+      ],
+      [
+       1.2,
+       0,
+       1.1
+      ]
+     ],
+     "faces": [
+      [
+       0,
+       1,
+       2
+      ]
+     ],
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1,
+      1
+     ],
+     "material": "end"
+    },
+    {
+     "name": "end_back",
+     "kind": "mesh_data",
+     "vertices": [
+      [
+       -1.2,
+       -1.0,
+       0
+      ],
+      [
+       -1.2,
+       1.0,
+       0
+      ],
+      [
+       -1.2,
+       0,
+       1.1
+      ]
+     ],
+     "faces": [
+      [
+       0,
+       2,
+       1
+      ]
+     ],
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1,
+      1
+     ],
+     "material": "end"
+    },
+    {
+     "name": "floor",
+     "kind": "mesh_data",
+     "vertices": [
+      [
+       -1.2,
+       -1.0,
+       0.01
+      ],
+      [
+       1.2,
+       -1.0,
+       0.01
+      ],
+      [
+       1.2,
+       1.0,
+       0.01
+      ],
+      [
+       -1.2,
+       1.0,
+       0.01
+      ]
+     ],
+     "faces": [
+      [
+       0,
+       3,
+       2,
+       1
+      ]
+     ],
+     "offset": [
+      0,
+      0,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1,
+      1
+     ],
+     "material": "floor"
+    },
+    {
+     "name": "rope1",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0.45,
+       0,
+       -0.55
+      ],
+      [
+       0.9,
+       0,
+       -1.1
+      ]
+     ],
+     "curve_type": "POLY",
+     "thickness": 0.012,
+     "closed": false,
+     "offset": [
+      1.2,
+      0,
+      1.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "rope"
+    },
+    {
+     "name": "stake1",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      2.1,
+      0,
+      0.06
+     ],
+     "scale": [
+      0.02,
+      0.02,
+      0.07
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "rope"
+    },
+    {
+     "name": "rope2",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       -0.45,
+       0,
+       -0.55
+      ],
+      [
+       -0.9,
+       0,
+       -1.1
+      ]
+     ],
+     "curve_type": "POLY",
+     "thickness": 0.012,
+     "closed": false,
+     "offset": [
+      -1.2,
+      0,
+      1.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "rope"
+    },
+    {
+     "name": "stake2",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      -2.1,
+      0,
+      0.06
+     ],
+     "scale": [
+      0.02,
+      0.02,
+      0.07
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "rope"
+    }
+   ],
+   "lights": []
+  },
+  "mushroom": {
+   "category": "nature",
+   "size": [
+    0.6,
+    0.4,
+    0.3
+   ],
+   "description": "A pair of red-capped mushrooms.",
+   "aliases": [
+    "mushroom",
+    "mushrooms"
+   ],
+   "materials": {
+    "stem": {
+     "color": [
+      0.9,
+      0.85,
+      0.75
+     ]
+    },
+    "cap": {
+     "color": [
+      0.8,
+      0.1,
+      0.12
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "stem1",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.12
+     ],
+     "scale": [
+      0.04,
+      0.04,
+      0.12
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "stem"
+    },
+    {
+     "name": "cap1",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0,
+      0,
+      0.26
+     ],
+     "scale": [
+      0.13,
+      0.13,
+      0.08
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cap"
+    },
+    {
+     "name": "stem2",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0.35,
+      -0.1,
+      0.09
+     ],
+     "scale": [
+      0.03,
+      0.03,
+      0.09
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "stem"
+    },
+    {
+     "name": "cap2",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0.35,
+      -0.1,
+      0.2
+     ],
+     "scale": [
+      0.1,
+      0.1,
+      0.06
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cap"
+    }
+   ],
+   "lights": []
+  },
+  "fence": {
+   "category": "structure",
+   "size": [
+    2.1,
+    0.1,
+    1.0
+   ],
+   "description": "2 m wooden fence segment (3 posts, 2 rails). Place several side by side to make a longer fence.",
+   "aliases": [
+    "fence"
+   ],
+   "materials": {
+    "wood": {
+     "color": [
+      0.45,
+      0.3,
+      0.16
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "post1",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      -1.0,
+      0,
+      0.5
+     ],
+     "scale": [
+      0.05,
+      0.05,
+      0.5
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "post2",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      0.0,
+      0,
+      0.5
+     ],
+     "scale": [
+      0.05,
+      0.05,
+      0.5
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "post3",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      1.0,
+      0,
+      0.5
+     ],
+     "scale": [
+      0.05,
+      0.05,
+      0.5
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "rail_low",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      0,
+      0,
+      0.35
+     ],
+     "scale": [
+      1.0,
+      0.02,
+      0.05
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    },
+    {
+     "name": "rail_high",
+     "kind": "mesh",
+     "primitive": "CUBE",
+     "offset": [
+      0,
+      0,
+      0.75
+     ],
+     "scale": [
+      1.0,
+      0.02,
+      0.05
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "wood"
+    }
+   ],
+   "lights": []
+  },
+  "street_lamp": {
+   "category": "light",
+   "size": [
+    0.9,
+    0.3,
+    3.9
+   ],
+   "description": "Street lamp: pole, curved bezier arm, glowing bulb and a warm-white point light (about 3.9 m tall).",
+   "aliases": [
+    "street lamp",
+    "street light",
+    "lamp post",
+    "lamppost"
+   ],
+   "materials": {
+    "metal": {
+     "color": [
+      0.1,
+      0.1,
+      0.12
+     ]
+    },
+    "bulb": {
+     "color": [
+      1.0,
+      0.9,
+      0.6
+     ],
+     "emission": {
+      "color": [
+       1.0,
+       0.85,
+       0.5
+      ],
+      "strength": 8.0
+     }
+    }
+   },
+   "parts": [
+    {
+     "name": "base",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      0.1
+     ],
+     "scale": [
+      0.15,
+      0.15,
+      0.1
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    },
+    {
+     "name": "pole",
+     "kind": "mesh",
+     "primitive": "CYLINDER",
+     "offset": [
+      0,
+      0,
+      1.8
+     ],
+     "scale": [
+      0.06,
+      0.06,
+      1.8
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    },
+    {
+     "name": "arm",
+     "kind": "curve",
+     "points": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0.3
+      ],
+      [
+       0.35,
+       0,
+       0.5
+      ],
+      [
+       0.7,
+       0,
+       0.45
+      ]
+     ],
+     "curve_type": "BEZIER",
+     "thickness": 0.04,
+     "closed": false,
+     "offset": [
+      0,
+      0,
+      3.4
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "metal"
+    },
+    {
+     "name": "bulb",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0.7,
+      0,
+      3.8
+     ],
+     "scale": [
+      0.12,
+      0.12,
+      0.12
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "bulb"
+    }
+   ],
+   "lights": [
+    {
+     "name": "light",
+     "type": "POINT",
+     "offset": [
+      0.7,
+      0,
+      3.7
+     ],
+     "color": [
+      1.0,
+      0.85,
+      0.55
+     ],
+     "energy": 400,
+     "size": 0.12,
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  "cloud": {
+   "category": "sky",
+   "size": [
+    3.8,
+    1.6,
+    1.2
+   ],
+   "description": "Puffy cloud made of 4 overlapping spheres. Place it high (z around 8-10) for a sky.",
+   "aliases": [
+    "cloud"
+   ],
+   "materials": {
+    "cloud": {
+     "color": [
+      0.9,
+      0.9,
+      1.0
+     ]
+    }
+   },
+   "parts": [
+    {
+     "name": "puff1",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      -1.1,
+      0,
+      0
+     ],
+     "scale": [
+      1.3,
+      0.9,
+      0.6
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cloud"
+    },
+    {
+     "name": "puff2",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0,
+      0.1,
+      0.3
+     ],
+     "scale": [
+      1.6,
+      1.1,
+      0.8
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cloud"
+    },
+    {
+     "name": "puff3",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      1.1,
+      0,
+      0
+     ],
+     "scale": [
+      1.3,
+      0.9,
+      0.6
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cloud"
+    },
+    {
+     "name": "puff4",
+     "kind": "mesh",
+     "primitive": "SPHERE",
+     "offset": [
+      0.2,
+      -0.3,
+      -0.1
+     ],
+     "scale": [
+      1.2,
+      0.8,
+      0.5
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "material": "cloud"
+    }
+   ],
+   "lights": []
+  }
+ }
+}

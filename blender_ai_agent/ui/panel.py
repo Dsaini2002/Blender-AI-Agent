@@ -8,6 +8,19 @@ Hinglish: Ab user Blender sidebar se hi AI provider AUR model
 import bpy
 
 
+
+def _set_last_error(scene, message):
+    """
+    Hinglish: Panel ke "last error" box ke liye message save karta hai. Agar addon ki
+    __init__.py purani hai (property register hi nahi hui) to crash nahi karte —
+    sirf box nahi dikhega, baaki sab (report popup) chalta rahega.
+    """
+    try:
+        scene.aiagent_last_error = message
+    except AttributeError:
+        pass
+
+
 class AIAGENT_OT_switch_provider(bpy.types.Operator):
     """Selected provider + model ke saath naya Copilot controller banata hai."""
 
@@ -86,6 +99,7 @@ class AIAGENT_OT_copilot_submit(bpy.types.Operator):
                 progress_queue.put(("error", str(exc)))
 
         context.scene.aiagent_copilot_input = ""
+        _set_last_error(context.scene, "")
         context.scene.aiagent_is_running = True
         context.scene.aiagent_status_text = "Starting..."
 
@@ -116,15 +130,28 @@ class AIAGENT_OT_copilot_submit(bpy.types.Operator):
                             area.tag_redraw()
 
                 elif kind == "done":
+                    from ..reliability.friendly_errors import friendly_error_message
+
                     result = payload
                     if result.success:
                         self.report({'INFO'}, result.reply_text or "Done.")
                     else:
-                        self.report({'ERROR'}, result.reply_text or "Task failed.")
+                        # Hinglish: raw provider dump (429 protobuf) nahi — saaf message,
+                        # aur wahi panel ke andar bhi dikhta hai (popup band hone ke baad bhi).
+                        message = friendly_error_message(result.reply_text or "Task failed.")
+                        _set_last_error(context.scene, message)
+                        self.report({'ERROR'}, message)
                     return self._finish(context)
 
                 elif kind == "error":
-                    self.report({'ERROR'}, f"Unexpected error: {payload}")
+                    from ..reliability.friendly_errors import friendly_error_message, is_quota_error
+
+                    if is_quota_error(payload):
+                        message = friendly_error_message(payload)
+                    else:
+                        message = f"Unexpected error: {friendly_error_message(payload)}"
+                    _set_last_error(context.scene, message)
+                    self.report({'ERROR'}, message)
                     return self._finish(context)
         except Exception:
             pass
@@ -245,6 +272,18 @@ class AIAgentPanel(bpy.types.Panel):
             status = context.scene.aiagent_status_text
             if status:
                 box.label(text=status)
+
+        # Hinglish: Last error panel ke andar dikhao (popup gayab hone ke baad bhi
+        # user ko dikhe). Blender labels wrap nahi hote, isliye lines mein todte hain.
+        last_error = getattr(context.scene, "aiagent_last_error", "")
+        if last_error and not is_running:
+            import textwrap
+
+            box = layout.box()
+            lines = textwrap.wrap(last_error, width=44) or [last_error]
+            box.label(text=lines[0], icon='ERROR')
+            for line in lines[1:]:
+                box.label(text=line)
 
         layout.separator()
         layout.label(text="Debug Tools")

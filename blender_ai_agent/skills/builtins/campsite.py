@@ -95,7 +95,7 @@ class CampsiteSkill(Skill):
         "from a single request, e.g. 'make a campsite' or 'create a night camping scene'."
     )
 
-    _TRIGGER = re.compile(r"\b(camp|camps|camping|campsite|campfire|bonfire|tent)\b|camp\s+(site|fire)")
+    _TRIGGER = re.compile(r"\b(camp|camps|camping|campsite)\b|camp\s+site")
 
     def can_handle(self, task: str) -> float:
         return 1.0 if self._TRIGGER.search(task.lower()) else 0.0
@@ -171,7 +171,7 @@ class CampsiteSkill(Skill):
     # -------------------------- scene parts ---------------------------
     def _build_ground(self) -> None:
         self._obj("ground", "Ground", "PLANE", (0.0, 0.0, 0.0), scale=(14.0, 14.0, 1.0),
-                  material=self._mat("Ground", [0.28, 0.12, 0.14, 1.0]))
+                  material=self._mat("Ground", [0.16, 0.07, 0.09, 1.0]))
 
     def _build_tent(self) -> None:
         # A-frame: base half-width w, height h. Panels CUBE (2m default) -> scale = size/2.
@@ -194,6 +194,21 @@ class CampsiteSkill(Skill):
                 material=mat,
             )
 
+        # Hinglish: Dono sirey (triangle) — ek patla CUBE jo 45 degree ghuma hua hai ek "diamond"
+        # banata hai; uska neeche wala aadha zameen ke andar chhup jaata hai, bacha hua upar ka
+        # aadha triangle ban jaata hai. Isse tent side se sirf ek tirchi plate nahi lagta.
+        end_mat = self._mat("TentEnd", [0.22, 0.4, 0.3, 1.0])
+        cap_half = w / math.sqrt(2)  # diamond ka half-diagonal = w
+        for suffix, sign in (("EndFront", 1), ("EndBack", -1)):
+            x, y = self._rot_xy(sign * half_len, 0.0, _TENT_YAW)
+            self._obj(
+                "tent", suffix, "CUBE",
+                (_TENT_POS[0] + x, _TENT_POS[1] + y, 0.0),
+                scale=(0.03, cap_half, cap_half),
+                rotation=(math.pi / 4, 0.0, _TENT_YAW),
+                material=end_mat,
+            )
+
     def _build_campfire(self) -> None:
         stone_mat = self._mat("Stone", [0.45, 0.42, 0.5, 1.0])
         for i in range(8):
@@ -207,10 +222,12 @@ class CampsiteSkill(Skill):
             self._obj("campfire", f"FireLog{i + 1}", "CYLINDER", (0.0, 0.0, 0.12),
                       scale=(0.08, 0.08, 0.45), rotation=(0.0, math.pi / 2, yaw), material=wood_mat)
 
-        flame_outer = self._mat("FlameOuter", [1.0, 0.35, 0.05, 1.0],
-                                emission=([1.0, 0.35, 0.05], 10.0))
-        flame_inner = self._mat("FlameInner", [1.0, 0.85, 0.2, 1.0],
-                                emission=([1.0, 0.85, 0.2], 15.0))
+        # Hinglish: Emission 10-15 par tone-mapping flame ko safed/peach bana deta tha.
+        # Kam strength + gehra colour = asli orange/peela flame.
+        flame_outer = self._mat("FlameOuter", [1.0, 0.25, 0.02, 1.0],
+                                emission=([1.0, 0.25, 0.02], 4.0))
+        flame_inner = self._mat("FlameInner", [1.0, 0.7, 0.1, 1.0],
+                                emission=([1.0, 0.7, 0.1], 6.0))
         self._obj("campfire", "FlameOuter", "CONE", (0.0, 0.0, 0.65),
                   scale=(0.32, 0.32, 0.55), material=flame_outer)
         self._obj("campfire", "FlameInner", "CONE", (0.0, 0.0, 0.45),
@@ -264,7 +281,7 @@ class CampsiteSkill(Skill):
     def _build_trees(self) -> None:
         n = self._p.tree_count
         trunk_mat = self._mat("Trunk", [0.25, 0.1, 0.08, 1.0])
-        leaf_mat = self._mat("PineLeaves", [0.12, 0.3, 0.28, 1.0])
+        leaf_mat = self._mat("PineLeaves", [0.09, 0.22, 0.22, 1.0])
 
         for i in range(n):
             # Back arc (y > 0), evenly spaced + jitter, kept away from other props.
@@ -288,9 +305,9 @@ class CampsiteSkill(Skill):
 
     def _build_sky_objects(self) -> None:
         if self._p.night:
-            moon_mat = self._mat("Moon", [1.0, 0.95, 0.7, 1.0], emission=([1.0, 0.95, 0.7], 6.0))
+            moon_mat = self._mat("Moon", [1.0, 0.95, 0.7, 1.0], emission=([1.0, 0.95, 0.7], 3.0))
             self._obj("sky", "Moon", "SPHERE", (-5.0, 16.0, 11.0), scale=(1.4, 1.4, 1.4), material=moon_mat)
-            cloud_mat = self._mat("Cloud", [0.55, 0.3, 0.7, 1.0], emission=([0.45, 0.25, 0.6], 0.5))
+            cloud_mat = self._mat("Cloud", [0.55, 0.3, 0.7, 1.0], emission=([0.45, 0.25, 0.6], 0.3))
         else:
             cloud_mat = self._mat("Cloud", [0.95, 0.95, 1.0, 1.0])
 
@@ -310,16 +327,16 @@ class CampsiteSkill(Skill):
         ox, oy, oz = self._p.location
 
         self._light("FireLight", "POINT", (ox, oy, oz + 0.9), color=(1.0, 0.5, 0.15),
-                    energy=800.0, size=0.3)
+                    energy=900.0, size=0.3)
 
         if self._p.night:
-            self._light("MoonLight", "SUN", (ox, oy, oz + 10.0), color=(0.5, 0.6, 1.0), energy=0.8,
+            self._light("MoonLight", "SUN", (ox, oy, oz + 10.0), color=(0.5, 0.6, 1.0), energy=0.3,
                         rotation=(math.radians(-50), 0.0, math.radians(30)))
             self._light("RimGreen", "POINT", (ox + 7, oy + 4, oz + 3), color=(0.2, 1.0, 0.45),
-                        energy=400.0, size=0.5)
+                        energy=200.0, size=0.5)
             self._light("RimPurple", "POINT", (ox - 7, oy + 3, oz + 3), color=(0.65, 0.3, 1.0),
-                        energy=400.0, size=0.5)
-            self._world([0.03, 0.03, 0.09], 0.35)
+                        energy=200.0, size=0.5)
+            self._world([0.015, 0.015, 0.05], 0.08)
         else:
             self._light("Sun", "SUN", (ox, oy, oz + 10.0), color=(1.0, 0.95, 0.85), energy=3.5,
                         rotation=(math.radians(45), 0.0, math.radians(30)))

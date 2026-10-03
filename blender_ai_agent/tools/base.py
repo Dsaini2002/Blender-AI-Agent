@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Generic, Optional, Type, TypeVar
 
+from ..input_coercion import coerce_arguments
+
 
 class Permission(str, Enum):
     """
@@ -82,15 +84,22 @@ class Tool(ABC, Generic[TInput]):
         bhi field se match nahi hoti wo silently drop kar dete hain
         (crash karne ki jagah) — taaki weaker model ka minor schema
         mismatch poore task ko fail na kare.
+
+        PATCHED (type coercion): alias-normalize ke baad arguments ko dataclass ke type-hints ke hisaab
+        se sahi type mein badalte hain ("1, 2, 3" -> [1, 2, 3], "640" -> 640, "true" -> True, proto list ->
+        list). Dekho input_coercion.py. Isse har tool ko ek hi jagah se ye leniency milti hai.
         """
         if self.input_model is None:
             return input_data  # type: ignore
 
         normalized_input = self._normalize_input(input_data or {})
+        normalized_input = coerce_arguments(self.input_model, normalized_input)
 
         try:
             return self.input_model(**normalized_input)
-        except TypeError as exc:
+        except (TypeError, AttributeError, KeyError, IndexError) as exc:
+            # Hinglish: __post_init__ ke andar kisi galat type par aisi errors aati hain — clean ValueError banao,
+            # taaki task crash na ho (execute() ise ToolResult.fail mein badal deta hai).
             raise ValueError(f"Invalid input for tool '{self.name}': {exc}") from exc
         except ValueError:
             raise  # __post_init__ ka apna ValueError hai, waisa hi propagate karo
@@ -165,6 +174,8 @@ class Tool(ABC, Generic[TInput]):
             validated = self.validate(input_data or {})
         except ValueError as exc:
             return ToolResult.fail(str(exc))
+        except Exception as exc:  # noqa: BLE001 — kisi anjaani validation galti se bhi task crash na ho
+            return ToolResult.fail(f"Invalid input for tool '{self.name}': {exc}")
 
         try:
             return self.run(validated)

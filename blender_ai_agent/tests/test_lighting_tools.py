@@ -9,6 +9,104 @@ from blender_ai_agent.tools.models import CreateLightInput, ModifyMaterialInput,
 from .fakes import FakeBridge
 
 
+class FakeRepeatedComposite:
+    """Gemini SDK ka proto list: len/iter/index karta hai, lekin `list` NAHI hai."""
+
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __iter__(self):
+        return iter(self._items)
+
+    def __len__(self):
+        return len(self._items)
+
+    def __getitem__(self, index):
+        return self._items[index]
+
+    def __repr__(self):
+        return repr(self._items)
+
+
+class FakeMapComposite:
+    """Gemini SDK ka proto dict: items()/getitem karta hai, lekin `dict` NAHI hai."""
+
+    def __init__(self, data):
+        self._data = dict(data)
+
+    def items(self):
+        return self._data.items()
+
+    def keys(self):
+        return self._data.keys()
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+
+class TestGeminiProtoContainers(unittest.TestCase):
+    """
+    Regression for the REAL root cause: Gemini's fc.args holds proto containers, so
+    'emission_color / location must be a list of numbers' fired even for [1.0, 0.4, 0.0].
+    """
+
+    def test_to_plain_converts_nested_proto_containers(self):
+        from blender_ai_agent.tools.models import to_plain
+
+        proto = FakeMapComposite({"name": "Lamp", "color": FakeRepeatedComposite([1.0, 0.4, 0.0]),
+                                  "nested": FakeMapComposite({"xs": FakeRepeatedComposite([1, 2])})})
+        plain = to_plain(proto)
+
+        self.assertIsInstance(plain, dict)
+        self.assertIsInstance(plain["color"], list)
+        self.assertEqual(plain["color"], [1.0, 0.4, 0.0])
+        self.assertEqual(plain["nested"], {"xs": [1, 2]})
+        self.assertEqual(to_plain({"a": [1, (2, 3)], "b": "text", "c": None, "d": True}),
+                         {"a": [1, [2, 3]], "b": "text", "c": None, "d": True})
+
+    def test_emission_color_as_proto_list_is_accepted(self):
+        data = ModifyMaterialInput(name="M", emission_color=FakeRepeatedComposite([1.0, 0.4, 0.0]),
+                                   emission_strength=5.0)
+        self.assertEqual(data.emission_color, [1.0, 0.4, 0.0])
+
+    def test_light_fields_as_proto_containers_are_accepted(self):
+        data = CreateLightInput(name="L", location=FakeRepeatedComposite([0, 0, 3]),
+                                rotation=FakeRepeatedComposite([0, 0, 0]),
+                                color=FakeRepeatedComposite([1.0, 0.5, 0.15]), energy=800.0)
+        self.assertEqual(data.location, [0.0, 0.0, 3.0])
+        self.assertEqual(data.color, [1.0, 0.5, 0.15])
+
+    def test_world_color_and_xyz_proto_dict(self):
+        self.assertEqual(SetWorldInput(color=FakeRepeatedComposite([0.1, 0.1, 0.3])).color, [0.1, 0.1, 0.3])
+        data = CreateLightInput(name="L", location=FakeMapComposite({"x": 1, "y": 2, "z": 3}))
+        self.assertEqual(data.location, [1.0, 2.0, 3.0])
+
+    def test_gemini_provider_hands_plain_arguments_to_tools(self):
+        from types import SimpleNamespace
+        from blender_ai_agent.providers.gemini_provider import GeminiProvider
+
+        fc = SimpleNamespace(name="material.modify", args=FakeMapComposite({
+            "name": "Lamp", "emission_color": FakeRepeatedComposite([1.0, 0.4, 0.0]), "emission_strength": 5.0}))
+        part = SimpleNamespace(function_call=fc, text=None)
+        response = SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part]))],
+                                   usage_metadata=None)
+
+        provider = GeminiProvider.__new__(GeminiProvider)
+        parsed = provider._parse_response(response)
+
+        arguments = parsed.tool_calls[0].arguments
+        self.assertIsInstance(arguments["emission_color"], list)
+        self.assertEqual(arguments["emission_color"], [1.0, 0.4, 0.0])
+        # and the tool input validates cleanly end to end
+        self.assertEqual(ModifyMaterialInput(**arguments).emission_strength, 5.0)
+
+
 class TestCreateLightInput(unittest.TestCase):
 
     def test_defaults(self):
@@ -42,6 +140,20 @@ class TestCreateLightInput(unittest.TestCase):
         self.assertTrue(result.success, result.error)
         self.assertEqual(result.data["energy"], 500)
         self.assertEqual(result.data["light_type"], "SUN")
+
+    def test_location_and_rotation_accept_xyz_dicts(self):
+        """Regression: 'CreateLightInput.location must be a list of numbers'."""
+        data = CreateLightInput(name="L", location={"x": 0, "y": 1, "z": 2.5}, rotation={"X": 0, "Y": 0, "Z": 1.5})
+        self.assertEqual(data.location, [0.0, 1.0, 2.5])
+        self.assertEqual(data.rotation, [0.0, 0.0, 1.5])
+        with self.assertRaises(ValueError):
+            CreateLightInput(name="L", location={"x": 1})
+        with self.assertRaises(ValueError):
+            CreateLightInput(name="L", location=5)
+
+    def test_light_and_world_colors_accept_names_too(self):
+        self.assertEqual(CreateLightInput(name="L", color="orange").color, [1.0, 0.5, 0.0])
+        self.assertEqual(SetWorldInput(color={"r": 0.1, "g": 0.1, "b": 0.3}).color, [0.1, 0.1, 0.3])
 
 
 class TestCreateLightTool(unittest.TestCase):
@@ -150,6 +262,50 @@ class TestMaterialEmission(unittest.TestCase):
         data = ModifyMaterialInput(name="M", emission_color=["1", "0.5", "0"], emission_strength="5")
         self.assertEqual(data.emission_color, [1.0, 0.5, 0.0])
         self.assertEqual(data.emission_strength, 5.0)
+
+    def test_emission_color_accepts_dict_hex_and_names(self):
+        self.assertEqual(ModifyMaterialInput(name="M", emission_color={"r": 1, "g": 0.5, "b": 0}).emission_color,
+                         [1.0, 0.5, 0.0])
+        self.assertEqual(ModifyMaterialInput(name="M", emission_color={"Red": 1, "Green": 0.5, "Blue": 0}).emission_color,
+                         [1.0, 0.5, 0.0])
+        self.assertEqual(ModifyMaterialInput(name="M", emission_color="orange").emission_color, [1.0, 0.5, 0.0])
+        self.assertEqual(ModifyMaterialInput(name="M", emission_color="#FF8000").emission_color[:2], [1.0, 128 / 255])
+        self.assertEqual(ModifyMaterialInput(name="M", emission_color="#f80").emission_color[0], 1.0)
+
+    def test_emission_color_accepts_many_other_llm_formats(self):
+        def parse(value):
+            return ModifyMaterialInput(name="M", emission_color=value).emission_color
+
+        self.assertEqual(parse("1 0.5 0"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("(1.0, 0.5, 0.0)"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("R:1 G:0.5 B:0"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse([[1, 0.5, 0]]), [1.0, 0.5, 0.0])
+        self.assertEqual(parse(["orange"]), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("bright orange"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("glowing orange light"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("ORANGE"), [1.0, 0.5, 0.0])
+        self.assertEqual(parse({"hex": "#FF8000"})[0], 1.0)
+        self.assertEqual(parse({"rgb": [1, 0.5, 0]}), [1.0, 0.5, 0.0])
+        self.assertEqual(parse("#FF8000FF")[:2], [1.0, 128 / 255])
+        self.assertEqual(parse([1, 0.5, 0, 1]), [1.0, 0.5, 0.0, 1.0])
+        # 0-255 scale
+        self.assertEqual(parse([255, 128, 0]), [1.0, 128 / 255, 0.0])
+        self.assertEqual(parse("rgb(255, 128, 0)"), [1.0, 128 / 255, 0.0])
+        # HDR-ish small values are left alone
+        self.assertEqual(parse([2.5, 1.0, 0.2]), [2.5, 1.0, 0.2])
+
+    def test_bad_color_error_shows_what_was_received(self):
+        with self.assertRaises(ValueError) as ctx:
+            ModifyMaterialInput(name="M", emission_color={"weird": "thing"})
+        self.assertIn("got {'weird': 'thing'}", str(ctx.exception))
+
+    def test_bad_emission_color_gives_helpful_message(self):
+        for bad in (5, {"x": 1}, "not-a-colour", [1, 2]):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                ModifyMaterialInput(name="M", emission_color=bad)
+        with self.assertRaises(ValueError) as ctx:
+            ModifyMaterialInput(name="M", emission_color="not-a-colour")
+        self.assertIn("colour name", str(ctx.exception))
 
     def test_nothing_to_modify_still_fails(self):
         with self.assertRaises(ValueError):
