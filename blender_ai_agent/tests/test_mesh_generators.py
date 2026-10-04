@@ -141,13 +141,27 @@ class TestSdf(unittest.TestCase):
     def test_every_shape_type_produces_a_closed_surface(self):
         shapes = {"sphere": {"radius": 0.4}, "ellipsoid": {"radii": [0.5, 0.3, 0.2]}, "box": {"size": [0.8, 0.6, 0.4], "rounding": 0.1},
                   "capsule": {"a": [0, 0, -0.3], "b": [0, 0, 0.3], "radius": 0.2}, "cylinder": {"radius": 0.3, "height": 0.8},
-                  "torus": {"major": 0.4, "minor": 0.12}, "cone": {"radius": 0.4, "height": 0.8}}
+                  "torus": {"major": 0.4, "minor": 0.12}, "cone": {"radius": 0.4, "height": 0.8},
+                  "round_cone": {"radius": 0.4, "height": 0.8}}
         for kind, params in shapes.items():
             v, f = mg.sdf_mesh([dict(params, type=kind)], resolution=32)
             self.assertTrue(f, kind)
             self.assertTrue(valid(v, f), kind)
             self.assertTrue(watertight(f), kind)
             self.assertGreater(volume(v, f), 0, kind)
+
+    def test_cone_has_a_flat_base_and_the_right_height(self):
+        """Dress skirts / hair spikes need a flat-ended cone, not a rounded one."""
+        v, f = mg.sdf_mesh([{"type": "cone", "radius": 0.4, "radius_top": 0.1, "height": 0.6, "center": [0, 0, 0.3]}], 40)
+        self.assertTrue(watertight(f))
+        self.assertAlmostEqual(min(p[2] for p in v), 0.3, delta=0.04)             # base z = center
+        self.assertAlmostEqual(max(p[2] for p in v), 0.9, delta=0.04)             # base + height
+        bottom = max(math.hypot(p[0], p[1]) for p in v if p[2] < 0.35)
+        top = max(math.hypot(p[0], p[1]) for p in v if p[2] > 0.85)
+        self.assertAlmostEqual(bottom, 0.4, delta=0.04)
+        self.assertAlmostEqual(top, 0.1, delta=0.04)
+        rounded, _ = mg.sdf_mesh([{"type": "round_cone", "radius": 0.4, "height": 0.6, "center": [0, 0, 0.3]}], 40)
+        self.assertLess(min(p[2] for p in rounded), 0.1)                           # round_cone neeche gol uthal
 
     def test_boolean_operations(self):
         a = {"type": "box", "size": [1, 1, 1]}
@@ -182,6 +196,35 @@ class TestSdf(unittest.TestCase):
         self.assertEqual(mg.sdf_mesh([{"type": "sphere"}], 16, roughness=0.05, seed=1)[0], mg.sdf_mesh([{"type": "sphere"}], 16, roughness=0.05, seed=1)[0])
         explicit, _ = mg.sdf_mesh([{"type": "sphere", "radius": 0.3}], 20, bounds=[-1, -1, -1, 1, 1, 1])
         self.assertTrue(explicit)
+
+    def test_no_duplicate_vertices_or_degenerate_faces_so_quadriflow_accepts_it(self):
+        """Real log: 'QuadriFlow: The mesh needs to be manifold' on the snowman (5 zero-area faces, 3 coincident vertices)."""
+        shapes = [{"type": "sphere", "radius": 0.5, "center": [0, 0, 0.5]},
+                  {"type": "sphere", "radius": 0.35, "center": [0, 0, 1.2], "op": "smooth_union", "k": 0.1}]
+        for name, shp, res in (("snowman", shapes, 24), ("sphere", [{"type": "sphere", "radius": 0.5}], 30),
+                               ("box", [{"type": "box", "size": [1, 1, 1]}], 20), ("torus", [{"type": "torus"}], 32)):
+            v, f = mg.sdf_mesh(shp, res)
+            positions = [tuple(round(c, 7) for c in p) for p in v]
+            self.assertEqual(len(positions), len(set(positions)), f"{name}: coincident vertices")
+            for face in f:
+                self.assertEqual(len(set(face)), len(face), f"{name}: face with repeated vertex")
+                a = [v[i] for i in face]
+                n = (0.0, 0.0, 0.0)
+                for k in range(len(a)):
+                    p, q = a[k], a[(k + 1) % len(a)]
+                    n = (n[0] + (p[1] - q[1]) * (p[2] + q[2]), n[1] + (p[2] - q[2]) * (p[0] + q[0]), n[2] + (p[0] - q[0]) * (p[1] + q[1]))
+                self.assertGreater(math.sqrt(sum(c * c for c in n)), 1e-12, f"{name}: zero-area face")
+            self.assertTrue(watertight(f), name)
+
+    def test_weld_vertices_merges_and_drops_degenerates(self):
+        v = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 0)]                # 4 aur 0 ek hi jagah
+        f = [[0, 1, 2, 3], [4, 1, 2], [4, 0, 1]]
+        wv, wf = mg.weld_vertices(v, f, 1e-6)
+        self.assertEqual(len(wv), 4)
+        self.assertEqual(len(wf), 2)                                                # [4,0,1] zero-area => hata
+        self.assertTrue(all(len(set(face)) == len(face) >= 3 for face in wf))
+        same_v, same_f = mg.weld_vertices(v[:4], [[0, 1, 2, 3]], 1e-6)
+        self.assertEqual((len(same_v), same_f), (4, [[0, 1, 2, 3]]))                # kuch na ho to jaisa tha waisa
 
     def test_bad_input(self):
         with self.assertRaises(ValueError):

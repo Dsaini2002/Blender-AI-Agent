@@ -385,7 +385,7 @@ class MeshSdfTool(Tool):
     description = (
         "Builds organic / blended solids from simple shapes combined like boolean + smooth blending (rocks, clouds, blobs, creature "
         "bodies, rounded boxes, bowls, a cube with a sphere cut out...). shapes = list, applied in order; each: {\"type\": sphere|"
-        "ellipsoid|box|capsule|cylinder|torus|cone|plane, \"center\": [x,y,z], size/radius/radii/height/major/minor/a/b..., "
+        "ellipsoid|box|capsule|cylinder|torus|cone (flat base, radius + radius_top + height)|round_cone|plane, \"center\": [x,y,z], size/radius/radii/height/major/minor/a/b..., "
         "\"rotation\": [rx,ry,rz degrees], \"rounding\": r, \"op\": union|smooth_union|subtract|intersect, \"k\": blend size}. "
         "Examples: snowman = [{\"type\":\"sphere\",\"radius\":0.5,\"center\":[0,0,0.5]},{\"type\":\"sphere\",\"radius\":0.35,"
         "\"center\":[0,0,1.2],\"op\":\"smooth_union\",\"k\":0.1}]; hollow bowl = sphere radius 0.5 then {\"type\":\"sphere\","

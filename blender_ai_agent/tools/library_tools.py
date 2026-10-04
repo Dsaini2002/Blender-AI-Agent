@@ -87,6 +87,7 @@ def place_model(bridge, model: str, spec: Dict[str, Any], location, scale: float
                 name=part_name, vertices=part["vertices"], faces=part["faces"],
                 location=position, rotation=rotation,
                 scale=[part_scale[0] * scale, part_scale[1] * scale, part_scale[2] * scale],
+                shade_smooth=bool(part.get("smooth", False)),      # gol cheezein (character) smooth; tent jaise flat
             )
             created["meshes"].append(obj.name)
         elif part["kind"] == "curve":

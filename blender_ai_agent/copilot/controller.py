@@ -36,8 +36,11 @@ class CopilotController:
 
     def __init__(self, agent, session: Optional[CopilotSession] = None, skill_registry=None,
                  tool_caller=None, tracker: Optional[ProgressTracker] = None, auto_split: bool = True,
-                 split_min_parts: int = 3, split_max_parts: int = 10):
+                 split_min_parts: int = 3, split_max_parts: int = 10, verifier=None):
         self._agent = agent
+        # Hinglish: Har kaam ke BAAD apne aap console + vision se check aur (zaroorat ho to) agent se theek karwana.
+        # verifier=None ya mode "off" => bilkul pehle jaisa behaviour.
+        self._verifier = verifier
         # Hinglish: Progress + bade task ko steps mein todna. auto_split=False ya request chhoti ho to
         # pehle jaisa hi ek baar mein chalta hai.
         self._tracker = tracker if tracker is not None else get_tracker()
@@ -153,6 +156,7 @@ class CopilotController:
 
         results: List[SubmitResult] = []
         stopped_reason = ""
+        check_session = self._begin_verification(user_input)        # poore request par EK check (har step par nahi)
         for index, part in enumerate(parts):
             if self._cancelled:
                 stopped_reason = "cancelled"
@@ -161,7 +165,7 @@ class CopilotController:
             tracker.start_step(index)
             self._push_status(on_progress)
             try:
-                result = self._run_one(part, callback)
+                result = self._run_one(part, callback, verify=False)
             except Exception as exc:  # noqa: BLE001 — ek step ki crash baaki steps ko na roke
                 from ..reliability.friendly_errors import friendly_error_message
                 result = SubmitResult(reply_text=friendly_error_message(str(exc)), success=False)
@@ -181,6 +185,13 @@ class CopilotController:
         self._push_status(on_progress)
 
         summary = self._summarize(parts, results, stopped_reason)
+        if check_session is not None:
+            if any(r.success for r in results) and not self._cancelled and stopped_reason != "quota":
+                check_text = self._verify_and_improve(check_session, user_input, callback)
+                if check_text:
+                    summary += "\n" + check_text
+            else:
+                check_session.abort()
         if all_ok:
             self.session.add_assistant_message(summary)
         else:
@@ -203,12 +214,35 @@ class CopilotController:
                 lines.append(f"- {index + 1}. {part} ({why})")
         return "\n".join(lines)
 
-    def _run_one(self, user_input: str, on_progress=None) -> SubmitResult:
-        """Ek hi request/step: pehle Skill fast-path, warna LLM Agent (purana flow, jaisa tha waisa)."""
+    def _run_one(self, user_input: str, on_progress=None, verify: bool = True) -> SubmitResult:
+        """Ek hi request/step: kaam chalao, phir (verifier ho to) apne aap console + vision se check aur improve."""
+        session = self._begin_verification(user_input) if verify else None
+        try:
+            result = self._run_core(user_input, on_progress)
+        except BaseException:
+            if session is not None:
+                session.abort()
+            raise
+        if session is None:
+            return result
+        if not result.success or self._cancelled:
+            session.abort()
+            return result
+        check_text = self._verify_and_improve(session, user_input, on_progress)
+        if check_text:
+            self.session.add_assistant_message(check_text)
+            return SubmitResult(reply_text=(result.reply_text or "") + "\n\n" + check_text, success=True, task_id=result.task_id)
+        return result
+
+    def _run_core(self, user_input: str, on_progress=None) -> SubmitResult:
+        """Pehle Skill fast-path, warna LLM Agent (purana flow, jaisa tha waisa)."""
         skill_result = self._try_skill_fast_path(user_input)
         if skill_result is not None:
             return skill_result
+        return self._run_agent(user_input, on_progress)
 
+    def _run_agent(self, user_input: str, on_progress=None) -> SubmitResult:
+        """Sirf LLM Agent (skills nahi) — auto-fix ke prompts skill se na takrayein."""
         logger = getattr(self._agent, "_logger", None)
         if logger is not None:
             logger.callback = on_progress
@@ -239,6 +273,58 @@ class CopilotController:
 
         self.session.add_assistant_message(run_result.reply_text, metadata={"task_id": task_id})
         return SubmitResult(reply_text=run_result.reply_text, success=True, task_id=task_id)
+
+    # ---------------------------------------------------------
+    # Automatic check + improve
+    # ---------------------------------------------------------
+    def _begin_verification(self, user_input: str):
+        verifier = self._verifier
+        if verifier is None:
+            return None
+        try:
+            return verifier.begin(user_input)
+        except Exception:  # noqa: BLE001 — check ki wajah se kaam kabhi na ruke
+            return None
+
+    def _verify_and_improve(self, session, user_input: str, on_progress=None) -> str:
+        """Console + vision check; problem mile to agent se theek karwata hai (max_rounds). Check ka summary text deta hai.
+        Kabhi exception nahi uthata: check fail ho to kaam ka natija waisa hi rehta hai."""
+        verifier = self._verifier
+        history = []
+        fix_failure = ""
+        try:
+            report = verifier.assess(user_input, session.end(), 0)
+            history.append(report)
+            rounds = 0
+            while report.needs_fix and rounds < verifier.cfg.max_rounds and not self._cancelled:
+                rounds += 1
+                self.session.add_assistant_message(verifier.announce(report, rounds))
+                fix_session = verifier.begin(user_input, baseline=session.baseline)
+                try:
+                    fix_result = self._run_agent(verifier.fix_prompt(user_input, report, rounds), on_progress)
+                except BaseException:
+                    if fix_session is not None:
+                        fix_session.abort()
+                    raise
+                if fix_session is None:
+                    break
+                if not fix_result.success:                       # fix hi nahi chala (quota / rollback): "theek ho gaya" mat likho
+                    fix_session.abort()
+                    fix_failure = (fix_result.reply_text or "fix could not run").strip().splitlines()[0][:120]
+                    break
+                new_report = verifier.assess(user_input, fix_session.end(), rounds)
+                history.append(new_report)
+                worse = new_report.score is not None and report.score is not None and new_report.score < report.score - 0.5
+                report = new_report
+                if worse:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            session.abort()
+            if not history:
+                return f"Auto-check chal nahi paya ({type(exc).__name__}: {str(exc)[:120]}); kaam waise ka waisa hai."
+            return verifier.format_history(history) + f"\n  (aage ka auto-fix ruk gaya: {type(exc).__name__}: {str(exc)[:100]})"
+        text = verifier.format_history(history)
+        return text + (f"\n  (auto-fix nahi ho paya: {fix_failure})" if fix_failure else "")
 
     def _try_skill_fast_path(self, user_input: str) -> Optional[SubmitResult]:
         """

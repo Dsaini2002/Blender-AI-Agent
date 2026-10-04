@@ -238,7 +238,7 @@ def prism(polygon: Sequence[Sequence[float]], height: float = 0.2, taper: float 
 # =============================================================================
 # SDF  (signed distance fields) + surface nets
 # =============================================================================
-SDF_TYPES = ("sphere", "ellipsoid", "box", "capsule", "cylinder", "torus", "cone", "plane")
+SDF_TYPES = ("sphere", "ellipsoid", "box", "capsule", "cylinder", "torus", "cone", "round_cone", "plane")
 SDF_OPS = ("union", "subtract", "intersect", "smooth_union")
 
 
@@ -321,11 +321,28 @@ def _make_sdf(shape: Dict[str, Any]):
             return math.hypot(math.hypot(q[0], q[1]) - major, q[2]) - minor
         return torus
     if kind == "cone":
+        # Sapaat sire wala cone / frustum: neeche radius `radius`, upar `radius_top` (default 0 = nok), `height` oonchai.
+        r1, r2, h = float(shape.get("radius", 0.5)), float(shape.get("radius_top", 0.0)), max(float(shape.get("height", 1.0)), 1e-6)
+        hh = h / 2.0
+        k1x, k1y, k2x, k2y = r2, hh, r2 - r1, 2.0 * hh
+        k2_dot = k2x * k2x + k2y * k2y
+
+        def capped_cone(p):
+            q = local(p)
+            qr, qy = math.hypot(q[0], q[1]), q[2] - hh
+            cax = qr - min(qr, r1 if qy < 0.0 else r2)
+            cay = abs(qy) - hh
+            t = max(0.0, min(1.0, ((k1x - qr) * k2x + (k1y - qy) * k2y) / k2_dot))
+            cbx, cby = qr - k1x + k2x * t, qy - k1y + k2y * t
+            sign = -1.0 if (cbx < 0.0 and cay < 0.0) else 1.0
+            return sign * math.sqrt(min(cax * cax + cay * cay, cbx * cbx + cby * cby))
+        return capped_cone
+    if kind == "round_cone":
         r1, r2, h = float(shape.get("radius", 0.5)), float(shape.get("radius_top", 0.0)), float(shape.get("height", 1.0))
         b = (r1 - r2) / max(h, 1e-9)
         a = math.sqrt(max(0.0, 1.0 - b * b))
 
-        def cone(p):
+        def round_cone(p):
             q = local(p)
             qr, qz = math.hypot(q[0], q[1]), q[2]
             k = qr * (-b) + qz * a
@@ -334,7 +351,7 @@ def _make_sdf(shape: Dict[str, Any]):
             if k > a * h:
                 return math.hypot(qr, qz - h) - r2
             return qr * a + qz * b - r1
-        return cone
+        return round_cone
     # plane: z <= center.z andar
     return lambda p: p[2] - cz
 
@@ -367,7 +384,7 @@ def _shape_extent(shape: Dict[str, Any]) -> float:
         return math.hypot(float(shape.get("radius", 0.3)), float(shape.get("height", 1.0)) / 2)
     if kind == "torus":
         return float(shape.get("major", 0.5)) + float(shape.get("minor", 0.15))
-    if kind == "cone":
+    if kind in ("cone", "round_cone"):
         return math.hypot(max(float(shape.get("radius", 0.5)), float(shape.get("radius_top", 0.0))), float(shape.get("height", 1.0)))
     return 1.0
 
@@ -466,7 +483,43 @@ def surface_nets(distance, mins: Sequence[float], maxs: Sequence[float], resolut
                             faces.append(quad if here < 0 else quad[::-1])
     if len(faces) > MAX_FACES:
         raise ValueError(f"sdf result has {len(faces)} faces (max {MAX_FACES}); lower the resolution")
-    return vertices, faces
+    return weld_vertices(vertices, faces, cell * 1e-4)
+
+
+def weld_vertices(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], tolerance: float) -> Tuple[List[Vec], List[List[int]]]:
+    """
+    Ek hi jagah par baithe vertices ko jod deta hai aur zero-area (degenerate) faces hata deta hai.
+    Surface nets mein jab satah bilkul grid point se guzarti hai (jaise symmetric sphere) to do cell-vertices ek hi position
+    par aa jaate hain; Blender ka QuadriFlow aise mesh ko "non-manifold" kehkar ruk jaata tha.
+    """
+    inv = 1.0 / max(tolerance, 1e-12)
+    key_to_index: Dict[Tuple[int, int, int], int] = {}
+    remap: List[int] = []
+    welded: List[Vec] = []
+    for v in vertices:
+        key = (round(v[0] * inv), round(v[1] * inv), round(v[2] * inv))
+        index = key_to_index.get(key)
+        if index is None:
+            index = len(welded)
+            key_to_index[key] = index
+            welded.append(v)
+        remap.append(index)
+    cleaned: List[List[int]] = []
+    for face in faces:
+        loop: List[int] = []
+        for i in face:
+            j = remap[i]
+            if not loop or loop[-1] != j:
+                loop.append(j)
+        if len(loop) > 1 and loop[0] == loop[-1]:
+            loop.pop()
+        if len(loop) >= 3 and len(set(loop)) == len(loop):
+            cleaned.append(loop)
+    if len(welded) == len(vertices) and len(cleaned) == len(faces):
+        return list(vertices), [list(f) for f in faces]
+    used = sorted({i for f in cleaned for i in f})
+    new_index = {old: new for new, old in enumerate(used)}
+    return [welded[i] for i in used], [[new_index[i] for i in f] for f in cleaned]
 
 
 def sdf_mesh(shapes: Sequence[Dict[str, Any]], resolution: int = 40, bounds: Optional[Sequence[float]] = None,

@@ -47,6 +47,8 @@ from .tools.retopology_tools import AnalyzeTopologyTool, RetopologyTool
 from .tools.lighting_tools import CreateLightTool, SetWorldTool
 from .tools.curve_tools import CreateCurveTool
 from .tools.mesh_tools import CreateMeshTool, DamageMeshTool
+from .tools.character_tools import CharacterCreateTool
+from .tools.iterate_tools import BuildIterateTool
 from .tools.mesh_advanced_tools import (
     MeshEditTool, MeshHelpTool, MeshLatheTool, MeshPrismTool, MeshScriptTool, MeshSdfTool, MeshTerrainTool,
 )
@@ -67,6 +69,7 @@ _bridge: BlenderBridge = None
 _registry: ToolRegistry = None
 _copilot_controller = None
 _provider_registry = None
+_post_verifier = None
 _tools_registered = False
 
 
@@ -136,6 +139,9 @@ def _register_tools() -> None:
     registry.register(MeshSdfTool(bridge))
     registry.register(MeshPrismTool(bridge))
     registry.register(MeshHelpTool(bridge))
+    registry.register(CharacterCreateTool(bridge))   # cartoon character / face
+    # Self-correcting build: Gemini script likhta hai -> render -> vision se jaanchta -> sudharta
+    registry.register(BuildIterateTool(bridge, lambda: get_tool_caller(), lambda: get_registry()))
     registry.register(LibraryListTool(bridge))
     registry.register(LibraryPlaceTool(bridge))
     registry.register(SearchLocalAssetsTool(bridge))
@@ -200,6 +206,18 @@ def get_tool_caller():
     return _tool_caller
 
 
+def get_post_run_verifier():
+    """
+    Hinglish: Har kaam ke baad apne aap console + vision se check (aur zaroorat ho to agent se theek karwana).
+    Settings: ~/BlenderAIAgent/autoverify.json ya env BLENDER_AI_AUTOVERIFY=off|console|full
+    """
+    global _post_verifier
+    if _post_verifier is None:
+        from .agent.post_verify import PostRunVerifier
+        _post_verifier = PostRunVerifier(get_tool_caller(), get_bridge())
+    return _post_verifier
+
+
 def get_skill_registry():
     """
     Hinglish: Tools ki tarah hi — saare built-in Skills (jaise
@@ -215,6 +233,8 @@ def get_skill_registry():
         from .skills.builtins.product_showcase import ProductShowcaseSkill
         from .skills.builtins.campsite import CampsiteSkill
         from .skills.builtins.library_props import LibraryPropSkill
+        from .skills.builtins.cartoon_character import CartoonCharacterSkill
+        from .skills.builtins.iterative_build import IterativeBuildSkill
 
         tool_caller = get_tool_caller()
 
@@ -223,6 +243,8 @@ def get_skill_registry():
         registry.register(ProductShowcaseSkill(tool_caller))
         registry.register(CampsiteSkill(tool_caller))
         registry.register(LibraryPropSkill(tool_caller))
+        registry.register(CartoonCharacterSkill(tool_caller))
+        registry.register(IterativeBuildSkill(tool_caller))
         _skill_registry = registry
 
     return _skill_registry
@@ -320,6 +342,7 @@ def get_copilot_controller(provider_name: str = None, model_name: str = None):
         _copilot_controller = CopilotController(
             agent, session=existing_session,
             skill_registry=skill_registry, tool_caller=tool_caller,
+            verifier=get_post_run_verifier(),
         )
         _copilot_controller.current_provider_name = chosen_name
 
@@ -420,7 +443,7 @@ def register():
 
 def unregister():
     global _bridge, _registry, _copilot_controller, _tools_registered
-    global _tool_caller, _skill_registry, _provider_registry
+    global _tool_caller, _skill_registry, _provider_registry, _post_verifier
     unregister_progress_timer()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
@@ -442,6 +465,7 @@ def unregister():
     _tool_caller = None
     _skill_registry = None
     _provider_registry = None
+    _post_verifier = None
 
 if __name__ == "__main__":
     register()

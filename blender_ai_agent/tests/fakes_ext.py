@@ -105,3 +105,34 @@ class FakeBridge(_BaseFakeBridge):
             summary["vertex_count"] += len(item["vertices"])
             summary["face_count"] += len(faces)
         return summary
+
+    def render_views(self, names, views, resolution=512, out_dir=None, stem="view"):
+        import os
+        import tempfile
+        out_dir = out_dir or tempfile.gettempdir()
+        os.makedirs(out_dir, exist_ok=True)
+        png = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+               b"\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00\xc9\xfe\x92\xef\x00\x00\x00\x00IEND\xaeB`\x82")
+        self.render_requests = getattr(self, "render_requests", []) + [{"names": list(names), "views": list(views)}]
+        if getattr(self, "render_fails", False):
+            raise RuntimeError("render failed")
+        paths = []
+        for view in views:
+            path = os.path.join(out_dir, f"{stem}_{view}.png")
+            with open(path, "wb") as handle:
+                handle.write(png)
+            paths.append(path)
+        return paths
+
+    def measure_objects(self, names):
+        lo, hi, found = [1e9] * 3, [-1e9] * 3, False
+        for name in names:
+            obj = self.get_object(name)
+            if obj is None:
+                continue
+            box = getattr(obj, "fake_bbox", None) or {"min": [-0.5, -0.5, 0.0], "max": [0.5, 0.5, 1.0]}
+            loc = list(getattr(obj, "location", [0, 0, 0]))
+            for k in range(3):
+                lo[k], hi[k] = min(lo[k], box["min"][k] + loc[k]), max(hi[k], box["max"][k] + loc[k])
+            found = True
+        return {"min": lo, "max": hi} if found else None

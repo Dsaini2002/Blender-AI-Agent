@@ -228,7 +228,8 @@ class BlenderBridge:
     def create_material(self, name: str, color=None):
         def _do():
             material = bpy.data.materials.new(name=name)
-            material.use_nodes = True
+            if getattr(material, "node_tree", None) is None:
+                material.use_nodes = True        # purane Blender ke liye; naye mein node_tree pehle se hota hai (use_nodes deprecated)
 
             if color is not None:
                 self._set_material_base_color(material, color)
@@ -292,7 +293,7 @@ class BlenderBridge:
         isliye main-thread-safe caller ke andar hi use hota hai, isse
         khud alag se wrap karne ki zaroorat nahi (already run_on_main_thread
         ke andar call hota hai)."""
-        if not material.use_nodes:
+        if getattr(material, "node_tree", None) is None:
             return None
         for node in material.node_tree.nodes:
             if node.type == 'BSDF_PRINCIPLED':
@@ -354,7 +355,8 @@ class BlenderBridge:
                 world = bpy.data.worlds.new("World")
                 scene.world = world
 
-            world.use_nodes = True
+            if getattr(world, "node_tree", None) is None:
+                world.use_nodes = True           # naye Blender mein node_tree pehle se hota hai; use_nodes padhne par warning aati hai
             nodes = world.node_tree.nodes
             links = world.node_tree.links
 
@@ -568,13 +570,16 @@ class BlenderBridge:
                     mesh.update()
                 else:
                     old_materials = [p.material_index for p in mesh.polygons]
+                    old_smooth = [p.use_smooth for p in mesh.polygons]      # smooth shading bhi bachao, warna facets dikhte hain
                     local = [tuple(inverse @ Vector(p)) for p in item["vertices"]]
                     mesh.clear_geometry()
                     mesh.from_pydata(local, [], [list(f) for f in item["faces"]])
                     mesh.update()
-                    if old_materials:
-                        for polygon, source in zip(mesh.polygons, item["face_source"]):
+                    for polygon, source in zip(mesh.polygons, item["face_source"]):
+                        if old_materials:
                             polygon.material_index = old_materials[source] if 0 <= source < len(old_materials) else old_materials[0]
+                        # naye cap jaise faces (source -1) flat hi rehte hain; baaki apne asli face ki shading lete hain
+                        polygon.use_smooth = bool(old_smooth[source]) if 0 <= source < len(old_smooth) else False
                     summary["uv_preserved"] = False
                     strategy = "rebuilt mesh (materials kept, UVs reset)"
 
@@ -583,6 +588,122 @@ class BlenderBridge:
                 summary["vertex_count"] += len(mesh.vertices)
                 summary["face_count"] += len(mesh.polygons)
             return summary
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Naap (generated / imported model ko sahi size mein rakhne ke liye)
+    # ---------------------------------------------------------
+    def measure_objects(self, names):
+        """Diye gaye objects (aur unke bachchon) ka WORLD bounding box: {"min": [x,y,z], "max": [x,y,z]} ya None."""
+        def _do():
+            from mathutils import Vector
+
+            bpy.context.view_layer.update()
+            lo, hi, found = [1e18] * 3, [-1e18] * 3, False
+            for name in names:
+                root = bpy.data.objects.get(name)
+                if root is None:
+                    continue
+                for obj in [root] + list(root.children_recursive):
+                    if obj.type not in ("MESH", "CURVE", "SURFACE", "META", "FONT"):
+                        continue
+                    for corner in obj.bound_box:
+                        world = obj.matrix_world @ Vector(corner)
+                        for k in range(3):
+                            lo[k], hi[k] = min(lo[k], world[k]), max(hi[k], world[k])
+                        found = True
+            return {"min": lo, "max": hi} if found else None
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Kai angle se render (build.iterate ka "dekho aur jaancho")
+    # ---------------------------------------------------------
+    def render_views(self, names, views, resolution: int = 512, out_dir: str = None, stem: str = "view"):
+        """
+        Diye gaye objects (aur unke bachche) ko alag-alag view se render karke PNG paths deta hai.
+        Hinglish: Baaki saare objects render ke liye chhupa diye jaate hain (saaf tasveer), ek temporary camera + sun lagta hai,
+        aur ant mein sab kuch (camera, resolution, hide flags, filepath) pehle jaisa kar diya jaata hai — chahe render fail ho.
+        """
+        import math
+        import os
+        import tempfile
+
+        from ..tools.render_views import camera_pose, normalize_view
+
+        out_dir = out_dir or tempfile.gettempdir()
+        os.makedirs(out_dir, exist_ok=True)
+        view_names = [normalize_view(v) for v in views]
+
+        def _do():
+            from mathutils import Vector
+
+            scene = bpy.context.scene
+            render = scene.render
+            bpy.context.view_layer.update()
+
+            keep = set()
+            for name in names:
+                root = bpy.data.objects.get(name)
+                if root is not None:
+                    keep.add(root.name)
+                    keep.update(child.name for child in root.children_recursive)
+            lo, hi, found = [1e18] * 3, [-1e18] * 3, False
+            for name in keep:
+                obj = bpy.data.objects.get(name)
+                if obj is None or obj.type not in ("MESH", "CURVE", "SURFACE", "META", "FONT"):
+                    continue
+                for corner in obj.bound_box:
+                    world = obj.matrix_world @ Vector(corner)
+                    for k in range(3):
+                        lo[k], hi[k] = min(lo[k], world[k]), max(hi[k], world[k])
+                    found = True
+            if not found:
+                raise ValueError("nothing to render: the given objects have no geometry")
+
+            saved = (scene.camera, render.filepath, render.resolution_x, render.resolution_y, render.resolution_percentage,
+                     render.image_settings.file_format)
+            hidden = [o for o in scene.objects if o.name not in keep and not o.hide_render]
+            cam_data = bpy.data.cameras.new("_aiagent_tmp_cam")
+            cam = bpy.data.objects.new("_aiagent_tmp_cam", cam_data)
+            sun_data = bpy.data.lights.new("_aiagent_tmp_sun", "SUN")
+            sun = bpy.data.objects.new("_aiagent_tmp_sun", sun_data)
+            paths = []
+            try:
+                scene.collection.objects.link(cam)
+                scene.collection.objects.link(sun)
+                cam_data.lens, cam_data.sensor_width = 50.0, 36.0
+                sun_data.energy = 3.5
+                sun.rotation_euler = (math.radians(50), 0.0, math.radians(35))
+                for obj in hidden:
+                    obj.hide_render = True
+                render.resolution_x = render.resolution_y = int(resolution)
+                render.resolution_percentage = 100
+                render.image_settings.file_format = "PNG"
+                scene.camera = cam
+                for view in view_names:
+                    pose = camera_pose(lo, hi, view)
+                    cam.location = pose["location"]
+                    direction = Vector(pose["target"]) - Vector(pose["location"])
+                    cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+                    path = os.path.join(out_dir, f"{stem}_{view}.png")
+                    render.filepath = path
+                    bpy.ops.render.render(write_still=True)
+                    paths.append(path)
+            finally:
+                for obj in hidden:
+                    obj.hide_render = False
+                (scene.camera, render.filepath, render.resolution_x, render.resolution_y, render.resolution_percentage,
+                 render.image_settings.file_format) = saved
+                bpy.data.objects.remove(cam, do_unlink=True)
+                bpy.data.objects.remove(sun, do_unlink=True)
+                bpy.data.cameras.remove(cam_data)
+                bpy.data.lights.remove(sun_data)
+            missing = [p for p in paths if not os.path.isfile(p)]
+            if missing:
+                raise RuntimeError(f"render finished but no image was written: {missing[0]}")
+            return paths
 
         return run_on_main_thread(_do)
 
