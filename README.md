@@ -8,7 +8,22 @@
 
 Blender AI Agent is an AI helper that lives inside Blender. You type what you want in plain words, like *"make a campfire"* or *"design a modern living room"*. The agent picks the right tools, builds the scene, takes pictures of its own work, and fixes what looks wrong.
 
-It is not a chatbot that pastes random code. It is an **engineered system**: typed tools, a safe sandbox, undo on failure, picture-based checks, and over a thousand automated tests.
+It is not a chatbot that pastes random code. It is an **engineered system**: typed tools, a safe sandbox, undo on failure, picture-based checks, and **1,181 automated tests**.
+
+---
+
+## At a glance
+
+| | |
+|---|---|
+| **Typed tools** | 40+ |
+| **Mesh edit presets** | 26 |
+| **Built-in props** | 14 |
+| **Ready-made materials** | 14 |
+| **Free (CC0) models to search** | 991 |
+| **Automated tests** | **1,181 passed**, 0 failed, 3 skipped on Windows |
+| **In-Blender smoke test** | **56 of 56 checks passed** on Blender 5.2.1 LTS |
+| **AI providers** | Gemini, Groq, OpenAI (plus a mock provider for tests) |
 
 ---
 
@@ -149,12 +164,59 @@ make a campfire, add a tent, add a lantern
 
 ## Testing
 
+Good tests are what make an AI-driven system safe to change. Every part of this project has tests, and they run **without Blender**.
+
+### Tests at a glance
+
+| Check | Result |
+|---|---|
+| Automated tests (`python run_tests.py`) | **1,181 passed**, 0 failed |
+| Skipped tests | 3 (Windows only, see below) |
+| Needs Blender to run? | **No.** A fake Blender bridge and a mock AI provider stand in for them. |
+| In-Blender smoke test (`blender_smoke_test.py`) | **56 of 56 checks passed** (0 failed, 0 warnings) on Blender 5.2.1 LTS |
+
+### What the tests cover
+
+- **Tool inputs**: wrong types, missing fields and loose wording are cleaned or rejected before anything runs.
+- **Mesh tools**: lathe, SDF blends, prisms, terrain, formula meshes, the 26 edit presets, and damage.
+- **Materials**: the 14 recipes and custom node graphs, including socket checks and clear error messages.
+- **Build-script sandbox**: blocked imports, no file access, limits on loops and time, and "only the agent's own tools".
+- **Self-correcting build loop**: the overlap check, car clearance rules, round limits, and stopping when a fix makes things worse.
+- **Automatic check**: reading the Blender console and the picture review.
+- **Request handling**: splitting a big request into steps, progress and time-left estimates, and rollback after a failure.
+- **Skills**: ready props, cartoon characters (faces, hair, clothes, glasses) and the campsite layout.
+- **Assets**: the built-in prop catalogue and the search over local CC0 models.
+- **Lights, cameras and render setup**: presets and safe limits.
+- **Friendly errors**: for example a rate-limit message that tells you what to do next.
+
+### The 3 skipped tests
+
+They test low-level (file-descriptor) console capture. That works on Linux and macOS, but it is switched off on Windows, where the agent reads Python-level messages instead.
+
+### Run them
+
 ```powershell
 python run_tests.py
 ```
 
-- **1,100+ automated tests** run **without Blender**, using a fake Blender bridge and a mock AI provider.
-- A **smoke test** (`blender_smoke_test.py`) runs inside Blender's *Scripting* tab and checks the real tools against a real scene. The last full run on Blender 5.2.1 LTS passed all 56 checks.
+The last lines show the result, for example `Ran 1181 tests ... OK (skipped=3)`.
+To run one file, from the project root:
+
+```powershell
+python -m unittest blender_ai_agent.tests.test_shader_nodes -v
+```
+
+### Smoke test inside Blender
+
+Open Blender's *Scripting* tab, load `blender_smoke_test.py` and run it. It uses the real tools on a real scene and prints one line per check.
+
+### Real-Blender checks
+
+These were also checked by hand in Blender 5.2.1 LTS: a campfire with stones, logs and curved flames; a remesh of 500 faces that gave 93.6% quad faces; a melted bottle with smooth shading; and a cartoon character in a campfire scene.
+
+### The rule
+
+A change is merged only when `python run_tests.py` passes.
 
 ---
 
@@ -202,7 +264,7 @@ Ideas, bug reports and pull requests are welcome.
 
 1. Fork the repo and create a branch.
 2. Make your change, and add a test for it.
-3. Run `python run_tests.py` and make sure everything passes.
+3. Run `python run_tests.py` and make sure all tests pass (it should end with `OK`).
 4. Open a pull request and explain *what* changed and *why*.
 
 ---
