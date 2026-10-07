@@ -54,7 +54,7 @@ for sx in [1, -1]:
         n += 1
 names = [f"Light{k}" for k in range(3)]
 pts = [[cos(a) * 2, sin(a) * 2, 0] for a in [radians(d) for d in range(0, 360, 90)]]
-log("made", n, "wheels")
+note("made", n, "wheels")
 object_create(name=names[2], primitive="CUBE", location=pts[1])
 '''
         result, rec = run(source)
@@ -176,9 +176,28 @@ class TestSandbox(unittest.TestCase):
                        "match x:\n    case 1: pass"):
             self.assertBlocked(source)
 
-    def test_cannot_shadow_or_reassign_builtins_and_tools(self):
-        for source in ("sin = 3", "pi = 3", "range = 5", "log = 1", "mesh_sdf = 1", "def mesh_sdf(): pass", "def f(sin): pass", "for len in [1]: pass"):
-            self.assertBlocked(source, "cannot be reassigned" if "def f(sin)" not in source else None)
+    def test_tool_names_are_protected_but_ordinary_variable_names_are_free(self):
+        for source in ("mesh_sdf = 1", "def mesh_sdf(): pass", "for object_create in [1]: pass", "def f(object_create): pass"):
+            self.assertBlocked(source, "tool function name")
+        # LLM aksar `log`, `max`, `list`, `pi`... ko variable bana deta hai: chalna chahiye
+        source = """
+log = object_create(name="Log", primitive="CYLINDER")
+max = 3
+list = [1, 2]
+pi = 3.14
+def f(sin):
+    return sin + max
+note("hello")
+object_create(name=str(f(1) + list[0] + pi), primitive="CUBE")
+"""
+        result, rec = run(source)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual([c[1]["name"] for c in rec.calls], ["Log", "8.14"])
+
+    def test_note_and_log_leave_comments(self):
+        result, _ = run('note("building the roof")\nlog("and the door")')
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.log, ["building the roof", "and the door"])
 
     def test_resource_limits(self):
         limited = ScriptLimits(max_tool_calls=5, max_ticks=1000, max_range=50)

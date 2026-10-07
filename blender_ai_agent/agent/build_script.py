@@ -83,7 +83,7 @@ SAFE_BUILTINS = {
     "float": float, "str": str, "bool": bool, "list": list, "tuple": tuple, "dict": dict, "sorted": sorted, "reversed": reversed,
     "any": any, "all": all, "True": True, "False": False, "None": None,
 }
-RESERVED = set(MATH_NAMES) | set(SAFE_BUILTINS) | {"range", "log"}
+RESERVED = set(MATH_NAMES) | set(SAFE_BUILTINS) | {"range", "log", "note"}
 
 _ALLOWED_NODES = (
     ast.Module, ast.Assign, ast.AugAssign, ast.For, ast.If, ast.Expr, ast.Pass, ast.Break, ast.Continue, ast.FunctionDef, ast.Return,
@@ -159,8 +159,8 @@ class _Validator:
     def define(self, node, name: str):
         if name.startswith("_"):
             self.fail(node, f"names starting with _ are not allowed ('{name}')")
-        if name in RESERVED or name in self.tools:
-            self.fail(node, f"'{name}' is a built-in / tool name and cannot be reassigned")
+        if name in self.tools:
+            self.fail(node, f"'{name}' is a tool function name and cannot be reused as a variable")
         self.defined.add(name)
 
     def check_node(self, node):
@@ -354,7 +354,7 @@ def run_script(source: str, call_tool: Callable[[str, Dict[str, Any]], Any], too
     namespace: Dict[str, Any] = {"__builtins__": {}}
     namespace.update(SAFE_BUILTINS)
     namespace.update(MATH_NAMES)
-    namespace.update({"range": safe_range, "log": log, "_tick": tick, "_mul": safe_mul, "_pow": safe_pow})
+    namespace.update({"range": safe_range, "log": log, "note": log, "_tick": tick, "_mul": safe_mul, "_pow": safe_pow})
     for fn_name, tool_name in name_map.items():
         namespace[fn_name] = make_tool(fn_name, tool_name)
 

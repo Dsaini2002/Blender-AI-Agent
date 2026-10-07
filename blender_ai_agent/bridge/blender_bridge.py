@@ -592,6 +592,213 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
+    # Node-based (procedural) material
+    # ---------------------------------------------------------
+    def build_node_material(self, name: str, spec, replace: bool = True):
+        """
+        shader_nodes.MaterialSpec se material banata hai (Noise -> ColorRamp -> Mix jaise node graph).
+        Galat socket/property par ValueError jisme maujooda valid naam likhe hote hain (taaki agent khud theek kar sake).
+        """
+        from ..tools.shader_nodes import layout, viewport_color
+
+        positions = layout(spec)
+
+        def _socket(node, ref, outputs: bool, node_id: str):
+            sockets = node.outputs if outputs else node.inputs
+            if str(ref).isdigit():
+                index = int(ref)
+                if index >= len(sockets):
+                    raise ValueError(f"{node_id}: {'output' if outputs else 'input'} number {index} does not exist ({len(sockets)} sockets)")
+                return sockets[index]
+            for socket in sockets:
+                if socket.name == ref and not getattr(socket, "unavailable", False):
+                    return socket
+            for socket in sockets:
+                if socket.name == ref:
+                    return socket
+            names = [s.name for s in sockets if not getattr(s, "unavailable", False)]
+            raise ValueError(f"{node_id}: no {'output' if outputs else 'input'} socket '{ref}'. Available: {names}")
+
+        def _set_default(socket, value, where: str):
+            current = getattr(socket, "default_value", None)
+            try:
+                if isinstance(value, list):
+                    if hasattr(current, "__len__"):
+                        size = len(current)
+                        value = (value + [1.0] * size)[:size] if len(value) < size else value[:size]
+                    else:
+                        value = value[0]
+                elif hasattr(current, "__len__") and not isinstance(value, str):
+                    value = [float(value)] * len(current) if len(current) != 4 else [float(value)] * 3 + [1.0]
+                socket.default_value = value
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError(f"{where}: cannot set value {value!r}: {exc}") from exc
+
+        def _do():
+            material = bpy.data.materials.get(name) if replace else None
+            if material is None:
+                material = bpy.data.materials.new(name=name)
+            if getattr(material, "node_tree", None) is None:
+                material.use_nodes = True              # purane Blender ke liye
+            tree = material.node_tree
+            tree.nodes.clear()
+            built = {}
+            for node_spec in spec.nodes:
+                try:
+                    node = tree.nodes.new(node_spec.idname)
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(f"{node_spec.id}: this Blender has no node '{node_spec.idname}' ({exc})") from exc
+                node.name = node_spec.id
+                node.label = node_spec.id
+                node.location = positions[node_spec.id]
+                built[node_spec.id] = node
+                for key, value in node_spec.props.items():
+                    try:
+                        setattr(node, key, value)
+                    except Exception as exc:  # noqa: BLE001
+                        raise ValueError(f"{node_spec.id}: cannot set {key}={value!r}: {exc}") from exc
+                for key, value in node_spec.inputs.items():
+                    _set_default(_socket(node, key, False, node_spec.id), value, f"{node_spec.id}.{key}")
+                if node_spec.ramp:
+                    elements = node.color_ramp.elements
+                    while len(elements) < len(node_spec.ramp):
+                        elements.new(0.5)
+                    while len(elements) > len(node_spec.ramp):
+                        elements.remove(elements[len(elements) - 1])
+                    for element, (position, colour) in zip(elements, node_spec.ramp):
+                        element.position = position
+                        element.color = colour
+                if node_spec.image:
+                    image = bpy.data.images.load(node_spec.image, check_existing=True)
+                    image.colorspace_settings.name = node_spec.colorspace or "sRGB"
+                    node.image = image
+            for from_id, from_socket, to_id, to_socket in spec.links:
+                tree.links.new(_socket(built[from_id], from_socket, True, from_id), _socket(built[to_id], to_socket, False, to_id))
+            notes = []
+            tint = viewport_color(spec)
+            if tint is not None:
+                try:
+                    material.diffuse_color = tint                  # solid viewport mein bhi sahi rang dikhe
+                except Exception:  # noqa: BLE001
+                    pass
+            for key, value in spec.settings.items():
+                try:
+                    if key == "surface_render_method" and not hasattr(material, "surface_render_method"):
+                        material.blend_method = "BLEND" if value == "BLENDED" else "HASHED"      # purane Blender
+                    else:
+                        setattr(material, key, value)
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f"setting {key} skipped: {exc}")
+            return {"name": material.name, "nodes": len(spec.nodes), "links": len(spec.links), "notes": notes}
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
+    # Render / colour management / DOF / world
+    # ---------------------------------------------------------
+    def setup_render(self, **opts):
+        """
+        engine (eevee|cycles), view_transform, look, exposure, samples, denoise, resolution_x/y, film_transparent,
+        dof + focus_object + aperture, world_color + world_strength. Jo is Blender mein nahi milta use chhod kar notes mein batata hai.
+        """
+        def _enum_items(owner, prop):
+            try:
+                return [item.identifier for item in owner.bl_rna.properties[prop].enum_items]
+            except Exception:  # noqa: BLE001
+                return []
+
+        def _do():
+            scene = bpy.context.scene
+            changed, notes = {}, []
+            engine = opts.get("engine")
+            if engine:
+                wanted = {"eevee": ["BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"], "cycles": ["CYCLES"]}.get(str(engine).lower(), [str(engine).upper()])
+                items = _enum_items(scene.render, "engine")
+                pick = next((w for w in wanted if w in items), None)
+                if pick:
+                    scene.render.engine = pick
+                    changed["engine"] = pick
+                else:
+                    notes.append(f"engine '{engine}' not available (have {items})")
+            view = opts.get("view_transform")
+            if view:
+                items = _enum_items(scene.view_settings, "view_transform")
+                pick = next((i for i in items if i.lower() == str(view).lower()), None)
+                if pick:
+                    scene.view_settings.view_transform = pick
+                    changed["view_transform"] = pick
+                else:
+                    notes.append(f"view transform '{view}' not available (have {items})")
+            look = opts.get("look")
+            if look:
+                items = _enum_items(scene.view_settings, "look")
+                base = scene.view_settings.view_transform
+                candidates = [str(look), f"{base} - {look}", f"AgX - {look}", f"Filmic - {look}"]
+                pick = next((i for c in candidates for i in items if i.lower() == c.lower()), None)
+                if pick:
+                    scene.view_settings.look = pick
+                    changed["look"] = pick
+                else:
+                    notes.append(f"look '{look}' not available (have {items[:8]})")
+            if opts.get("exposure") is not None:
+                scene.view_settings.exposure = float(opts["exposure"])
+                changed["exposure"] = float(opts["exposure"])
+            if opts.get("resolution_x") and opts.get("resolution_y"):
+                scene.render.resolution_x, scene.render.resolution_y = int(opts["resolution_x"]), int(opts["resolution_y"])
+                scene.render.resolution_percentage = 100
+                changed["resolution"] = [int(opts["resolution_x"]), int(opts["resolution_y"])]
+            if opts.get("samples"):
+                try:
+                    if scene.render.engine == "CYCLES":
+                        scene.cycles.samples = int(opts["samples"])
+                    else:
+                        scene.eevee.taa_render_samples = int(opts["samples"])
+                    changed["samples"] = int(opts["samples"])
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f"samples skipped: {exc}")
+            if opts.get("denoise") is not None and scene.render.engine == "CYCLES":
+                scene.cycles.use_denoising = bool(opts["denoise"])
+                changed["denoise"] = bool(opts["denoise"])
+            if opts.get("film_transparent") is not None:
+                scene.render.film_transparent = bool(opts["film_transparent"])
+                changed["film_transparent"] = bool(opts["film_transparent"])
+            if opts.get("dof") is not None:
+                camera = scene.camera
+                if camera is None or camera.type != "CAMERA":
+                    notes.append("depth of field skipped: the scene has no camera (create one with camera.create first)")
+                else:
+                    camera.data.dof.use_dof = bool(opts["dof"])
+                    if opts.get("aperture"):
+                        camera.data.dof.aperture_fstop = float(opts["aperture"])
+                    focus = opts.get("focus_object")
+                    if focus:
+                        target = bpy.data.objects.get(focus)
+                        if target is None:
+                            notes.append(f"focus object '{focus}' not found")
+                        else:
+                            camera.data.dof.focus_object = target
+                    changed["dof"] = bool(opts["dof"])
+            if opts.get("world_color") is not None or opts.get("world_strength") is not None:
+                world = scene.world or bpy.data.worlds.new("World")
+                scene.world = world
+                if getattr(world, "node_tree", None) is None:
+                    world.use_nodes = True
+                background = world.node_tree.nodes.get("Background")
+                if background is None:
+                    notes.append("world has no Background node; world colour skipped")
+                else:
+                    if opts.get("world_color") is not None:
+                        color = list(opts["world_color"])[:3] + [1.0]
+                        background.inputs["Color"].default_value = color
+                        changed["world_color"] = color[:3]
+                    if opts.get("world_strength") is not None:
+                        background.inputs["Strength"].default_value = float(opts["world_strength"])
+                        changed["world_strength"] = float(opts["world_strength"])
+            return {"changed": changed, "notes": notes}
+
+        return run_on_main_thread(_do)
+
+    # ---------------------------------------------------------
     # Naap (generated / imported model ko sahi size mein rakhne ke liye)
     # ---------------------------------------------------------
     def measure_objects(self, names):

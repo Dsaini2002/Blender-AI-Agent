@@ -45,6 +45,32 @@ def _rotate_z(x: float, y: float, yaw: float):
     return (x * math.cos(yaw) - y * math.sin(yaw), x * math.sin(yaw) + y * math.cos(yaw))
 
 
+def _recipe_params(recipe: str, params: Dict[str, Any], override) -> Dict[str, Any]:
+    """User ne is material ka rang badla ho to recipe ke param mein daalo (wood_grain mein light/dark)."""
+    merged = dict(params or {})
+    if override is not None:
+        rgb = [float(c) for c in list(override)[:3]]
+        if recipe == "wood_grain":
+            merged["light"] = rgb + [1.0]
+            merged["dark"] = [c * 0.4 for c in rgb] + [1.0]
+        else:
+            merged["color"] = rgb + [1.0]
+    return merged
+
+
+def _build_recipe_material(bridge, name: str, mat_spec: Dict[str, Any], override):
+    """mat_spec mein "recipe" ho aur bridge node materials bana sake to unka naam, warna None (saade rang par laut jao)."""
+    recipe = mat_spec.get("recipe")
+    if not recipe or not hasattr(bridge, "build_node_material"):
+        return None
+    try:
+        from .shader_nodes import build_recipe
+        spec = build_recipe(recipe, _recipe_params(recipe, mat_spec.get("params") or {}, override))
+        return bridge.build_node_material(name, spec, True)["name"]
+    except (ValueError, KeyError):
+        return None                                                 # Blender mein recipe na chale to bhi prefab kharab na ho
+
+
 def place_model(bridge, model: str, spec: Dict[str, Any], location, scale: float = 1.0,
                 yaw_degrees: float = 0.0, prefix: str = "", colors: Optional[Dict[str, List[float]]] = None):
     """
@@ -63,7 +89,11 @@ def place_model(bridge, model: str, spec: Dict[str, Any], location, scale: float
     for key, mat_spec in spec.get("materials", {}).items():
         color = list(colors.get(key, mat_spec["color"]))
         color = (color + [1.0])[:4] if len(color) == 3 else color
-        material = bridge.create_material(name=f"{prefix}{key}_mat", color=color)
+        built = _build_recipe_material(bridge, f"{prefix}{key}_mat", mat_spec, colors.get(key))
+        if built is not None:                                       # procedural material mil gaya
+            material_names[key] = built
+            continue
+        material = bridge.create_material(name=f"{prefix}{key}_mat", color=color)   # warna saada rang (purana tareeka)
         emission = mat_spec.get("emission")
         if emission:
             bridge.modify_material(material.name, emission_color=list(emission["color"]),

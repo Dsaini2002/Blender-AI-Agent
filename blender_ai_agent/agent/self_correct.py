@@ -204,12 +204,12 @@ def image_part(path: str) -> Dict[str, Any]:
 # =============================================================================
 EXCLUDED_TOOLS = {"python.execute", "render.preview", "vision.observe", "asset.import_model", "asset.list_blend_objects",
                   "asset.import_blend", "template.build", "build.iterate", "build.assess", "model.generate", "model.from_image",
-                  "image.generate", "scene.inspect", "mesh.help"}
+                  "image.generate", "scene.inspect", "mesh.help", "camera.create", "camera.set", "render.setup"}
 
 WRITER_SYSTEM = """You write BUILD SCRIPTS that make a 3D object in Blender. A script is a small Python subset that can ONLY call the tool functions listed below.
 
 LANGUAGE
-- Allowed: assignments, for loops over range()/lists, if/elif/else, def functions, list/dict literals, f-strings, list comprehensions, indexing/slicing, math (sin cos tan atan2 sqrt pi radians degrees floor ceil clamp lerp rand), abs min max round sum len int float str list dict tuple sorted zip enumerate any all, log("note").
+- Allowed: assignments, for loops over range()/lists, if/elif/else, def functions, list/dict literals, f-strings, list comprehensions, indexing/slicing, math (sin cos tan atan2 sqrt pi radians degrees floor ceil clamp lerp rand), abs min max round sum len int float str list dict tuple sorted zip enumerate any all, note("short comment").
 - NOT allowed: import, attribute access (x.y), method calls (s.format), while, lambda, class, try, with, open/eval/exec/print, *args, names starting with _, sets, dict/set comprehensions.
 - Call tools ONLY with keyword arguments, e.g. mesh_sdf(name="Body", resolution=60, shapes=[...]). Each call returns a dict: r = mesh_sdf(...); r["name"] is the real object name (Blender may add .001).
 - A failing call stops the script and you will be told the line and the reason - so use exact argument names from the list.
@@ -217,7 +217,9 @@ LANGUAGE
 RULES FOR THE OBJECT
 - Metres, Z up. Build it standing on z=0, centred at the anchor you are given. The FRONT of the object must face -Y (towards Blender's front view).
 - Make it RECOGNISABLE: correct proportions, all the parts a real one has (e.g. a car: body, cabin/windows, 4 wheels, lights), parts touching/attached, nothing floating or buried. Use loops for repeated parts (wheels, legs, windows).
-- Give every part its own clear name prefix and its own material (material_create then material_assign); use metallic/roughness/emission where it helps (paint metallic 0.8 roughness 0.25, glass dark roughness 0.05, rubber roughness 0.8, lights with emission).
+- REALISM (every object, any category): (1) three DETAIL LAYERS - big forms, medium parts, then 20-100 small seeded-random pieces (stones, coals, ash, bolts, leaves, scratches) with rand(i, seed) for position/size/rotation, never identical copies; (2) every main surface uses material_recipe (or material_nodes), not a flat colour; (3) anything that glows also gets a light_create of the same colour next to it; (4) add atmosphere where it makes sense (smoke_volume on a big cube, sparks); (5) the ground gets dirt_ground, hard parts a small bevel (modifier_add BEVEL) and shade smooth; (6) nothing floats or sinks.
+- MATERIALS: material_recipe(name=..., recipe=..., params={...}, assign_to=[object names]). Recipes: {recipes}. Use material_nodes only to invent something no recipe covers. Glass parts use the glass recipe, tyres rubber, paint car_paint, lamps glow.
+- Do NOT create cameras or call render_setup in a build script: the system renders its own views.
 - Prefer these builders for organic/round shapes: mesh_sdf (blended solids: bodies, cabins, rocks, animals), mesh_lathe (bottles, wheels' hubs, vases), mesh_prism (flat shapes), character_create (cartoon people), curve_create (tubes, ropes). Use object_create + object_transform for simple boxes and cylinders.
 - Do not delete or modify objects that are not yours. Do not render. Keep the script under ~120 lines.
 
@@ -242,11 +244,9 @@ for i, (sx, sy) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
 EXAMPLE 2 (a simple car: body + solid wheels, front towards -Y, anchor (ax, ay))
 ```python
 ax, ay = 0.0, 0.0
-material_create(name="Paint", color=[0.7, 0.05, 0.05])
-material_modify(name="Paint", metallic=0.8, roughness=0.25)
-material_create(name="Rubber", color=[0.03, 0.03, 0.03])
-material_create(name="Chrome", color=[0.8, 0.8, 0.82])
-material_modify(name="Chrome", metallic=1.0, roughness=0.2)
+material_recipe(name="Paint", recipe="car_paint", params={"color": [0.55, 0.02, 0.02, 1.0]})
+material_recipe(name="Rubber", recipe="rubber")
+material_recipe(name="Chrome", recipe="metal_brushed", params={"color": [0.85, 0.85, 0.88, 1.0], "roughness": 0.2})
 body = mesh_sdf(name="Car_body", resolution=60, location=[ax, ay, 0], shapes=[
     {"type": "box", "size": [1.8, 4.5, 0.72], "center": [0, 0, 0.62], "rounding": 0.28},
     {"type": "ellipsoid", "radii": [0.83, 1.2, 0.43], "center": [0, 0.2, 1.12], "op": "smooth_union", "k": 0.3}])
@@ -260,6 +260,46 @@ for i, (sx, sy) in enumerate([(1, 1), (-1, 1), (1, -1), (-1, -1)]):
     h = mesh_lathe(name=f"Car_hub{i}", profile=hub, segments=24, location=spot, rotation=[0, 90, 0])
     material_assign(object_name=h["name"], material_name="Chrome")
 ```
+EXAMPLE 3 (a lit scene - shows the general rules: layers, recipes, light from the emitter, atmosphere, imperfection; centred at the anchor)
+```python
+cx, cy = 0.0, 0.0
+material_recipe(name="Fire_dirt", recipe="dirt_ground")
+material_recipe(name="Fire_stone", recipe="rough_stone")
+material_recipe(name="Fire_log", recipe="wood_grain")
+material_recipe(name="Fire_char", recipe="charred_wood")
+material_recipe(name="Fire_ember", recipe="ember")
+material_recipe(name="Fire_flame", recipe="fire_flame")
+material_recipe(name="Fire_smoke", recipe="smoke_volume")
+ground = object_create(name="Fire_ground", primitive="PLANE", location=[cx, cy, 0])
+object_transform(name=ground["name"], scale=[6, 6, 1])
+material_assign(object_name=ground["name"], material_name="Fire_dirt")
+for i in range(14):
+    a = 2 * pi * i / 14
+    stone = object_create(name=f"Fire_stone{i}", primitive="SPHERE", location=[cx + 1.4 * cos(a), cy + 1.4 * sin(a), 0.12])
+    object_transform(name=stone["name"], scale=[0.3 + 0.15 * rand(i, 1), 0.25 + 0.1 * rand(i, 2), 0.2 + 0.08 * rand(i, 3)], rotation=[0.3 * rand(i, 4), 0.3 * rand(i, 5), a])
+    material_assign(object_name=stone["name"], material_name="Fire_stone")
+for i in range(4):
+    a = pi * i / 4 + 0.3
+    trunk = object_create(name=f"Fire_log{i}", primitive="CYLINDER", location=[cx, cy, 0.25 + 0.18 * (i % 2)])
+    object_transform(name=trunk["name"], scale=[0.2, 0.2, 1.1], rotation=[0, pi / 2, a])
+    material_assign(object_name=trunk["name"], material_name="Fire_log" if i % 2 == 0 else "Fire_char")
+for i in range(40):
+    r = 0.75 * sqrt(rand(i, 11))
+    a = 2 * pi * rand(i, 12)
+    coal = object_create(name=f"Fire_coal{i}", primitive="SPHERE", location=[cx + r * cos(a), cy + r * sin(a), 0.08 + 0.12 * rand(i, 13)])
+    object_transform(name=coal["name"], scale=[0.06 + 0.05 * rand(i, 14), 0.06 + 0.05 * rand(i, 15), 0.04 + 0.03 * rand(i, 16)])
+    material_assign(object_name=coal["name"], material_name="Fire_ember")
+for k, (h, w) in enumerate([(1.5, 0.38), (1.1, 0.26), (0.8, 0.18)]):
+    flame = mesh_sdf(name=f"Fire_flame{k}", resolution=36, location=[cx + 0.08 * k, cy - 0.05 * k, 0.45],
+                     shapes=[{"type": "round_cone", "radius": w, "radius_top": 0.0, "height": h}])
+    material_assign(object_name=flame["name"], material_name="Fire_flame")
+smoke = object_create(name="Fire_smoke", primitive="CUBE", location=[cx, cy, 2.6])
+object_transform(name=smoke["name"], scale=[1.0, 1.0, 2.2])
+material_assign(object_name=smoke["name"], material_name="Fire_smoke")
+light_create(name="Fire_light", light_type="POINT", location=[cx, cy, 0.9], color=[1.0, 0.35, 0.08], energy=900, size=0.6)
+light_create(name="Fire_glow", light_type="POINT", location=[cx, cy, 0.15], color=[1.0, 0.1, 0.01], energy=350, size=0.4)
+```
+
 WHEELS: always SOLID. Use mesh_lathe with a closed profile [[r, z], ...] that starts and ends on the axis (r = 0) - the lathe axis is Z, so rotation [0, 90, 0] turns it sideways; centre height = wheel radius. NEVER a bare torus or an open ring (it shows holes and the ground through it).
 """
 
@@ -270,7 +310,7 @@ Answer with ONLY this JSON object:
   "problems": [{{"severity": "high|medium|low", "where": "<object or region>", "issue": "<what is wrong, concretely>", "fix": "<what to change in the script>"}}],
   "keep": ["<things that are already right>"]}}
 Scoring: 10 = convincing; 7-8 = clearly recognisable, minor flaws; 4-6 = vague resemblance, important parts missing or wrong; 0-3 = wrong or missing.
-Check: the object TYPE is exactly what was asked (a sports car is low, wide, with a long sloping hood and a small cabin - NOT a pickup, van or sedan; a horse is not a dog): if the type is wrong, score at most 4. Recognisable silhouette and proportions; every expected part present (a car needs wheels, windows, lights); wheels are SOLID discs (holes or see-through wheels are a high problem); parts attached - not floating, not buried, not badly intersecting; the front faces the camera in the front view; sensible colours/materials; nothing below the ground.
+Check: the object TYPE is exactly what was asked (a sports car is low, wide, with a long sloping hood and a small cabin - NOT a pickup, van or sedan; a horse is not a dog): if the type is wrong, score at most 4. Recognisable silhouette and proportions; every expected part present (a car needs wheels, windows, lights); wheels are SOLID discs (holes or see-through wheels are a high problem); REALISM for any object: at least three detail layers (big forms, medium parts, many small pieces), surfaces with material variation rather than flat colours, glowing things that actually light their surroundings, believable atmosphere (smoke, dust) where it belongs, imperfection (no identical copies, no perfect symmetry) - say exactly which of these is missing; parts attached - not floating, not buried, not badly intersecting; the front faces the camera in the front view; sensible colours/materials; nothing below the ground.
 At most 6 problems, most important first. Be specific (say which object and in which direction to move/scale it)."""
 
 
@@ -509,7 +549,12 @@ class SelfCorrectingBuilder:
         return self.llm.generate(system, parts, **kw)
 
     def _writer_system(self) -> str:
-        return WRITER_SYSTEM.replace("{tools}", describe_tools(self.registry, self.tool_names))
+        try:
+            from ..tools.shader_nodes import RECIPES
+            recipes = ", ".join(sorted(RECIPES))
+        except Exception:  # noqa: BLE001
+            recipes = "fire_flame, ember, smoke_volume, charred_wood, wood_grain, rough_stone, dirt_ground, glass, car_paint, metal_brushed, rubber, water, glow, fabric"
+        return WRITER_SYSTEM.replace("{tools}", describe_tools(self.registry, self.tool_names)).replace("{recipes}", recipes)
 
     def _checked_script(self, system: str, parts: List[Dict[str, Any]], text: str) -> str:
         """Script nikaalo + jaancho; syntax / sandbox galti par Gemini se max_script_retries baar theek karwao."""

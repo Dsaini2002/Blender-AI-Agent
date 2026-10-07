@@ -20,6 +20,7 @@ from blender_ai_agent.tools.iterate_tools import BuildIterateInput, BuildIterate
 from blender_ai_agent.tools.mesh_advanced_tools import MeshLatheTool, MeshSdfTool
 from blender_ai_agent.tools.registry import ToolRegistry
 from blender_ai_agent.tools.render_views import VIEW_DIRECTIONS, camera_pose, normalize_view
+from blender_ai_agent.tools.shader_tools import MaterialNodesTool, MaterialRecipeTool
 from blender_ai_agent.tools.scene_tools import SceneInspectTool
 from .fakes import FakeObject
 from .fakes_ext import FakeBridge
@@ -73,7 +74,18 @@ def _transform(bridge, v):
         return ToolResult.fail(f"no object {v.name}")
     if v.scale is not None:
         obj.scale = list(v.scale)
+    if v.rotation is not None:
+        obj.rotation_euler = list(v.rotation)
     return ToolResult.ok({"name": v.name})
+
+
+def _light(bridge, v):
+    obj = FakeObject(name=v.name, type_="LIGHT")
+    obj.location = list(v.location)
+    obj.light_color = list(v.color)
+    obj.light_energy = v.energy
+    bridge._objects.append(obj)
+    return ToolResult.ok({"name": obj.name})
 
 
 def _material(bridge, v):
@@ -89,7 +101,10 @@ def _assign(bridge, v):
 ObjectCreate = _simple_tool("object.create", [("name", str, "Cube"), ("primitive", str, "CUBE"), ("location", list, lambda: [0.0, 0.0, 0.0])], _create,
                             description="Creates a primitive object (CUBE, SPHERE, CYLINDER, CONE, PLANE).")
 ObjectDelete = _simple_tool("object.delete", [("name", str, "")], _delete, Permission.DESTRUCTIVE, "Deletes an object.")
-ObjectTransform = _simple_tool("object.transform", [("name", str, ""), ("scale", object, None)], _transform)
+ObjectTransform = _simple_tool("object.transform", [("name", str, ""), ("scale", object, None), ("rotation", object, None)], _transform)
+LightCreate = _simple_tool("light.create", [("name", str, "Light"), ("light_type", str, "POINT"), ("location", list, lambda: [0.0, 0.0, 3.0]),
+                                            ("color", list, lambda: [1.0, 1.0, 1.0]), ("energy", float, 1000.0), ("size", float, 0.25)], _light,
+                           description="Creates a light (POINT / SUN / SPOT / AREA).")
 MaterialCreate = _simple_tool("material.create", [("name", str, "Mat"), ("color", object, None)], _material)
 MaterialAssign = _simple_tool("material.assign", [("object_name", str, ""), ("material_name", str, "")], _assign)
 
@@ -97,13 +112,20 @@ MaterialAssign = _simple_tool("material.assign", [("object_name", str, ""), ("ma
 def make_stack(bridge):
     registry = ToolRegistry()
     for tool in (ObjectCreate(bridge), ObjectDelete(bridge), ObjectTransform(bridge), MaterialCreate(bridge), MaterialAssign(bridge),
+                 LightCreate(bridge), MaterialRecipeTool(bridge), MaterialNodesTool(bridge),
                  MeshSdfTool(bridge), MeshLatheTool(bridge), SceneInspectTool(SceneInspector(bridge))):
         registry.register(tool)
     return registry, ToolCaller(registry)
 
 
 class SceneBridge(FakeBridge):
-    """mesh.sdf ke liye create_mesh + scene.inspect ke liye object fields."""
+    """mesh.sdf ke liye create_mesh + scene.inspect ke liye object fields + node materials ka record."""
+
+    def build_node_material(self, name, spec, replace=True):
+        if not hasattr(self, "node_materials"):
+            self.node_materials = {}
+        self.node_materials[name] = spec
+        return {"name": name, "nodes": len(spec.nodes), "links": len(spec.links), "notes": []}
 
     def create_mesh(self, name, vertices, faces, location=None, rotation=None, scale=None, shade_smooth=False):
         obj = super().create_mesh(name, vertices, faces, location, rotation, scale, shade_smooth)
@@ -272,16 +294,66 @@ class TestHelpers(unittest.TestCase):
         self.assertIn("object_create(name='Cube'", listing)
         self.assertNotIn("scene_inspect", listing)
         examples = re.findall(r"```python\n(.*?)```", sc.WRITER_SYSTEM, re.DOTALL)
-        self.assertEqual(len(examples), 2)
+        self.assertEqual(len(examples), 3)
+        self.assertIn("material_recipe(", listing)
         functions = {function_name(n) for n in names} | {"material_modify", "mesh_lathe", "mesh_prism", "character_create", "curve_create"}
         for example in examples:
             validate_script(example, functions)                                # syntax + sandbox rules ke hisaab se sahi
 
 
-class TestPromptExamples(LoopCase):
-    """Prompt ke dono example scripts asli mesh.sdf ke saath poore chalte hain (galat argument ya galat orientation pakadne ke liye)."""
+class TestWriterPrompt(LoopCase):
 
-    def test_both_examples_run_and_the_car_is_a_car(self):
+    def test_recipes_and_the_general_rules_reach_the_writer(self):
+        from blender_ai_agent.tools.shader_nodes import RECIPES
+        system = self.builder()._writer_system()
+        self.assertNotIn("{recipes}", system)
+        self.assertNotIn("{tools}", system)
+        for recipe in RECIPES:
+            self.assertIn(recipe, system)
+        for rule in ("DETAIL LAYERS", "light_create of the same colour", "atmosphere", "Do NOT create cameras", "never identical copies"):
+            self.assertIn(rule, system)
+
+    def test_camera_and_render_tools_are_not_offered_to_build_scripts(self):
+        names = [n for n in self.registry.list_tools() if n not in sc.EXCLUDED_TOOLS]
+        for tool in ("camera.create", "camera.set", "render.setup", "python.execute"):
+            self.assertNotIn(tool, names)
+        for tool in ("material.recipe", "material.nodes", "light.create", "mesh.sdf"):
+            self.assertIn(tool, names)
+
+    def test_the_reviewer_checks_general_realism_not_only_the_object_type(self):
+        system = sc.CRITIC_SYSTEM
+        for phrase in ("three detail layers", "flat colours", "actually light", "atmosphere", "imperfection"):
+            self.assertIn(phrase, system)
+
+
+class TestPromptExamples(LoopCase):
+    """Prompt ke teeno example scripts asli tools ke saath poore chalte hain (galat argument ya galat orientation pakadne ke liye)."""
+
+    def check_lit_scene_follows_the_general_rules(self, by_name):
+        """Example 3 (aag wala scene) khud wahi rules maanta hai jo prompt sikhata hai: layers, recipes, emitter -> light, atmosphere, imperfection."""
+        names = list(by_name)
+        count = lambda prefix: sum(1 for n in names if n.startswith(prefix))      # noqa: E731
+        self.assertEqual((count("Fire_stone"), count("Fire_log"), count("Fire_coal"), count("Fire_flame")), (14, 4, 40, 3))
+        # (1) 3 detail layers: zameen+patthar+lakdi (bada/beech) aur 40 chhote angaare
+        self.assertGreaterEqual(count("Fire_coal"), 20)
+        # (2) har mukhya surface recipe se: 7 materials, koi flat colour nahi
+        recipes = {n: spec for n, spec in self.bridge.node_materials.items() if n.startswith("Fire_")}
+        self.assertEqual(sorted(recipes), ["Fire_char", "Fire_dirt", "Fire_ember", "Fire_flame", "Fire_log", "Fire_smoke", "Fire_stone"])
+        # (3) chamakne wale (flame/ember) ke paas same rang ki asli light
+        lights = [o for o in self.bridge._objects if o.type == "LIGHT"]
+        self.assertGreaterEqual(len(lights), 2)
+        self.assertTrue(all(l.light_color[0] >= 0.9 and l.light_color[2] <= 0.1 for l in lights), "fire lights must be warm orange/red")
+        self.assertTrue(all(l.location[2] < 1.5 for l in lights))                      # aag ke paas, door nahi
+        # (4) atmosphere: smoke volume ek bade cube par
+        self.assertIn("Fire_smoke", by_name)
+        self.assertEqual(by_name["Fire_smoke"].scale[2], 2.2)
+        # (5) imperfection: patthar sab alag size ke, koi do identical nahi
+        sizes = {tuple(round(v, 4) for v in by_name[f"Fire_stone{i}"].scale) for i in range(14)}
+        self.assertEqual(len(sizes), 14)
+        # (6) zameen par: patthar/angaare zameen ke upar, neeche nahi
+        self.assertTrue(all(by_name[f"Fire_stone{i}"].location[2] > 0 for i in range(14)))
+
+    def test_all_three_examples_run_and_the_car_is_a_car(self):
         from blender_ai_agent.agent.build_script import run_script
         from blender_ai_agent.agent.models import ToolCall
         MaterialModify = _simple_tool("material.modify", [("name", str, ""), ("metallic", object, None), ("roughness", object, None)], _material)
@@ -292,6 +364,7 @@ class TestPromptExamples(LoopCase):
             result = run_script(source, lambda tool, kwargs: self.caller.call(ToolCall(tool_name=tool, arguments=kwargs)), names)
             self.assertTrue(result.ok, result.error)
         by_name = {o.name: o for o in self.bridge._objects}
+        self.check_lit_scene_follows_the_general_rules(by_name)
         self.assertEqual(sorted(n for n in by_name if n.startswith("Table_")), ["Table_leg0", "Table_leg1", "Table_leg2", "Table_leg3", "Table_top"])
         body = by_name["Car_body"]
         ys = [v[1] for v in body.mesh_vertices]

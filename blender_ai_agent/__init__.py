@@ -49,6 +49,7 @@ from .tools.curve_tools import CreateCurveTool
 from .tools.mesh_tools import CreateMeshTool, DamageMeshTool
 from .tools.character_tools import CharacterCreateTool
 from .tools.iterate_tools import BuildIterateTool
+from .tools.shader_tools import MaterialNodesTool, MaterialRecipeTool, RenderSetupTool
 from .tools.mesh_advanced_tools import (
     MeshEditTool, MeshHelpTool, MeshLatheTool, MeshPrismTool, MeshScriptTool, MeshSdfTool, MeshTerrainTool,
 )
@@ -104,6 +105,10 @@ def _register_tools() -> None:
     registry.register(CreateMaterialTool(bridge))
     registry.register(AssignMaterialTool(bridge))
     registry.register(ModifyMaterialTool(bridge))
+    # Pro shading + finishing: node-based materials, tayyar recipes (aag/dhuan/lakdi/patthar/sheesha...), render/colour/DOF setup
+    registry.register(MaterialNodesTool(bridge))
+    registry.register(MaterialRecipeTool(bridge))
+    registry.register(RenderSetupTool(bridge))
 
     registry.register(AddModifierTool(bridge))
     registry.register(RemoveModifierTool(bridge))

@@ -170,7 +170,7 @@ class TestLibraryPlaceTool(unittest.TestCase):
         bridge = FakeBridge()
         result = LibraryPlaceTool(bridge).execute({"model": "campfire"})
 
-        self.assertEqual(len(result.data["curves"]), 8)
+        self.assertEqual(len(result.data["curves"]), 19)
         self.assertGreater(bridge.get_material("campfire_flame_outer_mat").emission_strength, 0)
         self.assertGreater(bridge.get_material("campfire_flame_inner_mat").emission_strength, 0)
         self.assertEqual(bridge.get_material("campfire_stone_mat").emission_strength, 0.0)
