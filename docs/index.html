@@ -1,1 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blender AI Agent by Dinesh Saini, NIT Trichy</title>
+<meta name="description" content="Blender AI Agent is an AI helper for Blender, made by Dinesh Saini, a student at NIT Trichy. Tell it what you want. It builds the scene, checks it and fixes mistakes.">
+<meta name="author" content="Dinesh Saini">
+<meta name="theme-color" content="#242528">
+<meta property="og:title" content="Blender AI Agent by Dinesh Saini">
+<meta property="og:description" content="An AI helper for Blender. Tell it what you want. It builds it, checks it and fixes it.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3l11 6.3v12.4L16 28 5 21.7V9.3z' fill='%232d2e32'/%3E%3Cpath d='M16 3l11 6.3L16 15.6 5 9.3z' fill='%23f5a02c'/%3E%3Cpath d='M16 15.6V28L5 21.7V9.3z' fill='%234f95e8'/%3E%3Cpath d='M16 15.6V28l11-6.3V9.3z' fill='%2392c43f'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
 
+<header class="topbar">
+  <a class="brand" href="#layout" aria-label="Blender AI Agent, back to the top">
+    <svg class="mark" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path d="M16 3l11 6.3v12.4L16 28 5 21.7V9.3z" fill="#2d2e32"/><path d="M16 3l11 6.3L16 15.6 5 9.3z" fill="#f5a02c"/><path d="M16 15.6V28L5 21.7V9.3z" fill="#4f95e8"/><path d="M16 15.6V28l11-6.3V9.3z" fill="#92c43f"/></svg>
+    <span>Blender AI Agent</span>
+  </a>
+  <nav class="workspaces" aria-label="Sections">
+    <a href="#layout" title="Overview and live preview">Layout</a>
+    <a href="#modeling" title="The tools and the prompt coach">Modeling</a>
+    <a href="#shading" title="What makes a scene look real">Shading</a>
+    <a href="#rendering" title="How it checks and fixes its work">Rendering</a>
+    <a href="#scripting" title="Install and first run">Scripting</a>
+    <a href="#about" title="Who made it">About</a>
+  </nav>
+  <div class="topbar-right">
+    <a class="btn ghost" href="https://github.com/Dsaini2002/Blender-AI-Agent">GitHub</a>
+  </div>
+</header>
+
+<main id="content">
+
+<!-- ============================================================ Layout: the live viewport -->
+<section id="layout" class="hero" aria-labelledby="hero-title">
+  <div class="viewport">
+    <div class="hero-copy">
+      <h1 id="hero-title">Tell Blender what you want. It builds it, checks it, and fixes it.</h1>
+      <p class="lead">Blender AI Agent is an AI helper inside Blender. Just type what you want to create, like “make a campfire.” It builds the scene, takes images to check its work, and tries to fix any problems it finds.</p>
+      <div class="actions">
+        <a class="btn primary" href="#scripting">Set it up</a>
+        <a class="btn" href="https://github.com/Dsaini2002/Blender-AI-Agent">See the code</a>
+      </div>
+      <p class="maker">Created by <a href="#about">Dinesh Saini</a>, student at NIT Trichy</p>
+    </div>
+    <div class="stage">
+      <canvas id="hero-canvas" tabindex="0" role="img" aria-label="Interactive 3D preview of a campfire. Drag to rotate."></canvas>
+      <div class="vp-header">
+        <div class="shading" id="shade-hero" role="group" aria-label="Viewport shading">
+          <button type="button" data-mode="wire" aria-pressed="false">Wireframe</button>
+          <button type="button" data-mode="solid" aria-pressed="false">Solid</button>
+          <button type="button" data-mode="material" aria-pressed="false">Material</button>
+          <button type="button" data-mode="rendered" aria-pressed="true">Rendered</button>
+        </div>
+      </div>
+      <div class="vp-info" aria-hidden="true">
+        <p><span id="vp-object">Campfire</span> in Scene Collection</p>
+        <p id="vp-stats">Objects 0 Triangles 0</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="console">
+    <form id="promptform" class="prompt-row" autocomplete="off">
+      <label class="sr-only" for="prompt">What should Blender build?</label>
+      <input id="prompt" name="prompt" type="text" spellcheck="false" enterkeyhint="go" placeholder="Describe something to build, for example: make a campfire">
+      <button class="btn primary" type="submit">Build</button>
+    </form>
+    <div class="chips" id="chips" aria-label="Example requests">
+      <button type="button" class="chip" data-prompt="make a campfire">campfire</button>
+      <button type="button" class="chip" data-prompt="design a modern living room with a floating ceiling light, a sofa, a bookshelf and a desk">room design</button>
+      <button type="button" class="chip" data-prompt="make a spiral galaxy with a ringed planet">galaxy space</button>
+      <button type="button" class="chip" data-prompt="make mountains">mountains</button>
+    </div>
+    <div class="console-body">
+      <div id="log" class="log" role="log" aria-live="polite" aria-label="What the agent is doing"></div>
+      <div class="status">
+        <div id="progress" class="bar" aria-hidden="true"><span></span></div>
+        <p id="progress-label">Waiting for a request</p>
+        <p class="note">This is only a preview in your browser. The real agent works inside Blender.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ Modeling: tools + prompt coach -->
+<section id="modeling" class="ws ws-x" aria-labelledby="modeling-title">
+  <div class="wrap">
+    <h2 id="modeling-title">Many tools, and it knows which one to use</h2>
+    <p class="lead">Simple requests are done right away, without AI. Bigger ones are planned by an AI model (Gemini, Groq or OpenAI), which then uses the same tools step by step.</p>
+
+    <div class="editor">
+      <div class="outliner-panel">
+        <div class="panel-head">Outliner</div>
+        <div id="outliner" role="group" aria-label="Tool groups"></div>
+      </div>
+      <div class="props-panel" id="props" aria-live="polite"></div>
+    </div>
+
+    <dl class="facts" aria-label="What is inside">
+      <div><dt>Tools</dt><dd>40+</dd></div>
+      <div><dt>Mesh edit presets</dt><dd>26</dd></div>
+      <div><dt>Built-in props</dt><dd>14</dd></div>
+      <div><dt>Free (CC0) models</dt><dd>991</dd></div>
+      <div><dt>Ready-made materials</dt><dd>14</dd></div>
+      <div><dt>AI providers</dt><dd>Gemini, Groq, OpenAI</dd></div>
+      <div><dt>After every task</dt><dd>It checks its own work</dd></div>
+    </dl>
+
+    <div class="coach" id="coach">
+      <div class="coach-main">
+        <h3 id="coach-title">Prompt coach</h3>
+        <p class="coach-lead">A good request has details. Type one to see what the agent understands, and how it will build it.</p>
+        <label class="sr-only" for="coach-input">Your request</label>
+        <textarea id="coach-input" rows="3" spellcheck="false" placeholder="For example: make a campfire at night"></textarea>
+        <div class="coach-actions">
+          <button type="button" class="btn primary" id="coach-try" disabled>Try in the preview</button>
+          <button type="button" class="btn" id="coach-copy">Copy request</button>
+        </div>
+        <div class="coach-route" id="coach-route" aria-live="polite"></div>
+      </div>
+      <div class="coach-side">
+        <p class="coach-score" id="coach-score" aria-live="polite">Detail level: 0 of 5</p>
+        <ul class="checks" id="coach-list" aria-label="What the agent can pick up"></ul>
+        <p class="coach-add-label" id="coach-add-label">Add something</p>
+        <div class="chips" id="coach-add" aria-labelledby="coach-add-label"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ Shading: realism lab -->
+<section id="shading" class="ws ws-y" aria-labelledby="shading-title">
+  <div class="wrap">
+    <h2 id="shading-title">What makes a scene look real</h2>
+    <p class="lead">Switch the view to Rendered. Then turn each habit off to see what it adds. The agent uses all of them every time it builds.</p>
+
+    <div class="lab">
+      <div class="lab-view">
+        <canvas id="lab-canvas" tabindex="0" role="img" aria-label="Interactive campfire used to compare shading habits. Drag to rotate."></canvas>
+        <div class="vp-header">
+          <div class="shading" id="shade-lab" role="group" aria-label="Viewport shading">
+            <button type="button" data-mode="wire" aria-pressed="false">Wireframe</button>
+            <button type="button" data-mode="solid" aria-pressed="false">Solid</button>
+            <button type="button" data-mode="material" aria-pressed="false">Material</button>
+            <button type="button" data-mode="rendered" aria-pressed="true">Rendered</button>
+          </div>
+        </div>
+        <p class="lab-hint" id="lab-hint" aria-live="polite"></p>
+      </div>
+
+      <div class="rules" id="lab-rules">
+        <div class="rules-head">
+          <p id="lab-count">6 of 6 habits on</p>
+          <div class="seg seg-sm" role="group" aria-label="Presets">
+            <button type="button" id="lab-plain">All off</button>
+            <button type="button" id="lab-full">All on</button>
+          </div>
+        </div>
+        <label class="rule"><input type="checkbox" data-flag="layers" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Layers of detail</strong><small>Big shapes first, then medium parts, then many tiny pieces: coals, ash, sparks and small flames.</small></span></label>
+        <label class="rule"><input type="checkbox" data-flag="materials" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Real materials</strong><small>Wood, stone and dirt change from place to place, not one flat colour.</small></span></label>
+        <label class="rule"><input type="checkbox" data-flag="light" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Light from the fire</strong><small>Anything that glows also gets a real light of the same colour. The stones and the ground catch it.</small></span></label>
+        <label class="rule"><input type="checkbox" data-flag="smoke" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Atmosphere</strong><small>Smoke drifts up from the flames.</small></span></label>
+        <label class="rule"><input type="checkbox" data-flag="edges" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Contact with the ground</strong><small>Soft shadows where stones and logs touch the ground, so nothing looks stuck on.</small></span></label>
+        <label class="rule"><input type="checkbox" data-flag="finish" checked><span class="switch" aria-hidden="true"></span>
+          <span class="rule-text"><strong>Finishing pass</strong><small>Better colours, a soft glow around bright parts and dark corners. In Blender this is the render.setup step.</small></span></label>
+        <p class="note">The seventh habit is not a visual switch: after a build, the agent looks at a picture and fixes anything that looks flat, empty or floating. That is the next section.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ Rendering: the loop -->
+<section id="rendering" class="ws ws-z" aria-labelledby="rendering-title">
+  <div class="wrap">
+    <h2 id="rendering-title">It checks its own work</h2>
+    <p class="lead">Some things have no ready-made tool. For these, Gemini writes a build script and Blender runs it. Then the agent takes pictures from four sides and gives them a score. It fixes the script again and again, until the score is good or it runs out of tries.</p>
+
+    <ol class="steps" id="loop-steps">
+      <li><b>Write</b><span>Gemini writes a short build script. It can only use the agent's own tools.</span></li>
+      <li><b>Run</b><span>Blender runs the script in a safe box: no imports, no file access, and a limit on time.</span></li>
+      <li><b>Picture</b><span>Four pictures of the new objects from different sides.</span></li>
+      <li><b>Score</b><span>Gemini looks at the pictures, gives a score from 0 to 10 and lists what is wrong.</span></li>
+      <li><b>Fix</b><span>The script is written again using those notes. The old objects are removed first.</span></li>
+    </ol>
+
+    <div class="loop-board">
+      <div class="loop-head">
+        <p id="loop-round">Round 3 of 3</p>
+        <button type="button" class="btn" id="loop-play">Play the loop</button>
+      </div>
+      <div class="thumbs" id="loop-thumbs">
+        <figure><canvas data-view="front" role="img" aria-label="Front view of the room"></canvas><figcaption>Front</figcaption></figure>
+        <figure><canvas data-view="left" role="img" aria-label="Room seen from the left"></canvas><figcaption>From the left</figcaption></figure>
+        <figure><canvas data-view="right" role="img" aria-label="Room seen from the right"></canvas><figcaption>From the right</figcaption></figure>
+        <figure><canvas data-view="close" role="img" aria-label="Close-up of the sofa and desk"></canvas><figcaption>Close up</figcaption></figure>
+      </div>
+      <div class="score-row">
+        <div id="loop-score" class="bar"><span></span></div>
+        <p id="loop-score-text">8.6 / 10</p>
+      </div>
+      <ul id="loop-notes" class="notes" aria-live="polite"></ul>
+    </div>
+
+    <div class="after">
+      <div>
+        <h3>After every task</h3>
+        <ul>
+          <li>It reads the Blender console for errors and warnings, and ignores the normal messages.</li>
+          <li>It takes a picture of what changed and asks Gemini to check it. Very small jobs, and work that build.iterate already checked, are skipped.</li>
+          <li>If something is wrong, the notes go back to the agent for up to two more tries. If a fix makes things worse, it stops.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Guardrails</h3>
+        <ul>
+          <li>Scripts can only use the agent's own tools.</li>
+          <li>A script can delete only the objects it made itself.</li>
+          <li>If a build fails or is cancelled, it is undone. If the AI quota runs out, the agent stops and keeps the best result so far.</li>
+          <li>API keys are read from environment variables and are never shown.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ Scripting: install -->
+<section id="scripting" class="ws ws-sel" aria-labelledby="scripting-title">
+  <div class="wrap">
+    <h2 id="scripting-title">How to set it up on Windows</h2>
+    <p class="lead">You need Blender 5.2 LTS and one API key. A free Gemini key is enough to start.</p>
+
+    <div class="setup">
+      <ol class="setup-steps">
+        <li>
+          <h3>Get the code</h3>
+          <div class="code"><code id="code-clone">git clone https://github.com/Dsaini2002/Blender-AI-Agent.git</code><button type="button" class="copy" data-copy="code-clone">Copy</button></div>
+        </li>
+        <li>
+          <h3>Copy the add-on into Blender</h3>
+          <div class="code"><code id="code-copy">Copy-Item .\Blender-AI-Agent\blender_ai_agent "$env:APPDATA\Blender Foundation\Blender\5.2\scripts\addons\" -Recurse</code><button type="button" class="copy" data-copy="code-copy">Copy</button></div>
+        </li>
+        <li>
+          <h3>Add your key, then restart Blender</h3>
+          <div class="code"><code id="code-key">setx GEMINI_API_KEY "paste-your-key-here"</code><button type="button" class="copy" data-copy="code-key">Copy</button></div>
+          <p>Groq and OpenAI work the same way with <code class="inline">GROQ_API_KEY</code> and <code class="inline">OPENAI_API_KEY</code>.</p>
+        </li>
+        <li>
+          <h3>Turn it on</h3>
+          <p>In Blender open Edit, Preferences, Add-ons and enable <code class="inline">blender_ai_agent</code>. Press N in the 3D viewport and open the AI Copilot tab.</p>
+        </li>
+        <li>
+          <h3>Ask for something</h3>
+          <div class="code"><code id="code-ask">make a campfire, add a tent, add a lantern</code><button type="button" class="copy" data-copy="code-ask">Copy</button></div>
+          <p>A request with several parts is split into steps. Each step shows its progress and the time left.</p>
+        </li>
+        <li>
+          <h3>Check that everything passes</h3>
+          <div class="code"><code id="code-test">python run_tests.py</code><button type="button" class="copy" data-copy="code-test">Copy</button></div>
+        </li>
+      </ol>
+
+      <aside class="expect" aria-labelledby="expect-title">
+        <h3 id="expect-title">Good to know</h3>
+        <ul>
+          <li>Hard subjects, like a car, are built from simple shapes and ready-made materials. Expect clean and easy-to-recognise results, not photographs.</li>
+          <li>A free Gemini key has a small daily limit. Set <code class="inline">BLENDER_AI_AUTOVERIFY=console</code> to keep the automatic check but skip the picture check.</li>
+          <li>On Windows the console check reads Python messages, but not the low-level Blender warnings.</li>
+          <li>The ready-made materials are made for Blender 5.2 LTS.</li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ About -->
+<section id="about" class="ws ws-about" aria-labelledby="about-title">
+  <div class="wrap about">
+    <div class="about-text">
+      <h2 id="about-title">Built by Dinesh Saini</h2>
+      <p class="lead">Blender AI Agent was made by Dinesh Saini, a student at NIT Trichy. It is an AI helper for Blender. You say what you want in plain words. It builds the scene, checks its own pictures and fixes mistakes.</p>
+      <p class="about-note">Ideas, bug reports and pull requests are welcome on GitHub.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/Dsaini2002/Blender-AI-Agent">View the repository</a>
+        <a class="btn" href="https://github.com/Dsaini2002">Dinesh on GitHub</a>
+      </div>
+    </div>
+    <dl class="about-facts">
+      <div><dt>Created by</dt><dd>Dinesh Saini</dd></div>
+      <div><dt>Institute</dt><dd>NIT Trichy</dd></div>
+      <div><dt>Made for</dt><dd>Blender 5.2 LTS</dd></div>
+      <div><dt>Works with</dt><dd>Gemini, Groq, OpenAI</dd></div>
+    </dl>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <p>Blender AI Agent. Created by Dinesh Saini, NIT Trichy.</p>
+  <p class="footer-links"><a href="https://github.com/Dsaini2002/Blender-AI-Agent">GitHub repository</a> <a href="#layout">Back to the top</a></p>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">The interactive preview needs JavaScript. The rest of this page still reads fine without it.</p></noscript>
+<script src="script.js"></script>
+</body>
+</html>
