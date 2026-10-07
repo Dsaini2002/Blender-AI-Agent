@@ -1,242 +1,219 @@
-<div align="center">
+# Blender AI Agent
 
-# 🧠 Blender AI Agent
+**Tell Blender what you want. It builds it, checks it, and fixes it.**
 
-**A deterministic, strongly-typed, LLM-driven agent framework for controlling Blender using natural language.**
+![Blender 5.2 LTS](https://img.shields.io/badge/Blender-5.2%20LTS-orange)
+![AI providers](https://img.shields.io/badge/AI-Gemini%20%7C%20Groq%20%7C%20OpenAI-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Blender](https://img.shields.io/badge/blender-3.6%2B-orange.svg)](https://www.blender.org/)
-[![Tests](https://img.shields.io/badge/tests-501%20passing-brightgreen.svg)](#-testing)
-[![Status](https://img.shields.io/badge/phases-12%2F12%20complete-success.svg)](#-development-phases)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#-license)
+Blender AI Agent is an AI helper that lives inside Blender. You type what you want in plain words, like *"make a campfire"* or *"design a modern living room"*. The agent picks the right tools, builds the scene, takes pictures of its own work, and fixes what looks wrong.
 
-*Say "create a cube, move it to x=3, and rename it MainCube" — and watch it happen.*
-
-</div>
+It is not a chatbot that pastes random code. It is an **engineered system**: typed tools, a safe sandbox, undo on failure, picture-based checks, and over a thousand automated tests.
 
 ---
 
-## 📖 Overview
+## See what it can do
 
-**Blender AI Agent** lets you control Blender through natural language, backed by an agent architecture that never lets a Large Language Model touch the Blender API directly. Every action the AI takes is routed through a deterministic, permission-gated, independently testable **Tool** layer — the LLM only ever sees tool *names* and *descriptions*, never `bpy`.
+| You type | What happens |
+|---|---|
+| `make a campfire` | A ready-made prop is placed instantly. **No AI request is used.** |
+| `make a cute girl with long blonde hair, blue eyes and glasses, laughing` | The cartoon-character skill builds face, hair, clothes and glasses in one call. |
+| `make the bottle look melted` | The AI plans two tool calls (a lathed bottle, then a "melted" edit) and runs them. |
+| `design a modern living room with a floating ceiling light, a sofa, a bookshelf and a desk` | A big request is split into steps. Each step shows its progress and the time left. |
+| `make a realistic sports car` | The **build loop** starts: write a script, take 4 pictures, score them, fix, repeat. |
 
-The project was built bottom-up, in twelve engineering phases: first a rock-solid deterministic foundation (tools, validation, permissions), then an LLM-agnostic agent core, then reliability (rollback/retry), vision, a Copilot-style chat UX, memory, benchmarking, advanced multi-step orchestration, production tooling, autonomy and multi-agent scaling, and finally an automated asset-quality inspection layer.
+---
 
-> **Engineering philosophy:** Build the deterministic Blender foundation first. Introduce AI only after the execution layer is reliable. Tool response ≠ truth — the Blender scene is the source of truth.
+## Why this project is hard
 
-## ✨ Key Features
+Making an AI control a 3D program is much harder than making it write text. Here are the real problems, and what this project does about each one.
 
-- 🗣️ **Natural language → Blender actions** — multi-step plans (`object.create → object.transform → object.rename`) executed sequentially and validated against the live scene.
-- 🧩 **Strongly-typed Tool system** — every tool follows `validate() → run()` (Template Method pattern), with a `Permission` level (`READ_ONLY` / `SAFE_WRITE` / `DESTRUCTIVE` / `PYTHON_EXECUTION`) and a dataclass-based input contract.
-- 🔌 **Pluggable LLM providers** — swap between `MockProvider` (free, deterministic, offline), **Google Gemini**, and **Groq** (free tier, high throughput) without touching the Agent.
-- ♻️ **Self-healing execution** — `RepairableExecutionLoop` validates, repairs, retries, and rolls back to the latest checkpoint on failure, instead of crashing or looping forever.
-- 👁️ **Vision-aware validation** — the agent can capture the viewport/render and visually confirm that an operation actually worked.
-- 💬 **Blender-native Copilot UI** — a sidebar chat panel with progress state, confirmations, and suggestions.
-- 🧠 **Typed memory & reusable Skills** — personalized, multi-tool skills instead of one-shot tool calls.
-- 📊 **Objective benchmarking** — isolated, partially-scored evaluation of agent performance across tasks.
-- 🤖 **Autonomy with guardrails** — `ASSISTED` mode by default, hard limits on steps/retries/runtime, and `PYTHON_EXECUTION` always requires confirmation.
-- 🧑‍🤝‍🧑 **Multi-agent orchestration** — a `SupervisorAgent` dispatching domain-specialized agents (modeling, material, camera), benchmarked against single-agent execution rather than assumed superior.
-- 🔍 **Automated Asset QA** — a `GeometryInspector` scans mesh objects for non-manifold geometry, flipped normals, and bounding-box overlaps, auto-fixes what it safely can, and re-inspects in a guardrail-limited loop — runnable from Blender's own "Run QA Inspection" button.
+| Problem | Why it is hard | What this project does |
+|---|---|---|
+| **AI cannot "see" 3D space** | It puts wheels in the air, or a lamp inside a wall. The code runs with no error, but the result is wrong. | Takes pictures from 4 sides, asks a vision model for a score and a list of problems, and runs a physical overlap check on bounding boxes. |
+| **AI-written code is risky** | A script can delete your scene or touch your files. | Build scripts run in a sandbox. Only the agent's own tools can be called. Loops and time are limited. A script can delete only the objects it created. |
+| **AI sends wrong arguments** | Missing fields, wrong types, wrong units. | Every tool has a typed schema. Inputs are cleaned and checked before anything runs. If a task fails, it is rolled back. |
+| **Blender changes between versions** | Socket names and settings are renamed or deprecated. | Material node graphs are checked before use, and errors name the sockets that really exist. Deprecated settings are avoided. |
+| **Free AI plans have small limits** | A rate limit in the middle of a build leaves a half-made scene. | Quota errors become short, clear messages. The agent can fall back to a lighter model, and it keeps the best result so far. |
+| **Bad meshes break clean-up tools** | Quad remeshing fails on meshes with duplicate points. | SDF meshes are welded and cleaned first. In a real Blender test, a 500-face remesh gave 93.6% quad faces. |
+| **Scenes look flat** | Weak models make plain colours and no light. | Built-in quality rules: layers of detail, real materials, a real light for every glowing part, and a finishing pass. |
+| **Blender must not freeze** | AI calls take seconds. | AI calls run in the background. A panel shows the step, the progress and the time left. |
+| **Platforms behave differently** | Console capture works one way on Linux and another on Windows. | A Windows-safe capture path. |
+| **Hard to test without Blender** | Most 3D code needs a running Blender. | A fake Blender bridge and a mock AI provider, so the full test suite runs without Blender. |
 
-## 🏗️ Architecture
+---
+
+## How it works
 
 ```mermaid
-flowchart TD
-    U[User: Natural Language Instruction] --> EL[RepairableExecutionLoop]
-    EL --> MP[ModelProvider]
-    MP -->|Mock / Gemini / Groq| RES[LLM Response]
-    RES --> TC[ToolCaller]
-    TC --> TR[ToolRegistry]
-    TR --> T[Tool: validate → run]
-    T --> BB[BlenderBridge]
-    BB --> BPY[bpy]
-    BPY --> SCENE[(Blender Scene)]
-    SCENE -->|Validate| VAL[Validator / VisionValidator]
-    VAL -->|Fail| REPAIR[Adaptive Repair → Rollback to Checkpoint]
-    REPAIR --> EL
-    VAL -->|Pass| QA{Run QA Inspection}
-    QA -->|Issues found| FIX[GeometryFixer auto-fixes via Tools]
-    FIX --> QA
-    QA -->|Pass or retries exhausted| DONE[Result returned to User]
+flowchart LR
+    U["You type a request"] --> P["AI Copilot panel"]
+    P --> C["Controller"]
+    C -->|"simple request"| S["Skills (ready props, characters)"]
+    C -->|"open request"| A["Agent loop"]
+    C -->|"hard subject"| BL["Build loop"]
+    A <--> M["AI provider (Gemini, Groq or OpenAI)"]
+    S --> R["Tool registry (40+ typed tools)"]
+    A --> R
+    BL --> R
+    R --> B["Blender bridge"]
+    B --> E["Blender scene"]
+    E --> V["Check: console and pictures"]
+    V -->|"problems found"| A
 ```
 
-**Core architectural rule:** `BlenderBridge` is the *only* place that touches raw `bpy`. Everything above it — tools, agent, validators, QA inspectors — depends on this single abstraction, which is what makes the entire stack (except the two deterministic foundation phases) testable outside Blender using a `FakeBridge`.
+**Three ways a request can run**
 
-| Layer | Responsibility |
-|---|---|
-| `BlenderBridge` | Sole `bpy` touchpoint; swapped for `FakeBridge` in tests |
-| `Tool` (ABC) | `execute()` → `validate()` → `run()`; typed input, `Permission` level |
-| `ToolRegistry` / `SkillRegistry` | Name-based lookup so the Agent never needs Python class names |
-| `ModelProvider` (ABC) | LLM-agnostic contract — `MockProvider`, `GeminiProvider`, `GroqProvider` |
-| `RepairableExecutionLoop` | execute → validate → repair → retry → rollback lifecycle |
-| `ConversationState` vs `CopilotSession` | LLM-facing state kept deliberately separate from UI-facing state |
-| `AdvancedOrchestrator` | Decomposes complex instructions into a dependency-ordered `TaskGraph` with checkpoint recovery |
-| `AutonomyPolicy` / `GuardrailMonitor` | Conservative-by-default autonomy with hard execution limits |
-| `Inspector` (ABC) / `InspectionLoop` | inspect → auto-fix → re-inspect scene-quality loop, retry-limited by `GuardrailMonitor` |
+1. **Skill fast path.** Simple, known requests (a campfire, a cartoon character) are built right away with no AI call. They are fast, free and the same every time.
+2. **Planned tool calls.** For open requests, the AI model plans a few tool calls. Each call is checked, run, and logged.
+3. **Build loop.** For things no ready tool can make, the agent works like a careful artist:
 
-## 📂 Project Structure
-
-```
-Blender-AI-Agent/
-├── run_tests.py                 # Entry point — stubs `bpy` before test discovery
-├── tests/                       # Top-level registry tests
-└── blender_ai_agent/            # The Blender addon package
-    ├── bridge/                  # BlenderBridge — sole bpy touchpoint
-    ├── inspectors/               # SceneInspector
-    ├── tools/                   # Object / Material / Modifier / Camera / Geometry Nodes / Animation / Python tools
-    ├── providers/                # MockProvider, GeminiProvider, GroqProvider, ProviderRegistry
-    ├── agent/                   # Agent, Planner, ExecutionLoop, ConversationState
-    │   └── advanced/             # TaskDecomposer, TaskGraph, Checkpoints, StrategySelector, SelfEvaluator
-    ├── reliability/               # Validators, Snapshot/Rollback, RetryPolicy
-    ├── vision/                  # VisionProvider, Capture, VisualSimilarityComparator
-    ├── copilot/                  # CopilotController, Session, ProgressState, Confirmations
-    ├── memory/                   # Typed Memory, MemoryManager, MemoryRetriever
-    ├── skills/                   # Skill abstraction, SkillPermissionChecker
-    ├── benchmarks/               # BenchmarkRunner, Evaluator, Reporter, StressTest
-    ├── autonomy/                  # AutonomyMode/Policy, GuardrailMonitor
-    ├── multi_agent/               # SupervisorAgent, ModelingAgent, MaterialAgent, CameraAgent, CriticAgent
-    ├── optimization/              # VisualQualityOptimizer
-    ├── orchestration/             # TaskManager (queued → running → paused → ...)
-    ├── routing/                   # ModelRouter (fast / strong / vision tiers)
-    ├── research/                  # AblationStudy
-    ├── config/                    # AgentConfig, ProviderConfig, PermissionConfig
-    ├── qa/                        # Inspector (ABC), GeometryInspector, GeometryFixer, InspectionLoop
-    ├── sdk/                       # create_tool() — boilerplate-free tool authoring
-    ├── ui/                        # Blender sidebar panel (incl. "Run QA Inspection")
-    └── tests/                     # 100+ test files covering every phase
+```mermaid
+flowchart LR
+    W["1. Write script"] --> X["2. Run in sandbox"] --> Q["3. Take 4 pictures"] --> Y["4. Score and list problems"] --> Z["5. Fix the script"]
+    Z --> X
 ```
 
-## 🚀 Getting Started
+The loop stops when the score is good, when the rounds run out, or when a fix makes things worse. The best version is kept.
 
-### Prerequisites
+After **every** task, the agent also reads the Blender console and checks a picture. If it finds a problem, it tries to fix it (up to two more tries).
 
-- Blender **3.6+**
-- Python **3.10+** (bundled with Blender)
-- *(Optional, for real LLM responses)* a [Google Gemini](https://ai.google.dev/) or [Groq](https://console.groq.com/) API key
+---
 
-### Installation
+## Features
 
-```bash
+- **40+ typed tools**: objects, materials, modifiers, cameras, lights, curves, meshes, retopology, assets, and rendering.
+- **Mesh toolkit**: lathe, SDF blends, prisms, terrain, formula meshes, and **26 edit presets** (melted, twisted, bent, crushed, spiky, shattered and more).
+- **Materials**: **14 ready-made procedural materials** (fire, smoke, wood, rough stone, glass, car paint and more) and custom node graphs with socket checks.
+- **Props and models**: **14 built-in props** and a search over **991 free (CC0) models**.
+- **Cartoon characters**: faces with 8 expressions, 7 hair styles, clothes, shoes, glasses, caps and hats.
+- **Render setup**: AgX colour, depth of field, exposure and presets (cinematic, product, outdoor, night, clean).
+- **Self-checking**: build loop, console watch and picture review.
+- **Progress panel** with the current step and an estimate of the time left.
+- **Three AI providers** (Gemini, Groq, OpenAI) and a **mock provider** for tests.
+
+---
+
+## Quick start (Windows)
+
+You need **Blender 5.2 LTS**, **Git**, and **one API key**. A free Gemini key is enough to start.
+
+**1. Get the code**
+
+```powershell
 git clone https://github.com/Dsaini2002/Blender-AI-Agent.git
-cd Blender-AI-Agent
 ```
 
-1. Zip the `blender_ai_agent/` folder.
-2. In Blender: `Edit → Preferences → Add-ons → Install...` → select the zip.
-3. Enable **Blender AI Agent** in the add-on list.
-4. Open the sidebar in the 3D Viewport (`N` key) → **AI Agent** tab.
+**2. Copy the add-on into Blender**
 
-### Configuring a real LLM provider (optional)
-
-By default the addon runs on `MockProvider` — free, offline, deterministic. To use a real model, set an environment variable **before** launching Blender:
-
-```bash
-# Google Gemini
-export GEMINI_API_KEY="your-key-here"
-
-# or Groq (free tier, no extra pip install required)
-export GROQ_API_KEY="your-key-here"
+```powershell
+Copy-Item .\Blender-AI-Agent\blender_ai_agent "$env:APPDATA\Blender Foundation\Blender\5.2\scripts\addons\" -Recurse
 ```
 
-Then pick the provider from the **Provider** dropdown in the sidebar panel (`Mock (Testing)` / `Google Gemini` / `Groq`). Gemini additionally requires:
+**3. Add your key, then restart Blender**
 
-```bash
-pip install google-generativeai
+```powershell
+setx GEMINI_API_KEY "paste-your-key-here"
 ```
 
-API keys are only ever read from environment variables at runtime — never stored or logged.
+**4. Turn it on.** In Blender: *Edit > Preferences > Add-ons*, enable `blender_ai_agent`. Press **N** in the 3D viewport and open the **AI Copilot** tab.
 
-## 🧪 Testing
+**5. Ask for something**
 
-```bash
+```
+make a campfire, add a tent, add a lantern
+```
+
+### Settings
+
+| Environment variable | What it does |
+|---|---|
+| `GEMINI_API_KEY` | Key for Google Gemini. |
+| `GROQ_API_KEY` | Key for Groq. |
+| `OPENAI_API_KEY` | Key for OpenAI. |
+| `BLENDER_AI_AUTOVERIFY` | Set to `console` to keep the automatic console check but skip the picture check (saves AI quota). |
+| `BLENDER_AI_MODELS_DIR` | Folder that holds your downloaded CC0 models. |
+
+---
+
+## Safety and reliability
+
+- **Sandbox**: build scripts can only call the agent's own tools. No imports. No file access. Limits on loops and time.
+- **Scoped deletes**: a script may delete only objects it made itself.
+- **Rollback**: failed or cancelled work is undone.
+- **Python tool asks first**: the raw `python.execute` tool always needs your approval.
+- **Keys stay private**: API keys are read from environment variables and are never shown.
+- **Quota-safe**: rate-limit errors stop the run cleanly and keep the best result.
+
+---
+
+## Testing
+
+```powershell
 python run_tests.py
 ```
 
-`run_tests.py` installs a **fake `bpy` module** before test discovery, so the full test suite — **501 tests** — runs on any machine, no Blender installation required.
-
-| Layer | Tested via |
-|---|---|
-| Blender-touching code (Phases 1–2, QA bridge methods) | Verified end-to-end in real Blender 3.6+ |
-| Agent / Reliability / Vision / Copilot / Memory / Skills / Benchmark / Advanced / Autonomy / QA logic | `FakeBridge`, `MockProvider`, `MockVisionProvider` |
-
-### Why the mock layer stays in the repo
-
-`MockProvider` and `FakeBridge` aren't leftover scaffolding — they're load-bearing:
-
-- The entire agent/reliability/vision/copilot/memory/benchmark/autonomy stack is exercised **without** a Blender install, an API key, or any network call.
-- Real LLMs are non-deterministic; `MockProvider` returns **scripted, predictable** responses, which is what makes 501 assertions reproducible in CI.
-- It mirrors the same pattern used for Blender itself (`BlenderBridge` → `FakeBridge`), keeping the whole codebase testable in isolation.
-- It doubles as a **zero-cost, zero-setup demo mode** for anyone trying the addon without an API key.
-
-**Recommendation:** keep the mock provider and fake bridge permanently, alongside — not instead of — real-provider coverage. Treat any new tool or agent behavior as incomplete until it has both a mock-backed unit test and, where relevant, a real-Blender or real-provider smoke test.
-
-## 🗺️ Development Phases
-
-| Phase | Title | Status |
-|---|---|---|
-| 1 | Blender Foundation — `BlenderBridge`, `SceneInspector`, first tool | ✅ Complete |
-| 2 | Tool System — 15+ typed, validated, permissioned tools | ✅ Complete |
-| 3 | Agent Core — LLM-agnostic Agent, Planner, multi-step `ExecutionLoop` | ✅ Complete |
-| 4 | Reliability — Validation, transactions, rollback, recovery, retry | ✅ Complete |
-| 5 | Vision — `VisionProvider`, capture, observation, validation | ✅ Complete |
-| 6 | Copilot UX — Blender-native chat UI, progress, confirmations | ✅ Complete |
-| 7 | Memory & Skills — Typed memory, reusable multi-tool skills | ✅ Complete |
-| 8 | Benchmark — Objective, isolated, scored evaluation | ✅ Complete |
-| 9 | Advanced Agents — Task decomposition, checkpoints, Geometry Nodes, animation | ✅ Complete |
-| 10 | Production & Community — Configuration, SDK, docs, contribution workflow | ✅ Complete |
-| 11 | Scale & Autonomy — Strategy selection, self-evaluation, multi-agent, guardrails | ✅ Complete |
-| 12 | Asset QA — Geometry inspection, auto-fix, re-inspection loop, UI-wired | ✅ Complete |
-
-See [`CHANGELOG.md`](blender_ai_agent/.github/docs/CHANGELOG.md) for the full phase-by-phase history.
-
-## 🔍 Asset QA (Phase 12)
-
-Beyond confirming that a tool call *executed*, Phase 12 checks whether its *result* is actually good — the same "generate → inspect → auto-fix → re-inspect → pass/fail" pattern used in production asset pipelines.
-
-```mermaid
-flowchart TD
-    START[Run QA Inspection] --> INSPECT[GeometryInspector.inspect]
-    INSPECT --> CHECK{Issues found?}
-    CHECK -->|No| PASS[✅ PASS]
-    CHECK -->|Yes, auto-fixable| FIX[GeometryFixer runs matching Tool]
-    FIX --> GUARD{Within GuardrailMonitor retry limit?}
-    GUARD -->|Yes| INSPECT
-    GUARD -->|No| FAIL[❌ FAIL — remaining issues reported]
-    CHECK -->|Yes, not auto-fixable| FAIL
-```
-
-| Check | Severity | Auto-fixable | Fix Tool |
-|---|---|---|---|
-| Non-manifold geometry | HIGH | ❌ (flagged only — needs manual remeshing) | — |
-| Flipped normals | MEDIUM | ✅ | `geometry.recalculate_normals` |
-| Intersecting objects (bounding-box overlap) | MEDIUM | ✅ | `geometry.separate_overlap` |
-
-- **`Inspector` (ABC)** — same polymorphic pattern as `Tool`/`Validator`; future `UVInspector`, `MaterialInspector`, `AnimationInspector` plug in the same way.
-- **`InspectionReport`** — a typed, JSON-serializable result (`passed`, `blocking_issues`, `retries_used`), mirroring `ToolResult`'s "one fixed shape" philosophy.
-- **`InspectionLoop`** — reuses Phase 11's `GuardrailMonitor` for the retry limit, so there's no separate/new infinite-loop risk introduced.
-- **No new `bpy` touchpoints** — geometry stats (`get_mesh_stats`) and fixes (`recalculate_normals`) live in `BlenderBridge`, and fixes execute through the normal permission-gated `Tool` system, not raw `bpy` calls.
-- **Wired into the sidebar** — a **"Run QA Inspection"** button under *Asset QA* in the Copilot panel runs the loop against the live scene and displays a PASS/FAIL report inline.
-
-**Known limitation:** flipped-normal detection is a heuristic (signed mesh volume, reliable mainly for closed meshes) and intersection detection is bounding-box based rather than true mesh-level collision — both are intentional MVP trade-offs, documented here for future refinement.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR, and see [`docs/tools.md`](blender_ai_agent/.github/docs/tools.md) for a step-by-step guide to authoring a new `Tool`. Bug reports, feature requests, and benchmark issues have dedicated templates under `.github/ISSUE_TEMPLATE/`.
-
-## 🔒 Security
-
-No API key, secret, or credential is ever stored in code, config objects, logs, or `.blend` files — only environment variable *names* are configured; values are read at runtime. See [`SECURITY.md`](blender_ai_agent/SECURITY.md) for the full policy and how to report a vulnerability.
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 👤 Author
-
-**Dinesh Saini** — [@Dsaini2002](https://github.com/Dsaini2002)
+- **1,100+ automated tests** run **without Blender**, using a fake Blender bridge and a mock AI provider.
+- A **smoke test** (`blender_smoke_test.py`) runs inside Blender's *Scripting* tab and checks the real tools against a real scene. The last full run on Blender 5.2.1 LTS passed all 56 checks.
 
 ---
 
-<div align="center">
-<sub>Built phase by phase, with a deterministic foundation first and AI layered on only once it could be trusted.</sub>
-</div>
+## Project layout
+
+```
+blender_ai_agent/
+├── agent/        # planning loop, prompts, build-script sandbox, self-correct loop, post-run checks
+├── bridge/       # BlenderBridge: the only layer that changes the Blender scene
+├── copilot/      # controller, task splitter, progress and ETA
+├── tools/        # typed tools (objects, meshes, materials, cameras, lights, assets...)
+├── skills/       # fast paths: ready props, characters, iterative build
+├── inspectors/   # reads and describes the current scene
+├── reliability/  # friendly errors and repair helpers
+├── library/      # built-in prop catalogue
+├── vision/       # picture review tool
+├── ui/           # Blender panels
+└── tests/        # unit and integration tests
+```
+
+---
+
+## Design choices
+
+- **Typed tools, not free code.** Small tools with schemas are easier to check, test, undo and explain than long scripts.
+- **Known work skips the AI.** If a task has a ready skill, it is faster, cheaper and the same every time.
+- **One bridge to Blender.** Only `BlenderBridge` changes the scene. This keeps the rest of the code testable without Blender.
+- **Pictures are part of the loop.** Code that runs without error can still make a wrong scene. The agent checks what it made.
+- **Fail safely.** Every run can be undone, and quota or network problems end with a clear message.
+
+---
+
+## Good to know
+
+- Hard subjects, like a car, are built from simple shapes and ready-made materials. Expect clean results that are easy to recognise, not photographs.
+- A free Gemini key has a small daily limit. Use `BLENDER_AI_AUTOVERIFY=console` to save requests.
+- On Windows, the console check reads Python messages, but not low-level Blender warnings.
+- The procedural materials are made for Blender 5.2 LTS.
+
+---
+
+## Contributing
+
+Ideas, bug reports and pull requests are welcome.
+
+1. Fork the repo and create a branch.
+2. Make your change, and add a test for it.
+3. Run `python run_tests.py` and make sure everything passes.
+4. Open a pull request and explain *what* changed and *why*.
+
+---
+
+## Author
+
+Made by **Dinesh Saini**, a student at **NIT Trichy**.
+GitHub: [@Dsaini2002](https://github.com/Dsaini2002)
+
+---
+
+## License
+
+GPL-3.0-or-later. See the `LICENSE` file.
