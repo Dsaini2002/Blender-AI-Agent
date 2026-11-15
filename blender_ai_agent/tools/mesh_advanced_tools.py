@@ -1,16 +1,4 @@
-"""
-Advanced Mesh Tools
-====================
-Hinglish: Mesh engine (mesh_engine.py, mesh_generators.py, mesh_script.py) ko agent ke tools mein badalta hai.
-
-  mesh.edit     kisi bhi mesh par operators ki list / preset / formula chalao  (pighla, mudaa, toota, kaante, chhed, cut...)
-  mesh.script   har vertex par chalne wala formula (jo operators se na bane, uske liye)
-  mesh.lathe    profile ghuma kar bottle / vase / glass / cup / bowl / column / chess piece...
-  mesh.terrain  jameen / pahaad / dunes (samtal jagah ke saath)
-  mesh.sdf      shapes jod/ghata kar rock, cloud, blob, rounded boolean...
-  mesh.prism    2D polygon (star, gear, ngon, rounded rect, cross, arrow, heart) extrude
-  mesh.help     operators / presets / selectors / examples ki list
-"""
+"""Advanced Mesh Tools"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -35,16 +23,6 @@ def _loc_rot_scale(obj_self):
 # =============================================================================
 @dataclass
 class EditMeshInput:
-    """
-    object_name : jis object (ya imported model) ko badalna hai
-    preset      : ek shabd — melted, twisted, bent, crushed, stretched, pointed, inflated, deflated, hammered, bumpy, rough, wrinkled,
-                  crumpled, eroded, aged, cracked, broken, chipped, dented, spiky, wavy, wobbly, shattered, exploded, holey, sliced
-                  (synonyms bhi chalte hain: "pighla hua", "toota", "kaante wala"...)
-    strength    : 0.02-1.0 (kitna zyada), region: top/bottom/left/right/front/back/all (damage presets ke liye)
-    ops         : operators ki list — [{"op": "twist", "angle": 90, "select": "top"}, ...]  (mesh.help se poori list)
-    code        : har vertex par chalne wala formula (mesh.script jaisa), ops ke baad chalta hai
-    select      : preset/code par lagne wala selection (warna poora object)
-    """
     object_name: str
     preset: Optional[str] = None
     strength: float = 0.5
@@ -133,7 +111,6 @@ class MeshEditTool(Tool):
 # =============================================================================
 @dataclass
 class ScriptMeshInput:
-    """object_name + code (har vertex par chalne wala formula) + optional select."""
     object_name: str
     code: str
     select: Optional[Any] = None
@@ -243,6 +220,7 @@ class LatheInput:
 
 class MeshLatheTool(Tool):
     name = "mesh.lathe"
+    auto_name = "lathe_object"
     description = (
         "Creates a round object by spinning a 2D profile around the vertical axis. Easiest: preset = bottle, vase, wine_glass, "
         "cup, mug, bowl, column, chess_pawn, lamp, barrel, candle, bell (with height, radius in metres; hollow containers get a "
@@ -318,11 +296,13 @@ class TerrainInput:
 
 class MeshTerrainTool(Tool):
     name = "mesh.terrain"
+    auto_name = "terrain"
     description = (
         "Creates ground / landscape: style hills, mountains, dunes, plateau or flat; size (metres, number or [x, y]); height of the "
         "relief; noise_scale (more = more bumps); resolution (grid, 40 default, up to 220). flat_radius 0.3-0.6 keeps a level area "
         "in the middle (for a campsite, house, road); edge_fade 0.2-0.5 flattens the border so it blends into a plane. Z is up, "
-        "centred on the origin. Colour it with material.create + material.assign."
+        "centred on the origin, lying flat on the ground — do not rotate it into a wall (use mesh.sdf for cliffs / rock walls). "
+        "Colour it with material.recipe dirt_ground / rough_stone or material.create + material.assign."
     )
     permission = Permission.SAFE_WRITE
     input_model = TerrainInput
@@ -331,6 +311,9 @@ class MeshTerrainTool(Tool):
         self._bridge = bridge
 
     def run(self, v: TerrainInput) -> ToolResult:
+        if abs(float(v.rotation[0])) > 0.35 or abs(float(v.rotation[1])) > 0.35:
+            return ToolResult.fail("mesh.terrain must lie flat (rotation x and y near 0). For a cliff or rock wall use "
+                                   "mesh.sdf rounded boxes with roughness, standing on the ground.")
         vertices, faces = terrain(v.size[0], v.size[1], v.resolution, v.height, v.noise_scale, v.octaves, v.seed, v.style,
                                   v.flat_radius, v.edge_fade)
         return ToolResult.ok(_create(self._bridge, v.name, vertices, faces, v.location, v.rotation, v.scale, v.shade_smooth))
@@ -360,9 +343,9 @@ class SdfInput:
             raise ValueError("SdfInput.shapes must be a non-empty list of shape objects, e.g. [{\"type\": \"sphere\", \"radius\": 0.5}]")
         if len(raw) > 32:
             raise ValueError("SdfInput.shapes: at most 32 shapes")
-        self.shapes = [normalize_params(shape) for shape in raw]      # {"x":..} / "1,2,3" / "0.5" sab saaf
+        self.shapes = [normalize_params(shape) for shape in raw]
         try:
-            sdf_function(self.shapes)                  # type / op / numbers ki jaanch
+            sdf_function(self.shapes)
         except (TypeError, KeyError, IndexError) as exc:
             raise ValueError(f"SdfInput.shapes has a malformed shape ({exc}); vectors must be [x, y, z]") from exc
         self.resolution = _coerce_number(self.resolution, "SdfInput.resolution", integer=True)
@@ -382,6 +365,7 @@ class SdfInput:
 
 class MeshSdfTool(Tool):
     name = "mesh.sdf"
+    auto_name = "sdf_object"
     description = (
         "Builds organic / blended solids from simple shapes combined like boolean + smooth blending (rocks, clouds, blobs, creature "
         "bodies, rounded boxes, bowls, a cube with a sphere cut out...). shapes = list, applied in order; each: {\"type\": sphere|"
@@ -448,6 +432,7 @@ class PrismInput:
 
 class MeshPrismTool(Tool):
     name = "mesh.prism"
+    auto_name = "prism_object"
     description = (
         "Extrudes a flat 2D shape upward: kind = ngon (sides, radius), star (sides = points, radius, inner_radius), gear (sides = "
         "teeth, radius = tooth tip, inner_radius = root), rounded_rect (width, depth, corner), cross (width, inner_radius = arm "

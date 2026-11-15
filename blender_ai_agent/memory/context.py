@@ -1,8 +1,5 @@
-"""
-MemoryContextBuilder — Step 7.20
-====================================
-Hinglish: Raw Memory objects LLM ko directly nahi bhejte — ek
-compact, categorized, human-readable summary banate hain.
+"""MemoryContextBuilder
+====================
 
     MemoryStore -> Retriever -> MemoryContextBuilder -> Agent
 """
@@ -15,7 +12,6 @@ from .retriever import MemoryRetriever
 
 @dataclass
 class MemoryContext:
-    """Hinglish: Type ke hisaab se grouped memories — Agent/LLM ko readable format mein."""
     by_type: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
@@ -23,7 +19,6 @@ class MemoryContext:
         return len(self.by_type) == 0
 
     def render_text(self) -> str:
-        """Hinglish: Spec ke example jaisa readable summary."""
         if self.is_empty:
             return "No relevant memory."
 

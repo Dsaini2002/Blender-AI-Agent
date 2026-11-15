@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""
-download_models.py
-===================
-Hinglish: GitHub ke CC0 3D model registry (ToxSam/open-source-3D-assets) se saare GLB models
-aapke PC par download karta hai, aur `index.json` banata hai jisse Blender AI Agent unhe naam
-se dhoondh kar scene mein laga sake (asset.search_local / asset.place_local).
-
-  - 991 models, 18 collections, lagbhag 2.25 GB, sab CC0 (public domain)
-  - sirf Python standard library — kuch install nahi karna
-  - resume-safe: dobara chalane par jo file pehle se hai wo skip hoti hai
-
-Examples:
-  python download_models.py --list                         # collections aur unke size dekho
-  python download_models.py                                # sab kuch (size poochh kar)
-  python download_models.py --yes                          # bina poochhe sab kuch
-  python download_models.py --only momuspark,christmas     # sirf ye collections
-  python download_models.py --max-mb 20                    # 20 MB se badi files chhod do
-  python download_models.py --dest D:\\Models              # kahin aur rakho
-
-Default folder: ~/BlenderAIAgent/models  (env var BLENDER_AI_MODELS_DIR se badal sakte ho)
-"""
+"""download_models.py"""
 
 import argparse
 import concurrent.futures
@@ -41,9 +21,6 @@ def default_dest() -> Path:
     return Path(env).expanduser() if env else Path.home() / "BlenderAIAgent" / "models"
 
 
-# ---------------------------------------------------------------------------
-# Network helpers (tests mein inhe fake se badla jaata hai)
-# ---------------------------------------------------------------------------
 def fetch_bytes(url: str, timeout: int = 60, retries: int = 3) -> bytes:
     last_error = None
     for attempt in range(1, retries + 1):
@@ -107,7 +84,6 @@ def make_entry(project: dict, asset: dict) -> dict:
 
 
 def select_projects(projects, only):
-    """`only` = ['momuspark', 'christmas'] -> un projects ko (naam ya id mein substring match). Khaali = sab."""
     if not only:
         return list(projects)
     wanted = [o.strip().lower() for o in only if o.strip()]
@@ -134,7 +110,6 @@ def build_entries(projects, assets_by_project, only=None, max_mb=None):
 # Download
 # ---------------------------------------------------------------------------
 def download_entry(entry, dest: Path, fetch=fetch_bytes, force=False) -> str:
-    """Return 'downloaded' | 'skipped' | 'failed: <why>'. Half-written file kabhi final naam par nahi aati."""
     target = dest / entry["file"]
     if target.is_file() and not force:
         if not entry["size"] or target.stat().st_size == entry["size"]:
@@ -153,7 +128,6 @@ def download_entry(entry, dest: Path, fetch=fetch_bytes, force=False) -> str:
 
 
 def write_index(dest: Path, entries) -> int:
-    """index.json mein sirf wahi models jo disk par asal mein maujood hain."""
     present = [e for e in entries if (dest / e["file"]).is_file()]
     dest.mkdir(parents=True, exist_ok=True)
     payload = {"source": "https://github.com/ToxSam/open-source-3D-assets", "license": "CC0 1.0 (public domain)",

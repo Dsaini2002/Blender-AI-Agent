@@ -1,10 +1,4 @@
-"""
-Modifier Tools — Step 2.6
-============================
-Hinglish: Same pattern — har tool `Tool` extend karta hai, `run()`
-implement karta hai. ConfigureModifierTool generic properties dict
-accept karta hai, kyunki har modifier type ki alag properties hoti hain.
-"""
+"""Modifier Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import AddModifierInput, ConfigureModifierInput, RemoveModifierInput

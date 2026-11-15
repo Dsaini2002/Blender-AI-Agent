@@ -1,9 +1,4 @@
-"""
-ToolRegistry
-============
-Hinglish: Saare tools yahan register hote hain aur naam se retrieve
-kiye ja sakte hain.
-"""
+"""ToolRegistry"""
 
 from typing import Dict, List
 

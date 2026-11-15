@@ -1,14 +1,4 @@
-"""
-character_builder.py
-=====================
-Hinglish: Cartoon character (chehra + badan) ka BUILDER. Pure Python (bpy nahi) — isliye poora test hota hai.
-`build_character_spec(params)` ek "library model spec" deta hai (materials + parts), jise library_tools.place_model seedha
-Blender mein laga deta hai. Kuch bhi hard-coded mesh nahi: sab kuch SDF (smooth blobs), UV-sphere aur curves se banta hai.
-
-Character +Y ki taraf dekhta hai; tool use 180 degree ghuma deta hai taaki wo Blender ke "Front view" (Numpad 1) ki taraf dekhe.
-Saari chehre ki cheezein head radius R ke hisaab se hain, isliye chibi (bada sir) aur normal (asli anupaat) dono style mein
-aankhein-naak-munh sahi jagah par aate hain.
-"""
+"""character_builder.py"""
 
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -41,13 +31,11 @@ COLORS: Dict[str, List[float]] = {
 # Maths / mesh helpers
 # =============================================================================
 def uv_sphere(segments: int = 16, rings: int = 10) -> Tuple[List[Vec], List[List[int]]]:
-    """Unit UV-sphere (scale se ellipsoid ban jaata hai)."""
     profile = [(math.sin(math.pi * k / rings), -math.cos(math.pi * k / rings)) for k in range(rings + 1)]
     return lathe(profile, segments, 360.0, 0.0)
 
 
 def _sdf_part(shapes: Sequence[Dict[str, Any]], cell: float, margin: float = 0.0):
-    """Shapes ka mesh; resolution aise ki voxel ~`cell` metre ka ho (chhota part = kam voxel)."""
     lo, hi = [1e9] * 3, [-1e9] * 3
     for s in shapes:
         if str(s.get("op", "union")).lower() == "subtract" and s is not shapes[0]:
@@ -59,7 +47,7 @@ def _sdf_part(shapes: Sequence[Dict[str, Any]], cell: float, margin: float = 0.0
         for k in range(3):
             lo[k], hi[k] = min(lo[k], c[k] - e), max(hi[k], c[k] + e)
     longest = max(hi[i] - lo[i] for i in range(3)) + 2 * margin
-    for attempt in range(3):                                                  # bahut patla part khaali na nikle: baarik voxel se dobara
+    for attempt in range(3):
         step = cell / (1.6 ** attempt)
         resolution = int(max(10, min(80, round(longest / step))))
         vertices, faces = sdf_mesh(list(shapes), resolution, margin=max(margin, step * 1.5))
@@ -74,7 +62,6 @@ def _part_mesh(name, vertices, faces, material, smooth=True, offset=(0, 0, 0), s
 
 
 def _ball(name, center, radii, material, sphere):
-    """UV sphere ko ellipsoid bana kar rakhta hai."""
     return _part_mesh(name, sphere[0], sphere[1], material, True, offset=center, scale=radii)
 
 
@@ -95,7 +82,6 @@ STYLE_TABLE = {
 
 
 def face_y(R: float, x: float, dz: float) -> float:
-    """Head ellipsoid ki satah ka y (aage ki taraf) — chehre ki cheezein isi par chipakti hain."""
     t = 1.0 - (dz / (0.98 * R)) ** 2 - (x / R) ** 2
     return 0.94 * R * math.sqrt(max(0.05, t))
 
@@ -161,7 +147,7 @@ def _eye_parts(R, hz, expression, gender, sphere) -> List[Dict[str, Any]]:
     for side, sign in (("l", 1), ("r", -1)):
         ex, edz = sign * 0.36 * R, 0.06 * R
         if expression == "wink" and side == "r":
-            pts = [(ex + sign * -0.20 * R * -1, 0, 0)]  # placeholder, neeche overwrite
+            pts = [(ex + sign * -0.20 * R * -1, 0, 0)]
             xs = [ex - 0.20 * R, ex, ex + 0.20 * R]
             dzs = [edz - 0.02 * R, edz - 0.10 * R, edz - 0.02 * R]
             arc = [(x, face_y(R, x, dz) + 0.025 * R, hz + dz) for x, dz in zip(xs, dzs)]
@@ -181,14 +167,13 @@ def _eye_parts(R, hz, expression, gender, sphere) -> List[Dict[str, Any]]:
 
 
 def _hair_shapes(style, R, hz) -> List[Dict[str, Any]]:
-    """Hair ke SDF shapes (head center (0,0,hz))."""
     def ell(radii, center, **kw):
         return dict({"type": "ellipsoid", "radii": [r * R for r in radii], "center": [center[0] * R, center[1] * R, hz + center[2] * R]}, **kw)
 
     def cut(size, center):
         return {"type": "box", "size": [s * R for s in size], "center": [center[0] * R, center[1] * R, hz + center[2] * R], "op": "subtract"}
 
-    front_cut = cut((4.6, 2.2, 1.6), (0, 1.55, 0.50 - 0.80))                  # fringe ke neeche chehra khula
+    front_cut = cut((4.6, 2.2, 1.6), (0, 1.55, 0.50 - 0.80))
     if style == "short":
         return [ell((1.07, 1.03, 1.05), (0, -0.03, 0.03)), front_cut, cut((5, 5, 1.6), (0, 0, 0.10 - 0.80))]
     if style == "spiky":
@@ -289,7 +274,7 @@ def build_character_spec(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     S = STYLE_TABLE[style]
     R, hz = S["head_r"], S["head_z"]
-    cell = cell * (R / 0.25) ** 0.5                                            # chhote (normal) style mein thoda bareek voxel
+    cell = cell * (R / 0.25) ** 0.5
     shirt = p["shirt_color"] or {"boy": "blue", "girl": "pink", "neutral": "green"}[gender]
     pants = p["pants_color"] or ("navy" if p["outfit"] == "tshirt" else shirt)
 
@@ -340,7 +325,7 @@ def build_character_spec(raw: Dict[str, Any]) -> Dict[str, Any]:
     torso = [{"type": "ellipsoid", "radii": [trx, try_, trz], "center": [0, 0, tz]}]
     if p["outfit"] == "dress" and not p["bust_only"]:
         leg_span = S["leg_z"][1] - S["leg_z"][0]
-        skirt_h = leg_span * 0.62                                           # ghutne tak; neeche pair aur joote dikhte hain
+        skirt_h = leg_span * 0.62
         torso.append({"type": "cone", "radius": trx * 1.38, "radius_top": trx * 0.80, "height": skirt_h,
                       "center": [0, 0, S["leg_z"][1] - skirt_h + 0.02], "op": "smooth_union", "k": 0.05})
     if p["bust_only"]:

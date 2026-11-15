@@ -1,17 +1,4 @@
-"""
-_bpy_stub
-=========
-Hinglish: Blender ke bahar (plain terminal/CI mein) tests chalane ke liye,
-real `bpy` module available nahi hota. Ye file ek minimal fake `bpy`
-banake `sys.modules` mein daal deti hai, taaki root __init__.py aur
-ui/panel.py ke imports fail na hon.
-
-IMPORTANT: Ye sirf IMPORTS ko satisfy karta hai. Isse koi real Blender
-operation nahi hota — bas class definitions load ho jaati hain.
-
-Har test file ke sabse upar isko import karo (side-effect ke liye),
-baaki sab imports ke PEHLE.
-"""
+"""_bpy_stub"""
 
 import sys
 import types
@@ -19,7 +6,7 @@ import types
 
 def install_fake_bpy():
     if "bpy" in sys.modules:
-        return  # already installed, dobara mat karo
+        return
 
     fake_bpy = types.ModuleType("bpy")
 
@@ -45,5 +32,4 @@ def install_fake_bpy():
     sys.modules["bpy.utils"] = fake_utils
 
 
-# Module import hote hi turant install ho jaye
 install_fake_bpy()

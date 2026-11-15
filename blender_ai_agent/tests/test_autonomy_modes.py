@@ -31,7 +31,6 @@ class TestAutonomyPolicy(unittest.TestCase):
         self.assertFalse(policy.requires_confirmation(Permission.DESTRUCTIVE))
 
     def test_autonomous_mode_still_confirms_python_execution(self):
-        """Security-critical: kabhi bhi fully-unattended raw code execution nahi."""
         policy = AutonomyPolicy(AutonomyMode.AUTONOMOUS)
         self.assertTrue(policy.requires_confirmation(Permission.PYTHON_EXECUTION))
 

@@ -1,22 +1,4 @@
-"""
-mesh_engine.py
-===============
-Hinglish: Mesh ko KUCH BHI banane ka general engine. Pure Python (bpy nahi), isliye poora test hota hai.
-
-Soch: har "style" (pighla hua, mudaa hua, toota, kaante wala...) ke liye alag code likhne ke bajay chhote BLOCKS:
-
-   1. SELECTION  — mesh ka kaun sa hissa (top, sphere, noise patch, up-facing, ...) -> har vertex ka weight 0..1
-   2. OPERATORS  — move, scale, rotate, twist, bend, taper, stretch, bulge, inflate, noise, wave, melt, spikes, smooth,
-                   crack, holes, erode, damage  (vertex move / face hatana)
-                   subdivide, cut, extrude, shatter       (topology badalte hain)
-   3. PRESETS    — common shabd ("melted", "twisted", "eroded"...) = in operators ki ek ready list
-   4. PIPELINE   — operators ki list ek ke baad ek chalti hai: apply_ops()
-
-Agent in blocks ko jodkar koi bhi request pooori kar sakta hai; jo block mein na ho uske liye mesh_script.py hai.
-
-Sab kuch deterministic hai (same seed = same result). Coordinates WORLD space mein hain; "relative" ka matlab
-object ke bounding box ke hisaab se 0..1 (0 = sabse neeche/left/front, 1 = sabse upar/right/back).
-"""
+"""mesh_engine.py"""
 
 import math
 import random
@@ -29,7 +11,7 @@ from .mesh_noise import fbm, rand01, ridged, value_noise
 Vec = Tuple[float, float, float]
 AXES = {"x": 0, "y": 1, "z": 2}
 
-MAX_FACES = 150_000          # isse zyada faces wala result nahi banate (Blender / memory)
+MAX_FACES = 150_000
 MAX_VERTICES = 200_000
 
 
@@ -77,7 +59,6 @@ def _normalize(a: Sequence[float]) -> Vec:
 
 
 def _rotate_about_axis(p: Sequence[float], axis_index: int, angle: float, pivot: Sequence[float]) -> Vec:
-    """p ko `pivot` ke through guzarti world axis ke gird angle (radian) ghumata hai."""
     c, s = math.cos(angle), math.sin(angle)
     q = [p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]]
     a, b = [i for i in range(3) if i != axis_index]
@@ -102,7 +83,6 @@ class MeshInfo:
     _adjacency: Optional[List[List[int]]] = field(default=None, repr=False)
 
     def rel(self, relative: Sequence[float]) -> Vec:
-        """Bounding-box ke relative (0..1) point ko world coordinate mein."""
         return tuple(self.mins[i] + relative[i] * self.extent[i] for i in range(3))
 
     def adjacency(self) -> List[List[int]]:
@@ -160,7 +140,6 @@ def analyze(vertices: Sequence[Vec], faces: Sequence[Sequence[int]]) -> MeshInfo
 # 1. SELECTION  ->  weight per vertex (0..1)
 # =============================================================================
 def falloff(depth: float, mode: str = "smooth") -> float:
-    """depth: 0 = seema ke bahar/kinara, 1 = poora andar."""
     d = clamp(depth)
     if mode == "none":
         return 1.0 if depth > 1e-9 else 0.0
@@ -195,21 +174,6 @@ def _facing_weights(info: MeshInfo, direction: Any, threshold: float, mode: str)
 
 
 def selection_weights(sel: Any, info: MeshInfo, seed: int = 1) -> List[float]:
-    """
-    `sel` kuch bhi ho sakta hai:
-      None / "all"                          poora mesh
-      "top" | "bottom" | "left" | "right" | "front" | "back"
-      "up_facing" | "down_facing" | "sides"
-      {"region": "top", "portion": 0.3}
-      {"sphere": {"center": [0.5, 0.5, 1.0], "radius": 0.25}}      (center bbox-relative, radius object-size ka hissa)
-      {"box": {"min": [0, 0, 0.6], "max": [1, 1, 1]}}              (bbox-relative)
-      {"slab": {"axis": "z", "from": 0.4, "to": 0.6}}
-      {"noise": {"scale": 3, "threshold": 0.5, "seed": 1}}         (patchy hissa)
-      {"random": {"fraction": 0.2, "seed": 1}}
-      {"facing": {"direction": "up", "tolerance": 0.5}}
-      {"and": [sel, sel]}  {"or": [sel, sel]}  {"not": sel}
-    Har dict mein optional: "falloff": smooth|linear|sharp|none, "invert": true, "strength": 0..1
-    """
     n = len(info.vertices)
     if n == 0:
         return []
@@ -352,7 +316,6 @@ def _pivot(spec: Any, info: MeshInfo, weights: Sequence[float]) -> Vec:
 
 
 def _blend(info: MeshInfo, weights: Sequence[float], fn) -> Dict[int, Vec]:
-    """Har vertex ka naya position fn(i, p) se, weight ke hisaab se milakar."""
     moves: Dict[int, Vec] = {}
     for i, p in enumerate(info.vertices):
         w = weights[i]
@@ -409,7 +372,6 @@ def op_twist(op, info, w, rng):
 
 
 def op_bend(op, info, w, rng):
-    """Mesh ko lambai (axis) ke saath mod deta hai. `direction` = kis taraf jhukega."""
     axis = _axis(op, "axis", "z")
     direction = _axis(op, "direction", "x" if axis != 0 else "y")
     if direction == axis:
@@ -527,7 +489,6 @@ def op_wave(op, info, w, rng):
 
 
 def op_melt(op, info, w, rng):
-    """Upar ka hissa neeche tapakta hai aur neeche ki taraf phailta hai (puddle)."""
     amount, spread = _num(op, "amount", 0.4, 0.0, 1.0), _num(op, "spread", 0.5, 0.0, 3.0)
     seed = int(_num(op, "seed", 1, 0, 10 ** 6))
     lo = min((info.vertices[i][2] for i in range(len(w)) if w[i] > 1e-6), default=info.mins[2])
@@ -598,7 +559,6 @@ def _segment_distance(p: Sequence[float], a: Sequence[float], b: Sequence[float]
 
 
 def op_crack(op, info, w, rng):
-    """Satah par tedhi-medhi daraar (groove) banata hai, dono taraf se thoda khulti hui."""
     count = int(_num(op, "count", 3, 1, 20))
     depth = _num(op, "depth", 0.03, 0.0, 0.5) * info.size
     width = max(1e-6, _num(op, "width", 0.012, 0.001, 0.3) * info.size)
@@ -652,7 +612,6 @@ def _face_weight(face: Sequence[int], w: Sequence[float]) -> float:
 
 
 def op_holes(op, info, w, rng):
-    """Gol-gol chhed (ya `fraction` ke hisaab se randomly faces gayab)."""
     candidates = [fi for fi, f in enumerate(info.faces) if _face_weight(f, w) > 0.5]
     if not candidates:
         return OpResult()
@@ -670,7 +629,6 @@ def op_holes(op, info, w, rng):
 
 
 def op_erode(op, info, w, rng):
-    """Noise ke hisaab se hissa khaa liya gaya (galta hua / zang laga) + kinaaron par halka khurdurapan."""
     threshold = _num(op, "threshold", 0.68, 0.3, 0.95)
     frequency = _num(op, "scale", 4.0, 0.5, 100.0) / info.size
     seed = int(_num(op, "seed", 1, 0, 10 ** 6))
@@ -688,7 +646,6 @@ def op_erode(op, info, w, rng):
 
 
 def op_damage(op, info, w, rng):
-    """Purana `mesh.damage` (broken / chipped / dented / rough) — engine ka hissa."""
     plan = plan_damage(info.vertices, info.faces, str(op.get("region", "top")), _num(op, "portion", 0.25, 0.02, 1.0),
                        _num(op, "strength", 0.15, 0.01, 0.6), str(op.get("style", "broken")),
                        int(_num(op, "seed", 1, 0, 10 ** 6)))
@@ -708,9 +665,8 @@ ALL_OPS = set(VERTEX_OPS) | TOPOLOGY_OPS | {"script"}
 
 
 def run_vertex_op(op: Dict[str, Any], info: MeshInfo, default_seed: int = 1) -> OpResult:
-    """Ek (topology na badalne wala) operator chalata hai."""
     name = op.get("op")
-    if name == "script":                                    # mesh_script.py (sandbox) — import yahan taaki circular na ho
+    if name == "script":
         from .mesh_script import run_script
         return run_script(info, str(op.get("code", "")), op.get("select"), int(op.get("seed", default_seed)))
     if name not in VERTEX_OPS:
@@ -723,19 +679,15 @@ def run_vertex_op(op: Dict[str, Any], info: MeshInfo, default_seed: int = 1) -> 
     return result
 
 
-# =============================================================================
-# 3. OPERATORS — topology (nayi geometry banate / hatate hain)
-# =============================================================================
 @dataclass
 class TopologyResult:
     vertices: List[Vec]
     faces: List[List[int]]
-    face_source: List[int]          # har naye face ka asli (input) face index; -1 = bilkul naya (cap jaisa)
+    face_source: List[int]
     note: str = ""
 
 
 def compact_mesh(vertices: Sequence[Vec], faces: Sequence[Sequence[int]]):
-    """Jo vertices kisi face mein nahi hain unhe hata deta hai (indices dobara banata hai)."""
     used = sorted({i for f in faces for i in f})
     remap = {old: new for new, old in enumerate(used)}
     return [tuple(vertices[i]) for i in used], [[remap[i] for i in f] for f in faces]
@@ -752,10 +704,6 @@ def _face_normal(vertices: Sequence[Vec], face: Sequence[int]) -> Vec:
 
 
 def subdivide_mesh(vertices, faces, vertex_weights, levels=1, threshold=0.3):
-    """
-    Linear subdivision. Sirf wahi edges katte hain jinke dono vertices ka weight > threshold. Jo face poora
-    chun liya gaya wo 4 hisson mein; jo adha chuna gaya wo n-gon banta hai (koi T-junction / daraar nahi).
-    """
     verts = [tuple(v) for v in vertices]
     fcs = [list(f) for f in faces]
     weights = list(vertex_weights)
@@ -778,7 +726,6 @@ def subdivide_mesh(vertices, faces, vertex_weights, levels=1, threshold=0.3):
             return a < original_count and b < original_count and weights[a] > threshold and weights[b] > threshold
 
         new_faces, new_source = [], []
-        # pehle andaaza: bahut zyada faces na ban jaayein
         predicted = 0
         for f in fcs:
             flags = [selected(f[k], f[(k + 1) % len(f)]) for k in range(len(f))]
@@ -814,10 +761,6 @@ def subdivide_mesh(vertices, faces, vertex_weights, levels=1, threshold=0.3):
 
 
 def cut_plane(vertices, faces, axis: int, value: float, keep: str = "below", cap: bool = True) -> TopologyResult:
-    """
-    Mesh ko ek (world-axis wale) plane se kaat deta hai (Sutherland-Hodgman, asli geometry cut). `keep`: below|above.
-    cap=True par kati hui jagah ko dhak deta hai (andar khokhla nahi dikhta).
-    """
     eps = 1e-9
     keep_below = keep != "above"
     base = len(vertices)
@@ -909,7 +852,6 @@ def cut_plane(vertices, faces, axis: int, value: float, keep: str = "below", cap
 
 
 def extrude_faces(vertices, faces, face_ids, amount: float) -> TopologyResult:
-    """Chune hue faces ko normal ki disha mein `amount` (world units) khinchta hai (side walls ke saath)."""
     verts = [tuple(v) for v in vertices]
     selected = set(face_ids)
     new_faces, source = [], []
@@ -933,10 +875,6 @@ def extrude_faces(vertices, faces, face_ids, amount: float) -> TopologyResult:
 
 def shatter_mesh(info: MeshInfo, face_ids: Sequence[int], pieces: int, spread: float, rotate_degrees: float,
                  rng: random.Random) -> TopologyResult:
-    """
-    Chune hue faces ko `pieces` tukdon (Voronoi jaisa) mein baant ke har tukde ko thoda bahar/ghumaa deta hai.
-    Tukde alag hote hain (vertices duplicate), isliye toota hua kaanch / bikhra hua dikhta hai.
-    """
     ids = list(face_ids)
     if not ids:
         raise ValueError("shatter: nothing is selected")
@@ -1012,9 +950,6 @@ def apply_topology(op: Dict[str, Any], vertices, faces, default_seed: int = 1) -
     raise ValueError(f"unknown topology operator '{name}'")
 
 
-# =============================================================================
-# 4. PRESETS — aam shabd = operators ki ready list
-# =============================================================================
 def _with(sel, ops):
     return [dict(o, select=o.get("select", sel)) if sel is not None else dict(o) for o in ops]
 
@@ -1097,7 +1032,6 @@ def resolve_preset_name(name: str) -> Optional[str]:
 
 def expand_preset(name: str, strength: float = 0.5, select: Any = None, seed: int = 1, detail: Optional[int] = None,
                   region: str = "top", face_count: int = 0) -> List[Dict[str, Any]]:
-    """Preset ka naam (ya synonym) -> operators ki list. detail=None: kam polygon wale mesh par khud 1 subdivide jodta hai."""
     resolved = resolve_preset_name(name)
     if resolved is None:
         raise ValueError(f"unknown preset '{name}'. Presets: {', '.join(PRESET_NAMES)}")
@@ -1110,9 +1044,6 @@ def expand_preset(name: str, strength: float = 0.5, select: Any = None, seed: in
     return ops
 
 
-# =============================================================================
-# 4b. Parameter normalisation (LLM kai tarah ke formats bhejte hain)
-# =============================================================================
 _VECTOR_KEYS = {"offset", "factor", "center", "min", "max", "rotation", "size", "radii", "a", "b", "bounds", "pivot", "direction"}
 _TEXT_KEYS = {"op", "name", "code", "region", "style", "axis", "mode", "keep", "shape", "falloff", "displace", "preset", "type"}
 
@@ -1126,12 +1057,6 @@ def _finite_float(text: Any) -> Optional[float]:
 
 
 def normalize_params(value: Any, key: Optional[str] = None) -> Any:
-    """
-    Operator / shape ke parameters ko saaf form mein badalta hai:
-      {"x": 1, "y": 2, "z": 3}  -> [1, 2, 3]       "1, 2, 3" (vector wali keys par) -> [1.0, 2.0, 3.0]
-      "90" -> 90.0                                  ["0", "1"] -> [0.0, 1.0]
-    Text wali keys (op, region, style, axis, code...) ko kabhi nahi chhedta.
-    """
     if isinstance(value, dict):
         lowered = {str(k).lower(): v for k, v in value.items()}
         if set(lowered) == {"x", "y", "z"}:
@@ -1162,11 +1087,10 @@ class MeshResult:
     face_source: List[int]
     notes: List[str]
     topology_changed: bool
-    removed_faces: List[int]            # asli faces jo gayab hue (sirf tab bharosemand jab topology_changed False)
+    removed_faces: List[int]
 
 
 def apply_ops(vertices, faces, ops: Sequence[Dict[str, Any]], default_seed: int = 1) -> MeshResult:
-    """Operators ki list ko ek ke baad ek chalata hai. Pure function — input ko nahi chhedta."""
     verts = [tuple(v) for v in vertices]
     fcs = [list(f) for f in faces]
     source = list(range(len(fcs)))
@@ -1208,7 +1132,6 @@ def apply_ops(vertices, faces, ops: Sequence[Dict[str, Any]], default_seed: int 
 
 
 def validate_ops(ops: Sequence[Any]) -> List[Dict[str, Any]]:
-    """Operators ki list ko jaanch ke saaf form mein deta hai (galat naam / selection par ValueError)."""
     if not isinstance(ops, (list, tuple)) or not ops:
         raise ValueError("ops must be a non-empty list of operators, e.g. [{\"op\": \"twist\", \"angle\": 90}]")
     if len(ops) > 40:

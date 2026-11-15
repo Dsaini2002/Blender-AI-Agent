@@ -1,14 +1,8 @@
-"""
-Logger — Step 4.9
-====================
-Hinglish: Simple, structured event logger. Har event ek dict hai
-(timestamp + event name + data) — taaki debugging ke waqt exactly
-pata chale "kya hua tha".
-"""
+"""Logger"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
@@ -19,16 +13,30 @@ class LogEvent:
 
 
 class Logger:
-    """Hinglish: In-memory logger — events list mein store hote hain, query kiye ja sakte hain."""
 
     def __init__(self):
         self._events: List[LogEvent] = []
+        self.callback: Optional[Callable[[str, Dict[str, Any]], None]] = None
 
     def info(self, event: str, **data) -> None:
-        self._events.append(LogEvent(event=event, data=data))
+        self._record(event, data)
 
     def error(self, event: str, **data) -> None:
-        self._events.append(LogEvent(event=f"error.{event}", data=data))
+        self._record(f"error.{event}", data)
+
+    def _record(self, event: str, data: Dict[str, Any]) -> None:
+        self._events.append(LogEvent(event=event, data=data))
+        try:
+            from . import run_trace
+            run_trace.on_event(event, data)            # live_trace.txt: written while the run goes
+        except Exception:  # noqa: BLE001 — tracing must never break a run
+            pass
+        callback = self.callback
+        if callback is not None:
+            try:
+                callback(event, dict(data))
+            except Exception:  # noqa: BLE001 
+                pass
 
     def get_events(self) -> List[LogEvent]:
         return list(self._events)

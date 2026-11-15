@@ -1,18 +1,10 @@
-"""
-build_script.py
-================
-Hinglish: Gemini (ya koi bhi LLM) jo "build script" likhta hai use SAFE tareeke se chalane ka engine.
-
-Script Python ka ek chhota hissa (subset) hai jo sirf hamare TOOLS ko keyword arguments ke saath bula sakta hai:
+"""build_script.py
+===============
 
     r = mesh_sdf(name="Body", resolution=60, shapes=[...])
     for i in range(4):
         object_create(name=f"Wheel{i}", primitive="CYLINDER", location=[1.3 * (i % 2 * 2 - 1), 0.8, 0.35])
     material_assign(object_name=r["name"], material_name="Paint")
-
-Chalne se pehle script AST se jaanchi jaati hai: import, attribute (x.y), while, lambda, class, try, open/eval/exec, dunder, `*args`,
-global — sab BAND. Loop / function / list-comprehension / f-string / math chalte hain. Har loop-round, function-call, tool-call
-ginta hai (limit), seq-repeat aur power ka size check hota hai, aur kul samay ki seema hai. bpy script ko milta hi nahi.
 """
 
 import ast
@@ -35,7 +27,6 @@ class ScriptError(ValueError):
 
 
 class ScriptToolError(ScriptError):
-    """Script ne koi tool bulaya aur tool fail hua."""
 
     def __init__(self, tool: str, message: str, line: Optional[int] = None):
         super().__init__(f"{tool} failed: {message}", line)
@@ -47,7 +38,7 @@ class ScriptToolError(ScriptError):
 class ScriptLimits:
     max_tool_calls: int = 400
     max_seconds: float = 240.0
-    max_ticks: int = 200_000          # loop-rounds + function-calls ka kul
+    max_ticks: int = 200_000
     max_range: int = 2000
     max_source: int = 24_000
     max_nodes: int = 8_000
@@ -124,7 +115,7 @@ class _Validator:
             raise ScriptError(f"syntax error: {exc.msg}", exc.lineno) from exc
         except ValueError as exc:                                  # Python 3.10: null byte / kharab text
             raise ScriptError(f"the script contains invalid characters ({exc})") from exc
-        except (RecursionError, MemoryError) as exc:               # bahut gehra nesting
+        except (RecursionError, MemoryError) as exc:
             raise ScriptError("the script is nested too deeply") from exc
 
         nodes = list(ast.walk(tree))
@@ -135,7 +126,6 @@ class _Validator:
                 name = type(node).__name__
                 self.fail(node, f"not allowed: {_FRIENDLY.get(name, name)}")
 
-        # naam jo script khud define karti hai
         for node in nodes:
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 self.define(node, node.id)
@@ -197,7 +187,6 @@ class _Validator:
             self.check_target(node, node.target, loop=True)
 
     def check_target(self, node, target, loop: bool = False):
-        """Name, ya Name/tuple ka (nested bhi) unpacking: `a, (b, c) = ...`; `for i, (x, y) in enumerate(...)`. Subscript sirf assign mein."""
         if isinstance(target, ast.Name):
             return
         if isinstance(target, ast.Tuple) and target.elts:
@@ -216,7 +205,6 @@ class _Validator:
 
 
 class _Instrument(ast.NodeTransformer):
-    """Har loop-round / function-entry par _tick(); `*` aur `**` ko size-checked helper se badalta hai."""
 
     @staticmethod
     def _call(name: str, args: List[ast.expr]) -> ast.Call:
@@ -227,7 +215,7 @@ class _Instrument(ast.NodeTransformer):
 
     def _tick_for(self, body: List[ast.stmt]) -> ast.stmt:
         stmt = self._tick_stmt()
-        return ast.copy_location(stmt, body[0]) if body else stmt        # error ki line = body ki pehli line
+        return ast.copy_location(stmt, body[0]) if body else stmt
 
     def visit_For(self, node: ast.For):
         self.generic_visit(node)
@@ -257,7 +245,6 @@ class _Instrument(ast.NodeTransformer):
 
 
 def validate_script(source: str, tool_functions: Iterable[str], limits: Optional[ScriptLimits] = None) -> None:
-    """Script jaanch lo (chalaye bina). Galat ho to ScriptError (line number ke saath)."""
     _Validator(source, set(tool_functions), limits or ScriptLimits()).check()
 
 
@@ -279,10 +266,6 @@ def _preview(value: Any, limit: int = 90) -> str:
 
 def run_script(source: str, call_tool: Callable[[str, Dict[str, Any]], Any], tool_names: Iterable[str],
                limits: Optional[ScriptLimits] = None, clock: Callable[[], float] = time.monotonic) -> RunResult:
-    """
-    Script chalao. `call_tool(tool_name, kwargs)` ToolResult jaisa object deta hai (.success, .data, .error).
-    Kabhi exception nahi uthata — natija RunResult mein (ok / error / error_line / kitne tool bulaye).
-    """
     limits = limits or ScriptLimits()
     tool_names = list(tool_names)
     name_map = {function_name(t): t for t in tool_names}
@@ -362,7 +345,7 @@ def run_script(source: str, call_tool: Callable[[str, Dict[str, Any]], Any], too
         instrumented = _Instrument().visit(tree)
         ast.fix_missing_locations(instrumented)
         code = compile(instrumented, "<build_script>", "exec")
-        exec(code, namespace)  # noqa: S102 — AST pehle jaanch li gayi hai, builtins khaali hain
+        exec(code, namespace)  # noqa: S102 
         result.ok = True
     except ScriptError as exc:
         result.error, result.error_line = _locate(exc)
@@ -384,7 +367,6 @@ def run_script(source: str, call_tool: Callable[[str, Dict[str, Any]], Any], too
 
 
 def _script_line() -> Optional[int]:
-    """Traceback mein se script ki aakhri line."""
     frames = [f for f in traceback.extract_tb(sys.exc_info()[2]) if f.filename == "<build_script>"]
     return frames[-1].lineno if frames else None
 

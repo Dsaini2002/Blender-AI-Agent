@@ -1,21 +1,5 @@
-"""
-mesh_script.py
-===============
-Hinglish: Jab koi request engine ke operators se na bane, to LLM ek chhota formula likh sakta hai jo HAR vertex par chalta
-hai ("sirf pure math") — isse koi bhi deformation ban sakti hai. Ye `python.execute` jaisa khatarnak nahi: yahan bpy hai hi nahi,
-sirf math, aur code pehle AST se jaanch kar chalta hai (import / attribute / dunder / while / function / list sab BAND).
-
-Script ke andar ye naam milte hain (sirf padhne ke liye):
-   x y z          vertex ka world position            u v w          bounding box ke andar 0..1 position
-   nx ny nz       vertex normal                        i n            vertex ka index, kul vertices
-   size           object ka sabse bada naap            cx cy cz       center
-   minx..maxz     bounding box
-Script ye set karta hai:
-   dx dy dz       displacement (default 0)             remove         1 kar do to us vertex wale faces hat jaayenge
-   (ya seedha x, y, z ko naya value de do)
-Functions: sin cos tan asin acos atan atan2 sqrt exp log hypot floor ceil abs min max pow radians degrees sign clamp lerp
-           smoothstep step fract mod noise fbm ridged rand      Constants: pi tau e
-Control: if / elif / else, for k in range(<=32 literal), =, +=, -=, *=, /=
+"""mesh_script.py
+==============
 
 Example (twist-and-flare):   a = (w - 0.5) * 3.0
                               dx = (x - cx) * (cos(a) - 1) - (y - cy) * sin(a)
@@ -32,7 +16,7 @@ from .mesh_noise import fbm, rand01, ridged, value_noise
 
 
 class ScriptError(ValueError):
-    """Script galat / khatarnak / bahut dheemi."""
+    pass
 
 
 MAX_SOURCE = 4000
@@ -141,7 +125,7 @@ class _Validator(ast.NodeVisitor):
         if isinstance(node.op, ast.Pow):
             right = node.right
             if isinstance(right, ast.UnaryOp) and isinstance(right.op, (ast.USub, ast.UAdd)):
-                right = right.operand                       # -2 jaisa negative literal bhi chalega
+                right = right.operand
             if not (isinstance(right, ast.Constant) and isinstance(right.value, (int, float)) and abs(right.value) <= MAX_POW):
                 self._fail(node, f"`**` needs a literal exponent between -{MAX_POW} and {MAX_POW} (or use pow())")
         self.visit(node.left)
@@ -200,7 +184,6 @@ class _Validator(ast.NodeVisitor):
         self._fail(node, type(node).__name__)
 
 
-# Jo node types visit_* se handle nahi hue unhe reject karne ke liye default
 for _name in ("Attribute", "Subscript", "Lambda", "ListComp", "SetComp", "DictComp", "GeneratorExp", "Import", "ImportFrom",
               "While", "FunctionDef", "AsyncFunctionDef", "ClassDef", "Global", "Nonlocal", "Try", "With", "Delete", "Raise",
               "Assert", "Return", "Starred", "JoinedStr", "FormattedValue", "Dict", "List", "Set", "Tuple", "Await", "Yield",
@@ -210,7 +193,6 @@ for _name in ("Attribute", "Subscript", "Lambda", "ListComp", "SetComp", "DictCo
 
 
 def compile_script(source: str) -> Callable:
-    """Source ko jaanch kar ek safe function (x, y, z, ... ) -> (nx, ny, nz, remove) mein badalta hai."""
     if not isinstance(source, str) or not source.strip():
         raise ScriptError("script is empty")
     if len(source) > MAX_SOURCE:
@@ -238,13 +220,12 @@ def compile_script(source: str) -> Callable:
     namespace: Dict[str, Any] = {"__builtins__": {}}
     namespace.update(ALLOWED_FUNCS)
     namespace.update(ALLOWED_CONSTANTS)
-    namespace["range"] = range            # sirf `for k in range(<literal>)` ke liye (validator baaki jagah range() call rokta hai)
-    exec(compile(module, "<mesh_script>", "exec"), namespace)  # noqa: S102 — AST pehle jaanch li gayi hai
+    namespace["range"] = range
+    exec(compile(module, "<mesh_script>", "exec"), namespace)  # noqa: S102 
     return namespace["_vertex"]
 
 
 def run_script(info: MeshInfo, source: str, select: Any = None, seed: int = 1, time_limit: float = 8.0) -> OpResult:
-    """Script ko (selection ke weight ke saath) har vertex par chalata hai. OpResult deta hai (moves + remove_faces)."""
     function = compile_script(source)
     n = len(info.vertices)
     if n > 200_000:

@@ -1,26 +1,4 @@
-"""
-HouseBuilderSkill
-====================
-Hinglish: ProductShowcaseSkill jaisa hi pattern (Skill = multiple
-Tools ka composition), lekin iska kaam hai: user "house"/"ghar" bole
-to poora ghar ban jaye — walls, roof, door, 2 windows — sabme color.
-
-    house_builder
-        1. object.create    (Walls  — CUBE)
-        2. object.transform (Walls ko size dena)
-        3. material.create + material.assign  (Walls color)
-        4. object.create    (Roof   — CONE)
-        5. object.transform (Roof ko position/size dena)
-        6. material.create + material.assign  (Roof color)
-        7. object.create    (Door   — CUBE, chhota)
-        8. object.transform
-        9. material.create + material.assign  (Door color)
-       10-12. Window Left  (CUBE + transform + material)
-       13-15. Window Right (CUBE + transform + material)
-
-Har part ka apna naam hota hai (`{house_name}_Walls`, `_Roof`, etc.)
-taaki ek scene mein multiple houses bhi ban sakein bina naam clash ke.
-"""
+"""HouseBuilderSkill"""
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -29,7 +7,6 @@ from ..base import Skill, SkillResult
 
 
 class HouseBuildError(Exception):
-    """Hinglish: Beech mein koi step fail ho jaye to poora build rokne ke liye."""
 
     def __init__(self, message: str, steps_completed: List[str]):
         super().__init__(message)
@@ -46,9 +23,6 @@ class HouseBuilderParams:
     location: List[float] = None
 
     def __post_init__(self):
-        # Hinglish: Defaults ek normal ghar jaisa dikhte hain agar
-        # user ne koi color specify nahi kiya — cream walls, red
-        # roof, brown door, light-blue (glass-jaisi) windows.
         if self.wall_color is None:
             self.wall_color = [0.85, 0.78, 0.65, 1.0]
         if self.roof_color is None:
@@ -68,20 +42,16 @@ class HouseBuilderSkill(Skill):
         "from a single request — e.g. 'make a house' or 'build a colourful home'."
     )
 
-    # Hinglish: Default keyword-match (Skill.can_handle) sirf naam ke
-    # words ("house", "builder") dekhta hai jo bahut narrow hai.
-    # Yahan explicit synonyms match karte hain taaki "make a house",
-    # "build a home", "ghar banao" sab match ho jayein.
     _TRIGGER_WORDS = ("house", "home", "cottage", "ghar", "bungalow")
 
     def can_handle(self, task: str) -> float:
+        # only short "make a house" requests: a described villa / bungalow is planned by the team
+        if "\n" in (task or "").strip() or len((task or "").split()) > 20:
+            return 0.0
         task_lower = task.lower()
         return 1.0 if any(word in task_lower for word in self._TRIGGER_WORDS) else 0.0
 
     def execute(self, context: Dict[str, Any]) -> SkillResult:
-        """Hinglish: Public entrypoint — asli kaam _build() karta hai,
-        yahan sirf error ko SkillResult.fail() mein convert karte hain
-        taaki caller ko kabhi raw exception na dikhe (Skill contract)."""
         try:
             return self._build(context)
         except HouseBuildError as exc:
@@ -138,11 +108,6 @@ class HouseBuilderSkill(Skill):
             steps_completed=steps_completed,
         )
 
-    # ------------------------------------------------------------------
-    # Internal helpers — har ek "object.create / object.transform /
-    # material.create+assign" sequence isi pattern se guzarta hai,
-    # isliye chhote helpers poora method-chain repeat hone se bachate hain.
-    # ------------------------------------------------------------------
 
     def _create(self, name: str, primitive: str, location: List[float], steps_completed: List[str]) -> None:
         result = self._tool_caller.call(self._make_call("object.create", {

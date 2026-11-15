@@ -1,19 +1,3 @@
-"""
-Progress tracking — "kitna ho gaya, kitna time aur lagega"
-=============================================================
-NOTE: Ye "step-wise progress + ETA" wala module hai (ProgressTracker, ProgressHistory, get_tracker).
-Purana copilot/progress.py (ProgressState, StepStatus) alag hai aur waisa hi rehta hai — naam isiliye alag rakha.
-Hinglish: Ye module pure Python hai (bpy nahi) aur thread-safe hai: worker thread tracker ko update karta hai,
-Blender ka UI (ui/progress_panel.py) usse padhta hai.
-
-Do tarah ke progress:
-  1. Step-wise (bade task ko todkar): total steps pata hain -> percent + ETA (bacha hua time)
-  2. Single task: total pata nahi -> elapsed time + "aam taur par ~X lagta hai" (pichhle runs se seekha hua)
-
-ETA kaise nikalta hai: har step ka expected time = pichhle runs ke asli timings ka median
-("skill" steps tez, "agent" = LLM wale steps dheere). Is run mein jaise-jaise steps khatam hote hain,
-speed ka factor seekh kar bacha hua ETA sudharta rehta hai.
-"""
 
 import json
 import os
@@ -38,7 +22,6 @@ def format_duration(seconds: Optional[float]) -> str:
 
 
 def ascii_bar(percent: float, width: int = 10) -> str:
-    """40 -> '####------' (sirf ASCII, har Blender font par sahi dikhta hai)."""
     filled = int(round(width * max(0.0, min(100.0, percent)) / 100.0))
     return "#" * filled + "-" * (width - filled)
 
@@ -53,7 +36,6 @@ def default_history_path() -> str:
 
 
 class ProgressHistory:
-    """Pichhle steps ke asli timings (seconds) — estimates behtar karne ke liye. path=None => sirf memory."""
 
     def __init__(self, path: Optional[str] = None):
         self._path = path
@@ -80,7 +62,7 @@ class ProgressHistory:
             with open(self._path, "w", encoding="utf-8") as handle:
                 json.dump(self._data, handle)
         except (OSError, ValueError):
-            pass                                   # estimates ka save na hona kabhi task ko na roke
+            pass
 
     def record(self, kind: str, seconds: float) -> None:
         if kind not in self._data or not (0.05 < seconds < 3600):
@@ -100,7 +82,7 @@ class ProgressHistory:
 @dataclass
 class Step:
     label: str
-    kind: str = "agent"                            # "agent" (LLM) | "skill" (tez, bina LLM)
+    kind: str = "agent"
     status: str = "pending"                        # pending | running | done | failed | skipped
     expected: float = 0.0
     started: Optional[float] = None
@@ -110,17 +92,16 @@ class Step:
 
 @dataclass
 class Progress:
-    """UI/status line ke liye ek jhalak (snapshot)."""
     state: str = "idle"                            # idle | running | done
     request: str = ""
-    total: int = 0                                 # 0 => step-wise nahi (single task)
+    total: int = 0
     index: int = 0                                 # current step (1-based)
     completed: int = 0
     failed: int = 0
     percent: Optional[float] = None
     elapsed: float = 0.0
     eta: Optional[float] = None
-    typical: Optional[float] = None                # single task: aam taur par kitna lagta hai
+    typical: Optional[float] = None
     label: str = ""
     ok: Optional[bool] = None
     tool_events: int = 0
@@ -153,7 +134,6 @@ class ProgressTracker:
             self._reset_locked()
 
     def begin(self, request: str, steps: Optional[List[str]] = None, kinds: Optional[List[str]] = None) -> None:
-        """Naya task shuru. `steps` diye to step-wise (percent+ETA), warna single (elapsed)."""
         with self._lock:
             self._reset_locked()
             self._state = "running"
@@ -193,7 +173,6 @@ class ProgressTracker:
             self._current = None
 
     def note_event(self, event: str) -> None:
-        """Agent ke logger events — activity ginte hain (single task ke progress ke liye)."""
         with self._lock:
             if isinstance(event, str):
                 if event.startswith("tool."):
@@ -215,7 +194,6 @@ class ProgressTracker:
             return self._state == "running"
 
     def _speed_factor_locked(self, now: float) -> float:
-        """Is run mein steps expected se kitne tez/dheere chal rahe hain (0.25x - 4x)."""
         actual = expected = 0.0
         for step in self._steps:
             if step.status in ("done", "failed") and step.started is not None and step.ended is not None:
@@ -257,7 +235,7 @@ class ProgressTracker:
                 snap.eta = 0.0
                 return snap
 
-            if finished == total:                                  # saare steps ho chuke, bas summary baaki
+            if finished == total:
                 snap.percent, snap.eta = 100.0, 0.0
                 return snap
 
@@ -270,7 +248,7 @@ class ProgressTracker:
                 if s.status == "running" and s.started is not None:
                     spent = now - s.started
                     current_fraction = min(0.95, spent / w)
-                    remaining += max(w * 0.1, w - spent)       # step expected se zyada khinch jaye to bhi thoda bacha dikhao
+                    remaining += max(w * 0.1, w - spent)
             total_weight = sum(weights)
             snap.percent = _clamp(100.0 * (done_weight + current_fraction * next(
                 (w for s, w in zip(self._steps, weights) if s.status == "running"), 0.0)) / total_weight, 0.0, 99.0)
@@ -278,7 +256,6 @@ class ProgressTracker:
             return snap
 
     def status_line(self, event: Optional[str] = None) -> str:
-        """Chhoti, ek line ki status (panel ka label chhota hai): '2/5 [####------] 40%  ~0:52 left'."""
         snap = self.snapshot()
         if snap.state == "idle":
             return ""
@@ -292,7 +269,6 @@ class ProgressTracker:
         return f"Working {format_duration(snap.elapsed)}  (usually ~{format_duration(snap.typical)})"
 
 
-# --------------------------------------------------------------------------- shared instance (UI isse padhta hai)
 _tracker: Optional[ProgressTracker] = None
 _tracker_lock = threading.Lock()
 

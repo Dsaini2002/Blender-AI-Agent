@@ -1,7 +1,4 @@
-"""
-ObjectIdentifier — Step 5.6
-================================
-"""
+"""ObjectIdentifier"""
 
 from typing import List, Optional
 
@@ -32,6 +29,5 @@ class ObjectIdentifier:
 
     @staticmethod
     def _normalize(text: str) -> str:
-        """Hinglish: Underscores/special chars ko space banao, lowercase karo — 'Red_Cube' -> 'red cube'."""
         cleaned = "".join(ch if ch.isalnum() else " " for ch in text.lower())
         return cleaned

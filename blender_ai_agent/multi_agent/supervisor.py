@@ -1,14 +1,4 @@
-"""
-SupervisorAgent — Step 11.10 / 11.12
-=========================================
-Hinglish: Task ko sahi specialized agent ko assign karta hai, sab
-results collect karta hai, aur conflicts resolve karta hai (abhi
-simple: pehla matching agent jeet jaata hai).
-
-IMPORTANT (spec rule): Ye single-agent execution ke saath BENCHMARK
-COMPARABLE hai — same ToolCaller/interface, taaki Phase 8 ka Evaluator
-dono architectures ko fairly compare kar sake.
-"""
+"""SupervisorAgent"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional

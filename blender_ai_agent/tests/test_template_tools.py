@@ -124,9 +124,6 @@ if __name__ == "__main__":
 
 
 class TestBuildTemplateInputAcceptsJSONStringColors(unittest.TestCase):
-    """Hinglish: Gemini kabhi colors ko JSON string bhejta hai (dict ki
-    jagah) - crash nahi, parse ho jaana chahiye. Same pattern as
-    ConfigureModifierInput.properties."""
 
     def test_dict_colors_pass_through_unchanged(self):
         inp = BuildTemplateInput(template_name="humanoid", colors={"primary": [0.8, 0.1, 0.1, 1.0]})

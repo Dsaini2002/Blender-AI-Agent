@@ -141,7 +141,6 @@ class TestPlace(WithIndex):
         self.write_index()
 
         class RemovableObject(FakeObject):
-            """Asli Blender jaisa: delete hone ke baad `.name` padhne par ReferenceError aata hai."""
             _removed = False
 
             @property

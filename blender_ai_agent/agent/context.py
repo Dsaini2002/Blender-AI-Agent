@@ -1,36 +1,14 @@
-"""
-ContextManager — Step 3.3
-============================
-Hinglish: LLM ko HAMESHA poori scene nahi bhejni — sirf jo task ke
-liye relevant hai. Ye class scene ki full JSON (SceneInspector se)
-leke usse ek COMPACT, LLM-friendly summary mein badalti hai.
-
-Abhi ke liye 2 strategies:
-  1. Poori scene ka summary (object count, names only — details nahi)
-  2. Specific object(s) ka full detail (jab user kisi cheez ka naam le)
-"""
+"""ContextManager"""
 
 from typing import Any, Dict, List, Optional
 
 
 class ContextManager:
-    """
-    Hinglish: Constructor mein SceneInspectTool (ya koi bhi object
-    jiska `execute({})` scene data de) inject hota hai — Dependency
-    Injection, jaisa humesha se karte aaye hain.
-    """
 
     def __init__(self, scene_inspect_tool):
         self._scene_inspect_tool = scene_inspect_tool
 
     def build_context(self, focus_object_names: Optional[List[str]] = None) -> Dict[str, Any]:
-        """
-        Hinglish: Agent ke liye ek compact context banata hai.
-
-        Agar `focus_object_names` diya hai (jaise ["Cube"]), toh sirf
-        un objects ka FULL detail milega. Agar nahi diya, toh sirf
-        summary milega (object count + names) — poora detail nahi.
-        """
         result = self._scene_inspect_tool.execute({})
 
         if not result.success:
@@ -48,7 +26,6 @@ class ContextManager:
     # Private helpers
     # ---------------------------------------------------------
     def _build_summary_context(self, scene_data: Dict[str, Any], all_objects: List[Dict]) -> Dict[str, Any]:
-        """Hinglish: Sirf naam aur type — full detail (location/rotation/scale) nahi."""
         return {
             "scene_name": scene_data.get("scene", {}).get("name", "Unknown"),
             "object_count": len(all_objects),
@@ -59,7 +36,6 @@ class ContextManager:
         }
 
     def _build_focused_context(self, all_objects: List[Dict], focus_names: List[str]) -> Dict[str, Any]:
-        """Hinglish: Sirf named objects ka FULL detail (location, rotation, scale sab)."""
         focused = [obj for obj in all_objects if obj["name"] in focus_names]
         missing = [name for name in focus_names if name not in [obj["name"] for obj in all_objects]]
 
@@ -68,20 +44,7 @@ class ContextManager:
             "not_found": missing,
         }
 
-    # ---------------------------------------------------------
-    # Naya — Step "Deep Complexity": LLM ke liye plain-text context
-    # ---------------------------------------------------------
     def build_context_text(self) -> str:
-        """
-        Hinglish: Scene ka FULL current state (har object ka naam,
-        type, location, rotation, scale) ek plain-text description
-        mein deta hai — har turn pe fresh banta hai, kabhi state mein
-        save nahi hota (stale na ho jaye isliye).
-
-        Ye LLM ko "table" jaisi cheez ki asli position/size dikhata
-        hai, taaki "book ko table pe rakho" jaisi spatial request
-        sahi se resolve ho sake.
-        """
         result = self._scene_inspect_tool.execute({})
         if not result.success:
             return ""

@@ -119,7 +119,6 @@ def make_stack(bridge):
 
 
 class SceneBridge(FakeBridge):
-    """mesh.sdf ke liye create_mesh + scene.inspect ke liye object fields + node materials ka record."""
 
     def build_node_material(self, name, spec, replace=True):
         if not hasattr(self, "node_materials"):
@@ -156,7 +155,6 @@ def critique(score, problems=(), keep=(), summary="ok"):
 
 
 class ScriptedGemini(BaseHTTPRequestHandler):
-    """Writer/fixer aur critic ke jawab list se; har request record hoti hai."""
 
     def log_message(self, *a):
         pass
@@ -275,7 +273,7 @@ class TestHelpers(unittest.TestCase):
         radius = 0.5 * ((4.5 ** 2 + 1.94 ** 2 + 1.55 ** 2) ** 0.5)
         for view in VIEW_DIRECTIONS:
             pose = camera_pose(low, high, view)
-            self.assertGreater(pose["distance"], radius)                     # poori cheez frame mein
+            self.assertGreater(pose["distance"], radius)
             self.assertEqual(pose["target"], [0.0, 0.0, 0.775])
         self.assertLess(camera_pose(low, high, "front")["location"][1], 0)   # front = -Y
         self.assertGreater(camera_pose(low, high, "right")["location"][0], 0)
@@ -298,7 +296,7 @@ class TestHelpers(unittest.TestCase):
         self.assertIn("material_recipe(", listing)
         functions = {function_name(n) for n in names} | {"material_modify", "mesh_lathe", "mesh_prism", "character_create", "curve_create"}
         for example in examples:
-            validate_script(example, functions)                                # syntax + sandbox rules ke hisaab se sahi
+            validate_script(example, functions)
 
 
 class TestWriterPrompt(LoopCase):
@@ -327,30 +325,23 @@ class TestWriterPrompt(LoopCase):
 
 
 class TestPromptExamples(LoopCase):
-    """Prompt ke teeno example scripts asli tools ke saath poore chalte hain (galat argument ya galat orientation pakadne ke liye)."""
 
     def check_lit_scene_follows_the_general_rules(self, by_name):
-        """Example 3 (aag wala scene) khud wahi rules maanta hai jo prompt sikhata hai: layers, recipes, emitter -> light, atmosphere, imperfection."""
         names = list(by_name)
         count = lambda prefix: sum(1 for n in names if n.startswith(prefix))      # noqa: E731
         self.assertEqual((count("Fire_stone"), count("Fire_log"), count("Fire_coal"), count("Fire_flame")), (14, 4, 40, 3))
-        # (1) 3 detail layers: zameen+patthar+lakdi (bada/beech) aur 40 chhote angaare
         self.assertGreaterEqual(count("Fire_coal"), 20)
-        # (2) har mukhya surface recipe se: 7 materials, koi flat colour nahi
         recipes = {n: spec for n, spec in self.bridge.node_materials.items() if n.startswith("Fire_")}
         self.assertEqual(sorted(recipes), ["Fire_char", "Fire_dirt", "Fire_ember", "Fire_flame", "Fire_log", "Fire_smoke", "Fire_stone"])
-        # (3) chamakne wale (flame/ember) ke paas same rang ki asli light
         lights = [o for o in self.bridge._objects if o.type == "LIGHT"]
         self.assertGreaterEqual(len(lights), 2)
         self.assertTrue(all(l.light_color[0] >= 0.9 and l.light_color[2] <= 0.1 for l in lights), "fire lights must be warm orange/red")
-        self.assertTrue(all(l.location[2] < 1.5 for l in lights))                      # aag ke paas, door nahi
+        self.assertTrue(all(l.location[2] < 1.5 for l in lights))
         # (4) atmosphere: smoke volume ek bade cube par
         self.assertIn("Fire_smoke", by_name)
         self.assertEqual(by_name["Fire_smoke"].scale[2], 2.2)
-        # (5) imperfection: patthar sab alag size ke, koi do identical nahi
         sizes = {tuple(round(v, 4) for v in by_name[f"Fire_stone{i}"].scale) for i in range(14)}
         self.assertEqual(len(sizes), 14)
-        # (6) zameen par: patthar/angaare zameen ke upar, neeche nahi
         self.assertTrue(all(by_name[f"Fire_stone{i}"].location[2] > 0 for i in range(14)))
 
     def test_all_three_examples_run_and_the_car_is_a_car(self):
@@ -372,7 +363,7 @@ class TestPromptExamples(LoopCase):
         self.assertAlmostEqual(max(ys) - min(ys), 4.5, delta=0.1)                 # lambai
         self.assertLess(max(zs), 1.7)
 
-        def closed(obj):                                                            # har edge ke theek 2 faces => band (koi chhed nahi)
+        def closed(obj):
             count = {}
             for face in obj.mesh_faces:
                 for k in range(len(face)):
@@ -385,7 +376,7 @@ class TestPromptExamples(LoopCase):
                 self.assertTrue(closed(part), f"{part.name} has holes")
             tx = [v[0] for v in tyre.mesh_vertices]
             tz = [v[2] for v in tyre.mesh_vertices]
-            self.assertAlmostEqual(max(tz) - min(tz), 0.22, delta=0.02)               # lathe axis Z: chaudai (rotation [0,90,0] se X banti hai)
+            self.assertAlmostEqual(max(tz) - min(tz), 0.22, delta=0.02)
             self.assertAlmostEqual(max(tx) - min(tx), 0.69, delta=0.03)               # diameter
             rotation = getattr(tyre, "rotation", None) or tyre.rotation_euler
             self.assertTrue(abs(rotation[1] - 90.0) < 1e-6 or abs(rotation[1] - 1.5707963) < 1e-5, rotation)    # axis Z -> X
@@ -427,11 +418,11 @@ class TestTheLoop(LoopCase):
         self.assertEqual((report.best_iteration, report.best_score, len(report.iterations)), (2, 8.2, 2))
         self.assertIn("Thing_lamp", self.names())
         fixer = self.posts("writer")[1]
-        self.assertIn("no lamp on the front", fixer["text"])                  # critique wapas gayi
+        self.assertIn("no lamp on the front", fixer["text"])
         self.assertIn("YOUR PREVIOUS SCRIPT", fixer["text"])
-        self.assertIn("Thing_wheel", fixer["text"])                            # purani script bhi
+        self.assertIn("Thing_wheel", fixer["text"])
         self.assertIn("SCORES SO FAR: 5", fixer["text"])
-        self.assertEqual(len(self.names()), 6)                                 # purana hata kar naya: duplicate nahi
+        self.assertEqual(len(self.names()), 6)
 
     def test_a_worse_iteration_is_rolled_back_and_the_best_is_rebuilt(self):
         self.writer(SCRIPT_V2, GOOD_SCRIPT, GOOD_SCRIPT)
@@ -440,7 +431,7 @@ class TestTheLoop(LoopCase):
         self.assertFalse(report.reached_target)
         self.assertEqual((report.best_iteration, report.best_score), (1, 6.5))
         self.assertTrue(report.success)
-        self.assertIn("Thing_lamp", self.names())                              # iteration 1 wapas bana
+        self.assertIn("Thing_lamp", self.names())
         self.assertEqual(len(self.names()), 6)
         self.assertIn("best score 6.5", report.stopped_reason)
 
@@ -454,8 +445,8 @@ class TestTheLoop(LoopCase):
         self.assertIn("line 2", first.run_error)
         self.assertIn("mesh.sdf failed", first.run_error)
         self.assertIn("RUN ERROR: line 2", self.posts("writer")[1]["text"])
-        self.assertEqual(self.names(), ["Thing_body", "Thing_wheel0", "Thing_wheel1", "Thing_wheel2", "Thing_wheel3"])     # 'Half' hat gaya
-        self.assertEqual(len(self.posts("critic")), 1)                         # error wali iteration ka render nahi
+        self.assertEqual(self.names(), ["Thing_body", "Thing_wheel0", "Thing_wheel1", "Thing_wheel2", "Thing_wheel3"])
+        self.assertEqual(len(self.posts("critic")), 1)
 
     def test_everything_failing_leaves_the_scene_untouched(self):
         self.writer(BAD_TOOL_SCRIPT, BAD_TOOL_SCRIPT, BAD_TOOL_SCRIPT)
@@ -473,7 +464,7 @@ class TestTheLoop(LoopCase):
         retry = self.posts("writer")[1]["text"]
         self.assertIn("rejected before running", retry)
         self.assertIn("import", retry)
-        self.assertEqual(len(report.iterations), 1)                            # retries ek hi iteration ke andar
+        self.assertEqual(len(report.iterations), 1)
 
     def test_script_that_stays_dangerous_is_reported_not_run(self):
         self.writer("import os", "import os", "import os", "import os")
@@ -487,7 +478,7 @@ class TestTheLoop(LoopCase):
         self.writer('object_create(name="Mine", primitive="CUBE")\nobject_delete(name="UserCube")', GOOD_SCRIPT)
         self.critic(critique(8.5))
         report = self.build()
-        self.assertIn("UserCube", self.names())                                # user ka object bacha
+        self.assertIn("UserCube", self.names())
         self.assertIn("existed before", report.iterations[0].run_error)
         self.assertTrue(report.success)
 
@@ -504,7 +495,7 @@ class TestTheLoop(LoopCase):
         self.critic(critique(6, ["thin"]))
         self.server.fail_models = {"gemini-3.6-flash": 429, "gemini-3.5-flash-lite": 429}
         builder = self.builder()
-        first = builder.build("make a thing", out_dir=os.path.join(self.tmp.name, "out1"))                # sab 429 -> kuch nahi
+        first = builder.build("make a thing", out_dir=os.path.join(self.tmp.name, "out1"))
         self.assertFalse(first.success)
         self.assertIn("429", first.stopped_reason)
         self.server.fail_models = {}
@@ -522,7 +513,7 @@ class TestTheLoop(LoopCase):
         builder._critique = flaky
         report = builder.build("make a thing", out_dir=os.path.join(self.tmp.name, "out2"))
         self.assertTrue(report.success)
-        self.assertEqual(report.best_iteration, 1)                              # iteration 1 (score 6) bacha
+        self.assertEqual(report.best_iteration, 1)
         self.assertIn("429", report.stopped_reason)
         self.assertEqual(len(self.names()), 5)
 
@@ -533,7 +524,7 @@ class TestTheLoop(LoopCase):
         report = self.build()
         self.assertTrue(report.success)
         models = [p["model"] for p in self.posts()]
-        self.assertEqual(models, ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite"])   # ek baar 429, phir sticky fallback
+        self.assertEqual(models, ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash-lite"])
         self.assertEqual(self.server.requests[0]["method"], "GET")              # model discovery
 
     def test_model_discovery_picks_the_newest_flash_and_skips_image_pro_embedding(self):
@@ -587,10 +578,10 @@ class TestTheLoop(LoopCase):
         self.critic(critique(9.5, summary="perfect car"), critique(9.0))
         report = self.build()
         first, second = report.iterations
-        self.assertLess(first.score, 8)                                              # 9.5 ke bawajood overlap ne score gira diya
+        self.assertLess(first.score, 8)
         self.assertIn("overlaps the existing object 'Tent'", first.problems[0]["issue"])
         self.assertEqual(first.problems[0]["where"], "placement")
-        self.assertIn("overlaps the existing object 'Tent'", self.posts("writer")[1]["text"])     # fixer ko physical fact mila
+        self.assertIn("overlaps the existing object 'Tent'", self.posts("writer")[1]["text"])
         self.assertTrue(report.reached_target)
         self.assertEqual(report.best_iteration, 2)
 
@@ -617,7 +608,7 @@ class TestTheLoop(LoopCase):
         self.assertGreaterEqual(((car.anchor[0] - 4.0) ** 2 + car.anchor[1] ** 2) ** 0.5, 8.0)           # gaadi: 8 m
         self.assertIn("Girl@(4.0,0.0)", self.posts("writer")[0]["text"])
         self.assertIn("at least 1 m", self.posts("writer")[0]["text"])
-        self.bridge._objects = [near]                                                      # pehli build hata do
+        self.bridge._objects = [near]
         self.server.queues["writer"].append(fenced(GOOD_SCRIPT)); self.server.queues["critic"].append(critique(9))
         small = self.builder().build("make a vase", out_dir=os.path.join(self.tmp.name, "v"))
         self.assertLess(((small.anchor[0] - 4.0) ** 2 + small.anchor[1] ** 2) ** 0.5, 8.0)
@@ -673,7 +664,6 @@ class TestToolAndSkill(LoopCase):
 
     def setUp(self):
         super().setUp()
-        # Aapke 991 downloaded models mein 'robot' bhi hai => skill (sahi taur par) library_props ko chhod deti. Test us par nirbhar na ho.
         from blender_ai_agent.tools import local_assets_tools
         self._saved_env = os.environ.get("BLENDER_AI_MODELS_DIR")
         os.environ["BLENDER_AI_MODELS_DIR"] = self.tmp.name
@@ -761,15 +751,15 @@ class TestToolAndSkill(LoopCase):
 
     def test_a_downloaded_model_wins_over_building_for_a_plain_request(self):
         skill = self.skill()
-        self.assertEqual(skill.can_handle("build a robot"), 0.94)                      # abhi koi downloaded model nahi
+        self.assertEqual(skill.can_handle("build a robot"), 0.94)
         entry = {"id": "k-robot", "name": "Robot_Walker", "project": "pm-k", "project_name": "kenney", "collection_description": "",
                  "attributes": {}, "tags": ["robot"], "file": "kenney/Robot_Walker.glb", "size": 10, "license": "CC0"}
         with open(os.path.join(self.tmp.name, "index.json"), "w", encoding="utf-8") as handle:
             json.dump({"models": [entry]}, handle)
         from blender_ai_agent.tools import local_assets_tools
         local_assets_tools._INDEX_CACHE.clear()
-        self.assertEqual(skill.can_handle("build a robot"), 0.0)                       # downloaded mila => library_props lega
-        self.assertEqual(skill.can_handle("build a realistic robot"), 0.94)            # 'realistic' maanga => ab bhi build
+        self.assertEqual(skill.can_handle("build a robot"), 0.0)
+        self.assertEqual(skill.can_handle("build a realistic robot"), 0.94)
 
     def test_registry_routing(self):
         registry = SkillRegistry()

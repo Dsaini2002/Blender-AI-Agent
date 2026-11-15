@@ -1,11 +1,4 @@
-"""
-Visual Similarity — Step 9.19
-==================================
-Hinglish: Do VisualObservations compare karke ek similarity score
-deta hai. Spec khud kehta hai — "arbitrary similarity numbers claim
-nahi karenge" — isliye scoring simple, transparent, aur explainable
-rakha hai (object-overlap based), koi magic ML score nahi.
-"""
+"""Visual Similarity"""
 
 from dataclasses import dataclass
 from typing import List
@@ -24,12 +17,6 @@ class SimilarityResult:
 class VisualSimilarityComparator:
 
     def compare(self, reference: VisualObservation, actual: VisualObservation) -> SimilarityResult:
-        """
-        Hinglish: Object-overlap based similarity — kitne reference
-        ke objects actual mein bhi detect hue. Simple, explainable
-        metric — future mein image-embedding based comparison isi
-        interface ke peeche plug ho sakta hai.
-        """
         ref_objects = set(reference.objects_detected)
         actual_objects = set(actual.objects_detected)
 

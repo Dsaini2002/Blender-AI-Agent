@@ -9,7 +9,6 @@ from blender_ai_agent.providers.mock_provider import MockProvider
 class TestModelProviderBase(unittest.TestCase):
 
     def test_cannot_instantiate_directly(self):
-        """ModelProvider ek ABC hai — bina generate() implement kiye instantiate nahi ho sakta."""
         with self.assertRaises(TypeError):
             ModelProvider()
 
@@ -52,13 +51,13 @@ class TestMockProvider(unittest.TestCase):
 
     def test_raises_when_responses_exhausted(self):
         provider = MockProvider(responses=["only_one"])
-        provider.generate("req1")  # ye response consume kar leta hai
+        provider.generate("req1")
 
         with self.assertRaises(RuntimeError):
-            provider.generate("req2")  # ab koi response bacha nahi
+            provider.generate("req2")
 
     def test_empty_responses_raises_on_first_call(self):
-        provider = MockProvider()  # koi response scripted nahi
+        provider = MockProvider()
 
         with self.assertRaises(RuntimeError):
             provider.generate("anything")

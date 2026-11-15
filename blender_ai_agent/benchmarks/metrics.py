@@ -1,8 +1,4 @@
-"""
-MetricCalculator — Step 8.25 / 8.26
-========================================
-Hinglish: Multiple BenchmarkResults se aggregate statistics banata hai.
-"""
+"""MetricCalculator"""
 
 from dataclasses import dataclass, field
 from typing import Dict, List

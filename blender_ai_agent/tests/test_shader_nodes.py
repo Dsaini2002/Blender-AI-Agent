@@ -149,7 +149,7 @@ class TestSpec(unittest.TestCase):
             with self.assertRaises(ValueError, msg=str(link)) as ctx:
                 self.parse(nodes, [link])
             self.assertIn(fragment, str(ctx.exception), str(link))
-        self.parse(nodes, [["n.0", "e.1"], ["n.Fac", "e.Color"]])                  # numbers hamesha chalte hain
+        self.parse(nodes, [["n.0", "e.1"], ["n.Fac", "e.Color"]])
 
     def test_settings_and_limits(self):
         nodes = [self.OUT]
@@ -174,7 +174,7 @@ class TestSpec(unittest.TestCase):
         self.assertEqual(place["out"][0], 0.0)
         self.assertLess(place["tc"][0], place["noise"][0])
         self.assertLess(place["noise"][0], place["mix"][0])
-        self.assertEqual(len(set(place.values())), len(spec.nodes))                    # koi do node ek jagah nahi
+        self.assertEqual(len(set(place.values())), len(spec.nodes))
 
 
 class TestRecipes(unittest.TestCase):
@@ -196,7 +196,7 @@ class TestRecipes(unittest.TestCase):
         self.assertEqual(sn.build_recipe("glow", {"strength": 40}).nodes[1].inputs["Strength"], 40.0)
 
     def test_recipes_with_the_right_render_settings(self):
-        self.assertEqual(sn.build_recipe("fire_flame").settings["surface_render_method"], "DITHERED")        # transparent hisse ke liye zaroori
+        self.assertEqual(sn.build_recipe("fire_flame").settings["surface_render_method"], "DITHERED")
         self.assertEqual(sn.build_recipe("glass").settings["surface_render_method"], "DITHERED")
         self.assertTrue(any(n.type == "VolumePrincipled" for n in sn.build_recipe("smoke_volume").nodes))
         self.assertTrue(any(l[2] == "out" and l[3] == "Volume" for l in sn.build_recipe("smoke_volume").links))
@@ -207,7 +207,7 @@ class TestRecipes(unittest.TestCase):
             sn.build_recipe("unobtainium")
         self.assertIn("fire_flame", str(ctx.exception))
         self.assertIn("car_paint", sn.recipe_help())
-        self.assertEqual(sn.build_recipe("Fire Flame").nodes[0].type, "OutputMaterial")         # naam lenient
+        self.assertEqual(sn.build_recipe("Fire Flame").nodes[0].type, "OutputMaterial")
 
 
 # ----------------------------------------------------------------------------- the real bridge code against a fake node tree
@@ -274,12 +274,11 @@ class TestBridgeBuild(BridgeCase):
         self.assertEqual(material.node_tree.nodes[2].inputs[0].default_value, [1, 0.5, 0.2, 1.0])
 
     def test_blender_side_problems_become_value_errors_with_valid_names(self):
-        # Blender mein socket ka naam alag nikle to agent ko valid naam dikhte hain (taaki wo khud sudhaar sake)
         spec = sn.parse_material_spec([{"id": "out", "type": "OutputMaterial"}, {"id": "n", "type": "TexNoise"}], [])
         for node in spec.nodes:
             pass
         node = FakeNode("ShaderNodeTexNoise")
-        node.inputs.pop(0)                                                                # is Blender mein 'Vector' socket nahi
+        node.inputs.pop(0)
         original = FakeNodes.new
 
         def odd_new(self_, idname):
@@ -370,7 +369,7 @@ class TestTools(unittest.TestCase):
         bad = MaterialNodesTool(self.bridge).execute(dict(good, links=[["e.Emmision", "out.Surface"]]))
         self.assertFalse(bad.success)
         self.assertIn("Outputs: Emission", bad.error)
-        self.assertEqual(len(self.bridge.built), 1)                                       # galat spec bridge tak pahunchi hi nahi
+        self.assertEqual(len(self.bridge.built), 1)
 
     def test_blender_side_errors_come_back_as_failures(self):
         class Refusing(ToolBridge):
@@ -398,12 +397,12 @@ class TestRenderSetup(unittest.TestCase):
         self.assertTrue(result.success, result.error)
         options = bridge.render_calls[0]
         self.assertEqual((options["view_transform"], options["dof"], options["focus_object"], options["exposure"]), ("AgX", True, "Flame0", 0.8))
-        self.assertEqual(options["world_color"], [0.003, 0.005, 0.009])                     # preset ka world (night)
+        self.assertEqual(options["world_color"], [0.003, 0.005, 0.009])
         self.assertEqual(result.data["preset"], "night")
         RenderSetupTool(bridge).execute({"preset": "cinematic", "dof": False, "engine": "cycles", "samples": 64})
         second = bridge.render_calls[1]
         self.assertEqual((second["dof"], second["engine"], second["samples"]), (False, "cycles", 64))
-        self.assertNotIn("world_color", second)                                              # cinematic world nahi chhedta
+        self.assertNotIn("world_color", second)
         self.assertEqual(set(PRESETS), {"cinematic", "product", "outdoor", "night", "clean"})
 
     def test_bad_input(self):
@@ -452,7 +451,7 @@ class TestBridgeSetupRender(BridgeCase):
         result = self.bridge.setup_render(**options)
         self.assertEqual(scene.render.engine, "BLENDER_EEVEE")
         self.assertEqual(scene.view_settings.view_transform, "AgX")
-        self.assertEqual(scene.view_settings.look, "AgX - Medium High Contrast")           # 'Medium High Contrast' -> prefix ke saath mila
+        self.assertEqual(scene.view_settings.look, "AgX - Medium High Contrast")
         self.assertEqual(scene.view_settings.exposure, 0.3)
         self.assertEqual((scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage), (1080, 1350, 100))
         self.assertEqual(scene.eevee.taa_render_samples, 48)
@@ -469,7 +468,7 @@ class TestBridgeSetupRender(BridgeCase):
         self.assertIn("view transform 'Filmic' not available", notes)
         self.assertIn("look 'Super Punchy' not available", notes)
         self.assertIn("no camera", notes)
-        self.assertEqual(scene.view_settings.view_transform, "Standard")                  # jo mila nahi use chheda nahi
+        self.assertEqual(scene.view_settings.view_transform, "Standard")
         self.assertEqual(result["changed"]["exposure"], 1.0)
         scene, _ = self.make_scene()
         notes2 = self.bridge.setup_render(dof=True, focus_object="Nothing")["notes"]

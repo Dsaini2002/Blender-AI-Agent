@@ -1,27 +1,4 @@
-"""
-GroqProvider — Real LLM Provider (Free tier, high throughput)
-===================================================================
-Hinglish: GeminiProvider jaisa hi ModelProvider implementation, bas
-Groq ke OpenAI-compatible Chat Completions endpoint ke saath.
-
-Zaroori: koi extra pip package install NAHI karni — Python ki
-built-in `urllib` se hi REST call ho jaati hai. Isse Blender ke
-internal Python mein `pip install` ka jhanjhat nahi (jaisa Gemini
-ke liye `google-generativeai` install karna pada tha).
-
-Groq free tier: 30 requests/minute, ~1000/day per model — Gemini ke
-20/day se kaafi zyada. Free models: openai/gpt-oss-120b,
-openai/gpt-oss-20b, qwen/qwen3-32b (sab function-calling support
-karte hain).
-
-PATCHED (speed fix): openai/gpt-oss-120b aur openai/gpt-oss-20b dono
-reasoning models hain, jinka DEFAULT reasoning_effort "medium" hota
-hai — matlab har LLM call se pehle model kaafi lambi (hidden)
-chain-of-thought generate karta hai jo user ko dikhti bhi nahi, bas
-time khaati hai. Simple Blender tool-calling steps (cube banao,
-transform karo, etc.) ke liye "low" kaafi hai aur latency drastically
-kam kar deta hai.
-"""
+"""GroqProvider — Real LLM Provider (Free tier, high throughput)"""
 
 import json
 import re
@@ -45,12 +22,7 @@ class GroqProvider(ModelProvider):
         payload = {
             "model": self._model_name,
             "messages": self._build_messages(request.messages),
-            # Hinglish: reasoning_effort "low" — fast tool-calling ke
-            # liye kaafi hai, "medium" (default) jitni hidden reasoning
-            # generate nahi karta, isliye response bahut jaldi aata hai.
             "reasoning_effort": "low",
-            # Hinglish: safety cap — agar kabhi model phir bhi lamba
-            # jawab generate karne lage, request hang nahi hogi.
             "max_completion_tokens": 1024,
         }
 
@@ -72,18 +44,11 @@ class GroqProvider(ModelProvider):
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._api_key}",
-                # Hinglish: Groq Cloudflare ke peeche hai — urllib ka
-                # default User-Agent ("Python-urllib/3.x") bot jaisa
-                # lagta hai aur 403/error 1010 de deta hai. Normal
-                # browser-jaisa User-Agent dene se ye block nahi hota.
                 "User-Agent": "Mozilla/5.0 (compatible; BlenderAIAgent/1.0)",
             },
             method="POST",
         )
 
-        # Hinglish: 429 (rate limit) transient hota hai — thodi der wait
-        # karke retry karna almost hamesha kaam kar jaata hai, isliye
-        # seedha crash karne ki jagah kuch baar khud retry karte hain.
         max_retries = 3
         for attempt in range(max_retries + 1):
             attempt_start = time.perf_counter()
@@ -102,14 +67,6 @@ class GroqProvider(ModelProvider):
                     time.sleep(wait_seconds)
                     continue
                 if exc.code == 413 and attempt < max_retries and len(payload["messages"]) > 5:
-                    # Hinglish: 413 "Request too large" ka matlab hai poori
-                    # conversation history + tools mil kar Groq ke free-tier
-                    # TPM limit (8000) se upar chali gayi. Retry karne se
-                    # (jaisa 429 mein karte hain) koi fayda nahi - SAME size
-                    # phir bhi reject hoga. Isliye history ko trim karte
-                    # hain: pehla message (system/context) rakho, sirf
-                    # sabse recent 4 messages rakho, beech ka purana
-                    # conversation drop karo - phir ek hi baar retry.
                     trimmed = [payload["messages"][0]] + payload["messages"][-4:]
                     print(f"[TIMING]     Groq HTTP attempt {attempt + 1}: {elapsed:.2f}s "
                           f"-> 413, trimming {len(payload['messages'])} -> {len(trimmed)} "
@@ -135,12 +92,6 @@ class GroqProvider(ModelProvider):
 
     @staticmethod
     def _parse_retry_delay(error_body: str, default: float = 3.0) -> float:
-        """
-        Hinglish: Groq apne error message mein "Please try again in
-        9.4125s" jaisa exact wait time bata deta hai — usse hi parse
-        karke utna wait karte hain (thoda buffer ke saath), guess karne
-        ki jagah.
-        """
         match = re.search(r"try again in ([\d.]+)s", error_body)
         if match:
             try:
@@ -150,17 +101,6 @@ class GroqProvider(ModelProvider):
         return default
 
     def _build_messages(self, messages):
-        """
-        Hinglish: Humara Message list -> OpenAI-compatible 'messages' array.
-
-        Zaroori: tumhara `Message` dataclass abhi `tool_call_id` track
-        nahi karta, jo OpenAI-compatible APIs (Groq) ko `role: "tool"`
-        messages ke liye zaroori hota hai (assistant ke tool_calls[].id
-        se match karne ke liye). Jab tak wo proper threading add na ho,
-        "tool" role ko "user" mein collapse karte hain — bilkul wahi
-        tareeka jo GeminiProvider._build_contents() already use karta
-        hai. Isse strict validation error nahi aata.
-        """
         built = []
         for msg in messages:
             role = msg.role

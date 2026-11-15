@@ -45,7 +45,6 @@ class TestMemoryManager(unittest.TestCase):
         self.assertEqual(found.content, "findable")
 
     def test_manager_does_not_care_about_store_implementation(self):
-        """Hinglish: Dependency Inversion verify — kaisi bhi MemoryStore subclass chale."""
         class FakeStore(InMemoryStore):
             pass
 

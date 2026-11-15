@@ -1,11 +1,4 @@
-"""
-Memory models — Step 7.3
-============================
-Hinglish: Har memory ek typed object hai — random dict nahi. Base
-`Memory` class common fields define karti hai; concrete subclasses
-(UserPreference, ProjectMemory, TaskMemory) specific context add
-karte hain — Inheritance + Polymorphism.
-"""
+"""Memory models"""
 
 import uuid
 from dataclasses import dataclass, field
@@ -26,11 +19,6 @@ class Memory:
             raise ValueError(f"{type(self).__name__}.content must be a non-empty string")
 
     def matches_query(self, query: str) -> bool:
-        """
-        Hinglish: Base relevance check — abhi simple substring match.
-        Concrete memory types isko override kar sakte hain agar unhe
-        alag matching logic chahiye (Polymorphism).
-        """
         return query.lower() in self.content.lower()
 
 
@@ -42,10 +30,6 @@ class UserPreference(Memory):
 
 @dataclass
 class ProjectMemory(Memory):
-    """
-    Hinglish: `project_id` zaroori hai — Step 7.18 ka rule: alag
-    projects ki memory mix nahi honi chahiye.
-    """
     type: str = "project_memory"
     project_id: str = ""
 
@@ -59,3 +43,22 @@ class ProjectMemory(Memory):
 class TaskMemory(Memory):
     """Example: 'Created spaceship with bevel + metallic material.'"""
     type: str = "task_memory"
+
+_TYPES = {"generic": Memory, "user_preference": UserPreference, "project_memory": ProjectMemory, "task_memory": TaskMemory}
+
+
+def to_dict(memory: Memory) -> Dict[str, Any]:
+    data = {"id": memory.id, "type": memory.type, "content": memory.content, "metadata": dict(memory.metadata),
+            "created_at": memory.created_at}
+    if isinstance(memory, ProjectMemory):
+        data["project_id"] = memory.project_id
+    return data
+
+
+def from_dict(data: Dict[str, Any]) -> Memory:
+    cls = _TYPES.get(data.get("type", "generic"), Memory)
+    kwargs = {"content": data["content"], "metadata": dict(data.get("metadata") or {}),
+              "id": data.get("id") or str(uuid.uuid4())[:8], "created_at": data.get("created_at") or datetime.now().isoformat()}
+    if cls is ProjectMemory:
+        kwargs["project_id"] = data.get("project_id") or "unsaved"
+    return cls(**kwargs)

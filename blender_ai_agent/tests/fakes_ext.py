@@ -1,14 +1,4 @@
-"""
-fakes_ext.py
-=============
-Hinglish: tests/fakes.py ka FakeBridge jaisa hai waisa hi rehta hai — ye uske upar 2 cheezein jodta hai
-jo naye features ke tests ko chahiye:
-
-  1. create_object() mein Blender jaisa naam-takkar suffix (.001) — library.place ke tests ke liye
-  2. create_curve()  — curve.create / library.place (flames, ropes, branches) ke tests ke liye
-
-Naye tests `from .fakes_ext import FakeBridge` karte hain. Purane tests `.fakes` se chalte rahenge.
-"""
+"""fakes_ext.py"""
 
 from .fakes import FakeBridge as _BaseFakeBridge
 from .fakes import FakeObject
@@ -19,7 +9,7 @@ class FakeBridge(_BaseFakeBridge):
     def create_object(self, name, object_type="MESH", primitive="CUBE", location=None):
         existing = {o.name for o in self._objects}
         final_name, suffix = name, 0
-        while final_name in existing:  # Blender-style .001 collision suffix, jaise asli bridge mein
+        while final_name in existing:
             suffix += 1
             final_name = f"{name}.{suffix:03d}"
         obj = FakeObject(name=final_name, type_=object_type, location=location or [0.0, 0.0, 0.0])

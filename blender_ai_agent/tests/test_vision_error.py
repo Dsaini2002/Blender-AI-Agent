@@ -31,7 +31,7 @@ class TestCheckConfidence(unittest.TestCase):
 
     def test_sufficient_confidence_passes_silently(self):
         obs = VisualObservation(description="cube", confidence=0.9)
-        check_confidence(obs, min_confidence=0.5)  # exception nahi aani chahiye
+        check_confidence(obs, min_confidence=0.5)
 
     def test_low_confidence_raises_vision_error(self):
         obs = VisualObservation(description="unclear", confidence=0.2)

@@ -1,11 +1,4 @@
-"""
-RecoveryManager — Step 4.7
-==============================
-Hinglish: Failure ke baad, agar error "recoverable" hai (jaise
-OBJECT_NOT_FOUND), ye class ek CORRECTED ToolCall suggest karti hai
-— exactly spec ka example: "RedCube" bola gaya tha, scene mein
-"Red_Cube" hai, tools dhoond ke sahi naam se retry karega.
-"""
+"""RecoveryManager"""
 
 from typing import Optional
 
@@ -15,25 +8,18 @@ from .errors import ErrorCode, ToolError
 
 class RecoveryManager:
 
-    # In arguments mein se koi bhi "object naam" ho sakta hai
     NAME_ARG_KEYS = ("name", "object_name", "old_name")
+    KNOWN_FIELDS = ("material_name", "modifier_name", "modifier_type", "new_name", "type")
 
     def __init__(self, tool_caller):
-        # Dependency Injection — scene inspect karne ke liye ToolCaller use karte hain,
-        # BlenderBridge directly nahi (architecture rule follow karte hain).
         self._tool_caller = tool_caller
 
     def attempt_recovery(self, tool_call: ToolCall, error: ToolError) -> Optional[ToolCall]:
-        """
-        Hinglish: Agar recovery possible hai, ek NAYA (corrected)
-        ToolCall return karta hai — caller (ExecutionLoop/Agent) isko
-        retry karega. Agar recovery possible nahi, None return hota hai.
-        """
         if error.code == ErrorCode.MISSING_ARGUMENT:
             return self._recover_missing_argument(tool_call)
 
         if error.code != ErrorCode.OBJECT_NOT_FOUND:
-            return None  # abhi sirf OBJECT_NOT_FOUND ke liye recovery try karte hain
+            return None
 
         arg_key = self._find_name_argument(tool_call)
         if arg_key is None:
@@ -50,31 +36,13 @@ class RecoveryManager:
         return ToolCall(tool_name=tool_call.tool_name, arguments=new_arguments)
 
     def _recover_missing_argument(self, tool_call: ToolCall) -> Optional[ToolCall]:
-        """
-        Hinglish: LLM ne (aksar) 'name' ya 'object_name' argument
-        bhool diya — common case: "create a cylinder" ke turant baad
-        "rotate it" bola aur naam repeat nahi kiya. Yahan koi bhi
-        "name-jaisa" key already tool_call.arguments mein nahi hai
-        (isiliye Python crash hua tha), isliye humein GUESS karna
-        padta hai kaunsa argument missing tha.
-
-        Heuristic: object.transform/object.delete/object.rename/
-        material.assign jaise tools ke liye, missing naam ka sabse
-        sensible default hai — scene mein SABSE RECENTLY CREATE hua
-        object (scene.inspect ki list ka aakhri object — naye objects
-        end mein add hote hain). Ye exactly us pattern ko fix karta
-        hai jo humne dekha: "create X" phir "transform it" (naam repeat
-        nahi kiya).
-        """
+        # Never for object.delete: guessing the target of a delete removed the wrong object (a wall).
         if tool_call.tool_name not in (
-            "object.transform", "object.delete", "object.rename",
+            "object.transform", "object.rename",
             "material.assign", "modifier.add", "modifier.remove", "modifier.configure",
         ):
             return None
 
-        # Agar 'name'/'object_name' already arguments mein hai, ye
-        # missing-argument case nahi hai (koi aur field missing thi,
-        # jise hum safely guess nahi kar sakte) — recovery skip karo.
         if self._find_name_argument(tool_call) is not None:
             return None
 
@@ -86,10 +54,26 @@ class RecoveryManager:
         if not objects:
             return None
 
-        most_recent_name = objects[-1]["name"]
+        names = [obj.get("name") for obj in objects if obj.get("name")]
+        # Prefer an object the call already names under some other key
+        # (e.g. {"object": "lamp_bulb"}); only fall back to the newest object
+        # when the call names nothing at all.
+        values = []
+        for v in tool_call.arguments.values():
+            values += [x for x in v if isinstance(x, str)] if isinstance(v, (list, tuple)) else [v]
+        mentioned = [v for v in values if isinstance(v, str) and v in names]
+        if mentioned:
+            chosen = mentioned[0]
+        elif any(isinstance(v, str) or (isinstance(v, (list, tuple)) and any(isinstance(x, str) for x in v))
+                 for k, v in tool_call.arguments.items() if k not in self._valid_fields(tool_call.tool_name)):
+            # The call names a target under a key we don't understand; guessing
+            # "the newest object" here would edit the wrong thing.
+            return None
+        else:
+            chosen = names[-1] if names else None
+        if chosen is None:
+            return None
 
-        # object.rename ka expected key 'old_name' hai, baaki sab
-        # 'name' ya 'object_name' use karte hain (Tool input models).
         target_key = "old_name" if tool_call.tool_name == "object.rename" else (
             "object_name" if tool_call.tool_name in (
                 "material.assign", "modifier.add", "modifier.remove", "modifier.configure",
@@ -97,12 +81,23 @@ class RecoveryManager:
         )
 
         new_arguments = dict(tool_call.arguments)
-        new_arguments[target_key] = most_recent_name
+        new_arguments[target_key] = chosen
         return ToolCall(tool_name=tool_call.tool_name, arguments=new_arguments)
 
     # ---------------------------------------------------------
     # Private helpers
     # ---------------------------------------------------------
+    def _valid_fields(self, tool_name: str):
+        import dataclasses
+        try:
+            tool = self._tool_caller._registry.get(tool_name)
+        except Exception:  # noqa: BLE001
+            tool = None
+        model = getattr(tool, "input_model", None)
+        if model is None or not dataclasses.is_dataclass(model):
+            return set(self.KNOWN_FIELDS)
+        return {f.name for f in dataclasses.fields(model)}
+
     def _find_name_argument(self, tool_call: ToolCall) -> Optional[str]:
         for key in self.NAME_ARG_KEYS:
             if key in tool_call.arguments:
@@ -110,11 +105,6 @@ class RecoveryManager:
         return None
 
     def _find_similar_object_name(self, wrong_name: str) -> Optional[str]:
-        """
-        Hinglish: scene.inspect chalake, "normalized" naam match dhoondta
-        hai — case aur underscores/spaces ignore karke. "RedCube" aur
-        "Red_Cube" dono normalize hoke "redcube" ban jaate hain.
-        """
         result = self._tool_caller.call(ToolCall(tool_name="scene.inspect", arguments={}))
         if not result.success:
             return None

@@ -27,7 +27,6 @@ def critique(score, problems=(), summary="ok", severity="high"):
 
 
 class StubLLM:
-    """critic ke jawab list se; har call record."""
 
     def __init__(self, *answers):
         self.answers, self.calls = list(answers), []
@@ -43,7 +42,6 @@ class StubLLM:
 
 
 class WorldAgent:
-    """Asli agent ki jagah: script ke hisaab se objects banata hai aur console mein likhta hai."""
 
     def __init__(self, bridge, script):
         self.bridge, self.script, self.received = bridge, list(script), []
@@ -104,7 +102,6 @@ class Case(unittest.TestCase):
         return controller, agent
 
     def stderr_quiet(self):
-        """Test ke console-likhne wale agent ka shor user ke terminal par na aaye (par capture ko dikhe)."""
         class Quiet:
             def __init__(self, inner): self.inner = inner
             def write(self, text): return len(text)
@@ -157,7 +154,7 @@ class TestSessionAndAssess(Case):
         self.assertEqual((facts.created, facts.changed), (["New"], ["Moved"]))
         self.assertEqual(facts.types["New"], "MESH")
         self.assertIn("RuntimeError: something broke", facts.console_text)
-        self.assertIs(session.end(), facts)                                           # dobara bulane par wahi
+        self.assertIs(session.end(), facts)
 
     def test_console_only_mode_never_renders(self):
         verifier = self.verifier(mode="console")
@@ -185,7 +182,7 @@ class TestSessionAndAssess(Case):
         self.assertTrue(bad.needs_fix)
         self.assertEqual(bad.problems[0]["issue"], "wheel floats")
         minor = self.verifier(llm=StubLLM(critique(5, ["tiny nit"], severity="low"))).assess("make a car", facts)
-        self.assertFalse(minor.needs_fix)                                              # sirf low severity => theek kar nahi
+        self.assertFalse(minor.needs_fix)
 
     def test_who_gets_a_vision_check(self):
         started = time.time()
@@ -285,7 +282,7 @@ class TestControllerFlow(Case):
         self.assertEqual(len(agent.received), 3)                                       # 1 + 2 fix rounds
         self.assertIn("2 fix round(s) done, problems remain", result.reply_text)
         self.assertIn("still wrong", result.reply_text)
-        self.assertTrue(result.success)                                                  # kaam to ho gaya tha
+        self.assertTrue(result.success)
 
     def test_a_fix_that_makes_it_worse_stops_the_loop(self):
         self.llm.answers = [critique(6, ["meh"]), critique(3, ["much worse"])]
@@ -309,7 +306,6 @@ class TestControllerFlow(Case):
             def find_best_match(self, text): return self.skill
         self.llm.answers = [critique(4, ["bad"]), critique(9)]
         controller, agent = self.controller([{"create": THREE}], self.verifier(), skill_registry=Registry())
-        # skill "banata" nahi (fake) => scene mein kuch naya nahi => pehle hi check "nothing new"; isliye objects khud bana do
         self.bridge._objects.extend(FakeObject(name=n, type_="MESH") for n in THREE)
         controller2, agent2 = self.controller([{}, {}], self.verifier(always_vision=True), skill_registry=Registry())
         self.llm.answers = [critique(4, ["bad"]), critique(9)]
@@ -321,9 +317,9 @@ class TestControllerFlow(Case):
             return original(ctx)
         controller2._skill_registry.skill.execute = building_execute
         controller2.submit("make a thing")
-        self.assertEqual(executed, ["make a thing"])                                   # skill sirf ek baar (asli request)
+        self.assertEqual(executed, ["make a thing"])
         self.assertEqual(len(agent2.received), 1)
-        self.assertTrue(agent2.received[0].startswith("AUTOMATIC CHECK"))              # fix agent ne kiya
+        self.assertTrue(agent2.received[0].startswith("AUTOMATIC CHECK"))
 
     def test_off_mode_and_no_verifier_behave_exactly_as_before(self):
         for verifier in (None, self.verifier(mode="off")):
@@ -351,8 +347,8 @@ class TestControllerFlow(Case):
         self.assertEqual(len(agent.received), 2)
         self.assertIn("problems remain", result.reply_text)
         self.assertIn("auto-fix nahi ho paya", result.reply_text)
-        self.assertNotIn("fixed after", result.reply_text)                              # jhooth nahi: fix chala hi nahi
-        self.assertEqual(len(self.llm.calls), 1)                                         # fix fail => dobara vision nahi
+        self.assertNotIn("fixed after", result.reply_text)
+        self.assertEqual(len(self.llm.calls), 1)
 
     def test_unexpected_crash_in_the_fix_does_not_break_the_task_result(self):
         self.llm.answers = [critique(4, ["wheel floats"])]
@@ -388,7 +384,7 @@ class TestControllerFlow(Case):
         controller, agent = self.controller(script, self.verifier())
         result = controller.submit("make a campfire, add a tent, add a lantern")
         self.assertEqual(len(agent.received), 3)
-        self.assertEqual(len(self.llm.calls), 1)                                         # steps par nahi, poore par ek
+        self.assertEqual(len(self.llm.calls), 1)
         self.assertEqual(self.bridge.render_requests[-1]["names"], ["A1", "A2", "B1", "C1"])
         self.assertIn("Done 3/3 steps", result.reply_text)
         self.assertIn("Auto-check ✓", result.reply_text)

@@ -1,9 +1,4 @@
-"""
-character.create
-=================
-Hinglish: Cartoon character (poora badan ya sirf chehra/bust) ek call mein. Expression, baal, rang, kapde, chashma/cap sab
-parameters se badlte hain. Asli kaam character_builder.py karta hai; yahan input ki safai aur Blender mein rakhna hai.
-"""
+"""character.create"""
 
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
@@ -43,18 +38,6 @@ def _pick(value: Any, allowed, words, label, default=None):
 
 @dataclass
 class CharacterInput:
-    """
-    style       : chibi (bada sir, cute, default) | normal (asli anupaat)
-    gender      : boy | girl | neutral   (baal, kapde aur rang ka default isi se)
-    skin        : peach, light, fair, tan, brown, dark, olive  (ya koi bhi rang / [r,g,b])
-    hair_style  : short | spiky | bob | long | ponytail | afro | none      hair_color: black, brown, blonde, ginger, red, blue, pink...
-    eye_color   : brown, blue, green, black, ...
-    expression  : happy | laugh | sad | angry | surprised | sleepy | wink | neutral
-    outfit      : tshirt (shirt + pants) | dress       shirt_color / pants_color / shoe_color
-    accessories : ["glasses"] | ["sunglasses"] | ["cap"] | ["beanie"]   accessory_color
-    bust_only   : True = sirf chehra + kandhe (face model)
-    height      : poore character ki oonchai metre mein (bust ke liye bhi poore character ke hisaab se)
-    """
     name: str = "Character"
     style: str = "chibi"
     gender: str = "neutral"
@@ -140,7 +123,6 @@ class CharacterCreateTool(Tool):
             "pants_color": v.pants_color, "shoe_color": v.shoe_color, "accessories": v.accessories,
             "accessory_color": v.accessory_color, "bust_only": v.bust_only, "quality": v.quality,
         })
-        # Builder +Y ki taraf dekhta hai; Blender ka front view -Y se dekhta hai => 180 degree ghuma do
         created = place_model(self._bridge, v.name, spec, location=v.location, scale=v.height,
                               yaw_degrees=v.yaw_degrees + 180.0, prefix=f"{v.name}_", colors=None)
         meta = spec["meta"]

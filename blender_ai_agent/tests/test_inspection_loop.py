@@ -7,7 +7,6 @@ from .fakes import FakeBridge, FakeObject
 
 
 class NoOpFixer:
-    """Hinglish: Ek fixer jo kuch fix nahi karta — guardrail retry-limit test karne ke liye."""
 
     def fix(self, issues):
         return []
@@ -46,10 +45,6 @@ class TestInspectionLoop(unittest.TestCase):
         self.assertEqual(len(report.blocking_issues), 1)
 
     def test_guardrail_stops_infinite_retry_loop(self):
-        # Hinglish: GuardrailMonitor.check() sirf retries_taken > max_retries
-        # par violation deta hai (existing Phase 11 semantics) — isliye
-        # max_retries=2 ke saath poora 3 attempts hote hain (0,1,2 sab
-        # "within limits" the), phir 4th attempt se pehle ruk jaata hai.
         obj = FakeObject(name="Cube", flipped_normal_count=4)
         bridge = FakeBridge(objects=[obj])
         loop = InspectionLoop(bridge, fixer=NoOpFixer(), max_retries=2)

@@ -33,7 +33,6 @@ class TestToolBase(unittest.TestCase):
         self.assertEqual(result.data, {"ran": True})
 
     def test_run_exception_becomes_failed_result(self):
-        """Tool crash na ho, error ToolResult mein wrap ho jaye."""
 
         class CrashingTool(Tool):
             name = "crasher"

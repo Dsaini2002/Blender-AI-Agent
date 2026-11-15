@@ -1,15 +1,4 @@
-"""
-mesh_generators.py
-===================
-Hinglish: NAYI shapes banane ke general tareeke (pure Python, bpy nahi). Primitives (cube/cone...) se jo na bane:
-
-   lathe   — 2D profile (r, z) ko ghuma kar: bottle, vase, glass, cup, bowl, column, chess piece, lamp, barrel...
-   terrain — noise se jameen / pahaad / tila / dunes (campsite ka ground, flat jagah ke saath)
-   sdf     — "signed distance" shapes ko jod/ghata kar: rock, cloud, blob, character ka badan, smooth-booleans... (marching surface)
-   prism   — 2D polygon (star, gear, ngon, rounded rectangle, cross, arrow, heart) ko extrude: gear, sign, tile, badge...
-
-Har function (vertices, faces) deta hai; bridge.create_mesh unhe Blender object banata hai.
-"""
+"""mesh_generators.py"""
 
 import math
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -20,10 +9,6 @@ Vec = Tuple[float, float, float]
 MAX_FACES = 150_000
 
 
-# =============================================================================
-# LATHE
-# =============================================================================
-# (profile (r, z) 0..1 range mein, default hollow thickness 0..1 radius ke hisaab se)
 PROFILE_PRESETS: Dict[str, Tuple[List[Tuple[float, float]], float]] = {
     "bottle": ([(0, 0), (0.88, 0), (1.0, 0.03), (1.0, 0.52), (0.92, 0.60), (0.60, 0.70), (0.34, 0.78), (0.30, 0.90),
                 (0.34, 0.94), (0.34, 1.0)], 0.07),
@@ -44,10 +29,6 @@ PROFILE_PRESETS: Dict[str, Tuple[List[Tuple[float, float]], float]] = {
 
 def lathe(profile: Sequence[Sequence[float]], segments: int = 32, angle_degrees: float = 360.0,
           hollow: float = 0.0) -> Tuple[List[Vec], List[List[int]]]:
-    """
-    Profile [(r, z), ...] (neeche se upar) ko Z axis ke gird ghumata hai. `hollow` > 0 ho to andar ki deewar banti hai
-    (patli deewar wala bartan: khula upar wala sira, `hollow` = deewar ki motaai).
-    """
     points = [(max(0.0, float(r)), float(z)) for r, z in profile]
     if len(points) < 2:
         raise ValueError("lathe needs at least 2 profile points [r, z]")
@@ -65,7 +46,7 @@ def lathe(profile: Sequence[Sequence[float]], segments: int = 32, angle_degrees:
     eps = 1e-9
 
     vertices: List[Vec] = []
-    rings: List[List[int]] = []                       # har profile point ke vertex indices
+    rings: List[List[int]] = []
     for r, z in points:
         if r < eps:
             vertices.append((0.0, 0.0, z))
@@ -116,10 +97,6 @@ TERRAIN_STYLES = ("hills", "mountains", "dunes", "plateau", "flat")
 def terrain(size_x: float = 10.0, size_y: float = 10.0, resolution: int = 40, height: float = 1.5, noise_scale: float = 3.0,
             octaves: int = 4, seed: int = 1, style: str = "hills", flat_radius: float = 0.0,
             edge_fade: float = 0.0) -> Tuple[List[Vec], List[List[int]]]:
-    """
-    Z-up jameen ka grid (origin center mein). `flat_radius` (0..1, size ka hissa): beech mein samtal jagah (campfire/tent ke liye).
-    `edge_fade` (0..1): kinaare dheere-dheere samtal.
-    """
     if style not in TERRAIN_STYLES:
         raise ValueError(f"terrain style must be one of {list(TERRAIN_STYLES)}")
     resolution = max(4, min(220, int(resolution)))
@@ -147,7 +124,7 @@ def terrain(size_x: float = 10.0, size_y: float = 10.0, resolution: int = 40, he
                 t = max(0.0, min(1.0, (r - flat_radius * 0.5) / max(flat_radius * 0.5, 1e-6)))
                 z *= t * t * (3 - 2 * t)
             if edge_fade > 0:
-                e = min(i, resolution - i, j, resolution - j) / (resolution * 0.5)               # 0 kinara .. 1 center
+                e = min(i, resolution - i, j, resolution - j) / (resolution * 0.5)
                 t = max(0.0, min(1.0, e / edge_fade))
                 z *= t * t * (3 - 2 * t)
             vertices.append((x, y, z))
@@ -215,11 +192,9 @@ def polygon_points(kind: str, sides: int = 6, radius: float = 0.5, inner_radius:
 
 def prism(polygon: Sequence[Sequence[float]], height: float = 0.2, taper: float = 1.0,
           cap: bool = True) -> Tuple[List[Vec], List[List[int]]]:
-    """2D polygon ko upar ki taraf extrude karta hai. taper < 1: upar ka sira chhota (frustum), > 1: bada."""
     pts = [(float(p[0]), float(p[1])) for p in polygon]
     if len(pts) < 3:
         raise ValueError("a polygon needs at least 3 points")
-    # CCW pakka karo
     area = sum(pts[k][0] * pts[(k + 1) % len(pts)][1] - pts[(k + 1) % len(pts)][0] * pts[k][1] for k in range(len(pts)))
     if area < 0:
         pts.reverse()
@@ -230,8 +205,8 @@ def prism(polygon: Sequence[Sequence[float]], height: float = 0.2, taper: float 
     vertices += [(cx + (x - cx) * taper, cy + (y - cy) * taper, height) for x, y in pts]
     faces = [[k, (k + 1) % n, n + (k + 1) % n, n + k] for k in range(n)]
     if cap:
-        faces.append(list(reversed(range(n))))                 # neeche (normal neeche)
-        faces.append([n + k for k in range(n)])                # upar
+        faces.append(list(reversed(range(n))))
+        faces.append([n + k for k in range(n)])
     return vertices, faces
 
 
@@ -243,7 +218,6 @@ SDF_OPS = ("union", "subtract", "intersect", "smooth_union")
 
 
 def _rot_inverse(rotation_degrees: Sequence[float]):
-    """XYZ euler (degrees) ka ulta rotation function: p -> p (object ke local frame mein)."""
     rx, ry, rz = (math.radians(a) for a in rotation_degrees)
     if abs(rx) + abs(ry) + abs(rz) < 1e-12:
         return None
@@ -321,7 +295,6 @@ def _make_sdf(shape: Dict[str, Any]):
             return math.hypot(math.hypot(q[0], q[1]) - major, q[2]) - minor
         return torus
     if kind == "cone":
-        # Sapaat sire wala cone / frustum: neeche radius `radius`, upar `radius_top` (default 0 = nok), `height` oonchai.
         r1, r2, h = float(shape.get("radius", 0.5)), float(shape.get("radius_top", 0.0)), max(float(shape.get("height", 1.0)), 1e-6)
         hh = h / 2.0
         k1x, k1y, k2x, k2y = r2, hh, r2 - r1, 2.0 * hh
@@ -352,7 +325,6 @@ def _make_sdf(shape: Dict[str, Any]):
                 return math.hypot(qr, qz - h) - r2
             return qr * a + qz * b - r1
         return round_cone
-    # plane: z <= center.z andar
     return lambda p: p[2] - cz
 
 
@@ -368,7 +340,6 @@ def _combine(a: float, b: float, op: str, k: float) -> float:
 
 
 def _shape_extent(shape: Dict[str, Any]) -> float:
-    """Shape ka center se kitna bahar tak jaa sakta hai (bounds nikalne ke liye, thoda zyada)."""
     kind = str(shape.get("type", "sphere")).lower()
     c = shape.get("center", [0, 0, 0])
     if kind == "sphere":
@@ -390,7 +361,6 @@ def _shape_extent(shape: Dict[str, Any]) -> float:
 
 
 def sdf_function(shapes: Sequence[Dict[str, Any]], roughness: float = 0.0, noise_scale: float = 4.0, seed: int = 1):
-    """Shapes ki list -> ek distance function d(p). Pehli shape ka `op` ignore hota hai."""
     if not shapes:
         raise ValueError("sdf needs at least one shape")
     parts = [(_make_sdf(s), str(s.get("op", "union")).lower(), float(s.get("k", 0.15))) for s in shapes]
@@ -410,7 +380,6 @@ def sdf_function(shapes: Sequence[Dict[str, Any]], roughness: float = 0.0, noise
 
 
 def surface_nets(distance, mins: Sequence[float], maxs: Sequence[float], resolution: int) -> Tuple[List[Vec], List[List[int]]]:
-    """Naive surface nets: distance field (0 = satah) se quad mesh. `resolution` = sabse lambe axis par voxels."""
     extent = [maxs[i] - mins[i] for i in range(3)]
     cell = max(extent) / max(4, int(resolution))
     dims = [int(math.ceil(extent[i] / cell)) + 1 for i in range(3)]
@@ -487,11 +456,6 @@ def surface_nets(distance, mins: Sequence[float], maxs: Sequence[float], resolut
 
 
 def weld_vertices(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], tolerance: float) -> Tuple[List[Vec], List[List[int]]]:
-    """
-    Ek hi jagah par baithe vertices ko jod deta hai aur zero-area (degenerate) faces hata deta hai.
-    Surface nets mein jab satah bilkul grid point se guzarti hai (jaise symmetric sphere) to do cell-vertices ek hi position
-    par aa jaate hain; Blender ka QuadriFlow aise mesh ko "non-manifold" kehkar ruk jaata tha.
-    """
     inv = 1.0 / max(tolerance, 1e-12)
     key_to_index: Dict[Tuple[int, int, int], int] = {}
     remap: List[int] = []
@@ -524,7 +488,6 @@ def weld_vertices(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], toler
 
 def sdf_mesh(shapes: Sequence[Dict[str, Any]], resolution: int = 40, bounds: Optional[Sequence[float]] = None,
              roughness: float = 0.0, noise_scale: float = 4.0, seed: int = 1, margin: float = 0.1) -> Tuple[List[Vec], List[List[int]]]:
-    """Shapes (union / subtract / intersect / smooth_union) se mesh. `bounds` = [minx, miny, minz, maxx, maxy, maxz] (warna khud)."""
     resolution = max(8, min(90, int(resolution)))
     distance = sdf_function(shapes, roughness, noise_scale, seed)
     if bounds:
@@ -534,7 +497,7 @@ def sdf_mesh(shapes: Sequence[Dict[str, Any]], resolution: int = 40, bounds: Opt
         for s in shapes:
             e = _shape_extent(s) + float(s.get("k", 0.0)) * 0.5 + abs(roughness) * 1.5
             if str(s.get("op", "union")).lower() == "subtract" and s is not shapes[0]:
-                continue                                     # ghatane wali shape se bounds nahi badhte
+                continue
             c = [float(v) for v in s.get("center", [0, 0, 0])]
             if str(s.get("type", "sphere")).lower() == "capsule":
                 c = [0.0, 0.0, 0.0] if "center" not in s else c

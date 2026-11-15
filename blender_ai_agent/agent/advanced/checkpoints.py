@@ -1,13 +1,4 @@
-"""
-CheckpointManager — Step 9.33
-==================================
-Hinglish: Phase 4 ke SnapshotManager/RollbackManager ka reuse —
-lekin complex multi-part tasks ke liye MULTIPLE named checkpoints
-rakhta hai (sirf ek transaction ka begin/commit nahi).
-
-Failure hone par, poora task restart nahi karte — sirf LATEST valid
-checkpoint tak rollback karte hain, phir wahan se aage badhte hain.
-"""
+"""CheckpointManager"""
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -31,7 +22,6 @@ class CheckpointManager:
         self._checkpoints: List[Checkpoint] = []
 
     def create_checkpoint(self, name: str) -> Checkpoint:
-        """Hinglish: Current scene state ko named checkpoint ke roop mein save karta hai."""
         snapshot = self._snapshot_manager.capture()
         checkpoint = Checkpoint(name=name, snapshot=snapshot)
         self._checkpoints.append(checkpoint)
@@ -41,12 +31,10 @@ class CheckpointManager:
         return self._checkpoints[-1] if self._checkpoints else None
 
     def rollback_to(self, name: str):
-        """Hinglish: Named checkpoint tak restore karta hai. Nahi mila toh KeyError."""
         checkpoint = self._find(name)
         return self._rollback_manager.rollback_to(checkpoint.snapshot)
 
     def rollback_to_latest(self):
-        """Hinglish: Failure hone par POORA restart nahi — sirf latest checkpoint tak wapas."""
         checkpoint = self.latest_checkpoint()
         if checkpoint is None:
             raise ValueError("No checkpoints exist to rollback to.")

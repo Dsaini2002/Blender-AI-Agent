@@ -1,12 +1,4 @@
-"""
-AutonomyMode — Step 11.19
-==============================
-Hinglish: Kitna autonomy Agent ko diya jaaye — kitne operations
-bina poochhe chal sakte hain, kitno ke liye confirmation chahiye.
-
-DEFAULT HAMESHA CONSERVATIVE hai (spec ka explicit rule) — kabhi
-AUTONOMOUS default nahi hoga, user ko explicitly opt-in karna padega.
-"""
+"""AutonomyMode"""
 
 from enum import Enum
 
@@ -20,14 +12,8 @@ class AutonomyMode(str, Enum):
 
 
 class AutonomyPolicy:
-    """
-    Hinglish: Diye gaye mode ke hisaab se decide karta hai ki ek
-    specific Permission level ko confirmation chahiye ya nahi.
-    """
 
     def __init__(self, mode: AutonomyMode = AutonomyMode.ASSISTED):
-        # Hinglish: Default ASSISTED hai — MANUAL se thoda usable,
-        # lekin AUTONOMOUS jitna risky bilkul nahi.
         self._mode = mode
 
     @property
@@ -36,14 +22,12 @@ class AutonomyPolicy:
 
     def requires_confirmation(self, permission: Permission) -> bool:
         if self._mode == AutonomyMode.MANUAL:
-            return True  # sab kuch confirm
+            return True
 
         if self._mode == AutonomyMode.ASSISTED:
             return permission in (Permission.DESTRUCTIVE, Permission.PYTHON_EXECUTION)
 
         if self._mode == AutonomyMode.AUTONOMOUS:
-            # Hinglish: AUTONOMOUS mein bhi PYTHON_EXECUTION hamesha confirm hota hai —
-            # kabhi bhi fully-unattended raw code execution allow nahi.
             return permission == Permission.PYTHON_EXECUTION
 
-        return True  # unknown mode — safe default: confirm karo
+        return True

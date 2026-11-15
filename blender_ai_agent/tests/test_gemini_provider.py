@@ -7,17 +7,10 @@ from blender_ai_agent.providers.gemini_provider import GeminiProvider
 
 
 def make_provider():
-    """Hinglish: google.generativeai package sandbox mein installed
-    nahi hai (aur na hone ki zaroorat hai) — isliye __init__() (jo
-    genai.configure() karta hai) ko skip karke seedha object banate
-    hain. Humein sirf _generate_with_retry() aur _parse_retry_delay()
-    test karne hain, jo genai instance use nahi karte."""
     return object.__new__(GeminiProvider)
 
 
 class FakeModel:
-    """Hinglish: google.generativeai ka GenerativeModel jaisa fake —
-    generate_content() ko N baar 429 se fail karwate hain, fir success."""
 
     def __init__(self, fail_times, error_message):
         self.fail_times = fail_times

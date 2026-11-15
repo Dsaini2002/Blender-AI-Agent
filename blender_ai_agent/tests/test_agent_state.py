@@ -19,7 +19,7 @@ class TestAgentStateMachine(unittest.TestCase):
     def test_invalid_transition_raises(self):
         machine = AgentStateMachine()
         with self.assertRaises(ValueError):
-            machine.transition_to(AgentState.COMPLETED)  # IDLE se seedha COMPLETED galat hai
+            machine.transition_to(AgentState.COMPLETED)
 
     def test_full_success_path(self):
         machine = AgentStateMachine()

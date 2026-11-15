@@ -52,14 +52,14 @@ class TestPrefabsUseRecipes(unittest.TestCase):
                          {"stone": "rough_stone", "wood": "charred_wood", "ember": "ember", "flame_outer": "fire_flame", "flame_mid": "fire_flame",
                           "flame_inner": "fire_flame"})
         colours = {k: tuple(materials[k]["params"]["color"]) for k in ("flame_outer", "flame_mid", "flame_inner")}
-        self.assertEqual(len(set(colours.values())), 3)                                   # teen alag rang ki parten
+        self.assertEqual(len(set(colours.values())), 3)
 
     def test_lamps_glow_and_trees_have_bark(self):
         library = load_library()
         self.assertEqual(library["lantern"]["materials"]["glass"]["recipe"], "glow")
         self.assertEqual(library["street_lamp"]["materials"]["bulb"]["recipe"], "glow")
         self.assertEqual(library["pine_tree"]["materials"]["trunk"]["recipe"], "wood_grain")
-        self.assertNotIn("recipe", library["pine_tree"]["materials"]["leaves"])               # patte abhi saade rang
+        self.assertNotIn("recipe", library["pine_tree"]["materials"]["leaves"])
 
 
 class TestPlacing(unittest.TestCase):
@@ -74,13 +74,13 @@ class TestPlacing(unittest.TestCase):
         self.assertEqual(names, ["campfire_ember_mat", "campfire_flame_inner_mat", "campfire_flame_mid_mat", "campfire_flame_outer_mat",
                                  "campfire_stone_mat", "campfire_wood_mat"])
         self.assertTrue(created["meshes"] and created["curves"])
-        self.assertEqual(len(created["lights"]), 1)                                       # aag ki asli light bhi
+        self.assertEqual(len(created["lights"]), 1)
         specs = dict(bridge.node_calls)
         flame = specs["campfire_flame_inner_mat"]
         self.assertEqual(next(n for n in flame.nodes if n.id == "em").inputs["Color"], [1.0, 0.62, 0.1, 1.0])
 
     def test_without_node_support_or_when_blender_refuses_it_falls_back_to_plain_colours(self):
-        plain = FakeBridge()                                                             # build_node_material hai hi nahi
+        plain = FakeBridge()
         created = self.place(plain)
         self.assertTrue(created["meshes"])
         self.assertTrue(plain.get_material("campfire_stone_mat"))
@@ -88,7 +88,7 @@ class TestPlacing(unittest.TestCase):
         created = self.place(refusing)
         self.assertEqual(sorted(n for n, _ in refusing.node_calls), ["campfire_ember_mat", "campfire_stone_mat", "campfire_wood_mat"])
         self.assertTrue(refusing.get_material("campfire_flame_mid_mat"))
-        self.assertTrue(refusing.get_material("campfire_flame_outer_mat"))                  # sirf wahi saade rang par
+        self.assertTrue(refusing.get_material("campfire_flame_outer_mat"))
         self.assertTrue(created["curves"])
 
     def test_user_colour_overrides_reach_the_recipe(self):
@@ -116,7 +116,7 @@ class TestViewportTint(unittest.TestCase):
         self.assertEqual(sn.viewport_color(sn.build_recipe("fire_flame", {"color": [1.0, 0.2, 0.0, 1.0]})), [1.0, 0.2, 0.0, 1.0])
         self.assertEqual(sn.viewport_color(sn.build_recipe("glow", {"color": [0.2, 0.4, 1.0]})), [0.2, 0.4, 1.0, 1.0])
         self.assertEqual(sn.viewport_color(sn.build_recipe("car_paint", {"color": [0, 0, 1, 1]})), [0, 0, 1, 1])
-        self.assertIsNone(sn.viewport_color(sn.build_recipe("smoke_volume")))                # volume ka koi surface rang nahi
+        self.assertIsNone(sn.viewport_color(sn.build_recipe("smoke_volume")))
 
 
 if __name__ == "__main__":

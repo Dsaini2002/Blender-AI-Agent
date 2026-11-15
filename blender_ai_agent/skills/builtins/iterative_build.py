@@ -1,13 +1,4 @@
-"""
-IterativeBuildSkill
-====================
-Hinglish: Prompt aisa ho jo hamare ready tools se achha nahi banega ("make a realistic sports car", "a dragon", "a robot", "a horse"...)
-to LLM chat ke bina seedha build.iterate (script likho -> render -> vision se jaancho -> sudharo) chalata hai.
-
-  * assessor ka verdict "no" (realistic / hard subject / user ne image di) ya "maybe" (hard subject, par downloaded model nahi mila)
-  * GEMINI_API_KEY ho; badlav ("make THE car red") ya kai cheezein ("3 cars") LLM chat ke paas jaati hain
-  * TRELLIS server chal raha ho to wahi skill (0.96) pehle aata hai; warna ye (0.94)
-"""
+"""IterativeBuildSkill"""
 
 import re
 from typing import Any, Dict, Optional
@@ -15,6 +6,21 @@ from typing import Any, Dict, Optional
 from ..base import Skill, SkillResult
 from ...agent.self_correct import load_builder_config
 from ...tools.capability import Assessment, assess_request
+
+
+def _library_has(task: str) -> bool:
+    """The request names a model of the library ('add a chandelier', 'make a king size bed')."""
+    try:
+        from ...tools.library_tools import load_library
+    except Exception:  # noqa: BLE001
+        return False
+    text = " " + re.sub(r"[^a-z0-9 ]+", " ", (task or "").lower()) + " "
+    for name, spec in load_library().items():
+        for alias in [name.replace("_", " ")] + list(spec.get("aliases", [])):
+            alias = alias.lower().replace("-", " ")
+            if len(alias) >= 3 and f" {alias} " in text:
+                return True
+    return False
 
 
 class IterativeBuildSkill(Skill):
@@ -28,9 +34,16 @@ class IterativeBuildSkill(Skill):
         super().__init__(tool_caller)
         self._load = config_loader
 
+    # "fix this", "this is not a cricket ground", "make it better": a change to what is already there
+    _FIX = re.compile(r"\b(?:fix|improve|better|redo|wrong|correct|again|not\s+an?|isn'?t|is\s+not|thik|sahi|"
+                      r"theek|galat|sudhar)\b", re.IGNORECASE)
+
     def _assessment(self, task: str) -> Optional[Assessment]:
         if not task or len(task.split()) > 70:
             return None
+        from ...multi_agent.team import _SCENE_WORDS
+        if _SCENE_WORDS.search(task) or self._FIX.search(task):
+            return None          # whole scenes go to the team planner; fixes edit the scene that is there
         a = assess_request(task)
         if a.verdict == "yes":
             return None
@@ -41,17 +54,19 @@ class IterativeBuildSkill(Skill):
             if re.search(r"\b(?:change|modify|edit|melt|break|broken|twist|bend|paint|recolou?r|resize)\b|\b(?:2|3|4|5|6|7|8|9|10|two|three|four|five|six)\b", lowered):
                 return None
         if a.route == "llm":
-            return None                                      # subject hi nahi pehchana: LLM chat samjhega
+            return None
         return a
 
     def can_handle(self, task: str) -> float:
+        if _library_has(task):
+            return 0.0                    # a ready library model (chandelier, king bed ...) beats writing a script
         a = self._assessment(task)
         if a is None:
             return 0.0
         if not self._load().api_key:
             return 0.0
         if a.route in ("generate_if_no_model", "library_or_downloaded") and self._downloaded_has(a.subject):
-            return 0.0                                       # downloaded model hai: library_props lega
+            return 0.0
         if a.route == "library_or_downloaded":
             return 0.0                                       # "low poly car": LLM chat stylized banayega
         return 0.94

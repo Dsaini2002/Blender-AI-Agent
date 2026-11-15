@@ -56,7 +56,6 @@ class TestSingleTurnTextReply(unittest.TestCase):
 
 
 class TestMultiStepSingleTurn(unittest.TestCase):
-    """Step 3.8: Ek hi LLM response mein MULTIPLE tool calls."""
 
     def test_multiple_tool_calls_in_one_response_all_execute(self):
         loop, bridge, _ = build_loop(scripted_responses=[
@@ -80,10 +79,8 @@ class TestMultiStepSingleTurn(unittest.TestCase):
 
 
 class TestMultiTurnLoop(unittest.TestCase):
-    """Step 3.7: LOOP khud kayi baar LLM ko call karta hai."""
 
     def test_sequential_dependent_tool_calls_across_turns(self):
-        # Hinglish: 3 alag turns — jaise real Agent: create -> observe -> assign -> observe -> done
         loop, bridge, _ = build_loop(scripted_responses=[
             ModelResponse(
                 tool_calls=[ToolCall(tool_name="object.create", arguments={"name": "Cube"})],
@@ -110,8 +107,6 @@ class TestMultiTurnLoop(unittest.TestCase):
         self.assertEqual(result.stopped_reason, "stop")
 
     def test_max_iterations_prevents_infinite_loop(self):
-        """Agar LLM kabhi 'final answer' na de, loop ruk jaana chahiye — crash nahi."""
-        # Har baar ek tool call deta rahega — kabhi text nahi
         infinite_responses = [
             ModelResponse(
                 tool_calls=[ToolCall(tool_name="object.create", arguments={"name": f"Cube{i}"})],
@@ -129,7 +124,6 @@ class TestMultiTurnLoop(unittest.TestCase):
 
 
 class TestConversationStatePersistence(unittest.TestCase):
-    """Step 3.9: State object caller khud pass kar sakta hai, reuse ke liye."""
 
     def test_reusing_state_across_multiple_run_calls(self):
         loop, bridge, provider = build_loop(scripted_responses=[
@@ -149,7 +143,6 @@ class TestConversationStatePersistence(unittest.TestCase):
         second_result = loop.run("Make it red", state=state)
         self.assertEqual(second_result.reply_text, "Okay, noted — it's already red-ish in spirit.")
 
-        # Hinglish: State mein DONO conversations ki history honi chahiye
         all_messages = state.get_messages()
         user_messages = [m for m in all_messages if m.role == "user"]
         self.assertEqual(len(user_messages), 2)

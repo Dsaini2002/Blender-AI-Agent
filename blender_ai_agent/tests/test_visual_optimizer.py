@@ -40,7 +40,7 @@ class TestVisualQualityOptimizer(unittest.TestCase):
     def test_stops_at_max_iterations_if_target_never_reached(self):
         optimizer = VisualQualityOptimizer(
             render_fn=lambda: "image",
-            score_fn=lambda obs: 0.5,  # kabhi target tak nahi pahunchta
+            score_fn=lambda obs: 0.5,
             improve_fn=lambda obs: None,
             max_iterations=3,
             target_score=0.9,
@@ -52,7 +52,6 @@ class TestVisualQualityOptimizer(unittest.TestCase):
         self.assertEqual(len(result.attempts), 3)
 
     def test_improve_fn_not_called_on_final_iteration(self):
-        """Hinglish: Agar last iteration hai, improve karne ka koi fayda nahi — render nahi hoga phir."""
         call_count = {"n": 0}
 
         def improve(obs):
@@ -68,7 +67,7 @@ class TestVisualQualityOptimizer(unittest.TestCase):
 
         optimizer.optimize()
 
-        self.assertEqual(call_count["n"], 1)  # sirf iteration 1 ke baad, 2 (last) ke baad nahi
+        self.assertEqual(call_count["n"], 1)
 
 
 if __name__ == "__main__":

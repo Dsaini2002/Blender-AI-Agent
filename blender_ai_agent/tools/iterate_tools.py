@@ -1,10 +1,3 @@
-"""
-build.iterate  —  jo hamare ready tools se na bane, use Gemini script likhkar, dekhkar aur sudharkar banaye
-=========================================================================================================
-Hinglish: LLM-visible tool. Andar self_correct.SelfCorrectingBuilder chalta hai: script likho -> chalao -> kai angle se render ->
-Gemini vision se jaancho -> sudharo (max iterations tak). Sabse achha version scene mein rehta hai. Script aur render
-~/BlenderAIAgent/builds/<time>_<naam>/ mein save hote hain.
-"""
 
 import os
 import re
@@ -12,9 +5,20 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional
 
-from ..agent.self_correct import BuilderConfig, BuilderError, GeminiClient, SelfCorrectingBuilder, load_builder_config
+from ..agent.self_correct import BuilderConfig, BuilderError, GeminiClient, SelfCorrectingBuilder, load_builder_config, \
+    make_vision_client
 from .base import Permission, Tool, ToolResult
 from .models import _coerce_number, _vec3
+
+
+def _report_status(text: str) -> None:
+    try:
+        from ..copilot.activity import set_text, stop_requested
+    except Exception:  # noqa: BLE001
+        return
+    if stop_requested() and ("writing" in text or "improving" in text):
+        raise BuilderError("Stopped by user", "Stopped by user")
+    set_text(f"Build loop: {text}")
 
 
 @dataclass
@@ -62,22 +66,23 @@ class BuildIterateTool(Tool):
         self._bridge = bridge
         self._caller_getter = caller_getter
         self._registry_getter = registry_getter
-        self._llm_factory = llm_factory or (lambda cfg: GeminiClient(cfg))
+        self._llm_factory = llm_factory or (lambda cfg: make_vision_client(cfg))
         self._config_loader = config_loader
 
     def run(self, v: BuildIterateInput) -> ToolResult:
         cfg = self._config_loader()
         if not cfg.api_key:
-            return ToolResult.fail("Gemini API key nahi mili (env GEMINI_API_KEY). build.iterate ke liye Gemini chahiye.")
+            return ToolResult.fail("Gemini API key not found (GEMINI_API_KEY). build.iterate needs Gemini.")
         if v.max_iterations:
             cfg.max_iterations = v.max_iterations
         if v.target_score:
             cfg.target_score = v.target_score
         if v.reference_image and not os.path.isfile(os.path.expanduser(v.reference_image)):
-            return ToolResult.fail(f"Reference image nahi mili: {v.reference_image}")
+            return ToolResult.fail(f"Reference image not found: {v.reference_image}")
         folder = os.path.join(cfg.output_dir or os.path.join(os.path.expanduser("~"), "BlenderAIAgent", "builds"),
                               time.strftime("%Y%m%d_%H%M%S") + "_" + (re.sub(r"[^A-Za-z0-9]+", "_", v.request)[:30].strip("_") or "build"))
-        builder = SelfCorrectingBuilder(self._caller_getter(), self._registry_getter(), self._bridge, self._llm_factory(cfg), cfg)
+        builder = SelfCorrectingBuilder(self._caller_getter(), self._registry_getter(), self._bridge, self._llm_factory(cfg), cfg,
+                                        status=_report_status)
         try:
             report = builder.build(v.request, os.path.expanduser(v.reference_image) if v.reference_image else None, v.location, folder)
         except BuilderError as exc:
@@ -85,10 +90,10 @@ class BuildIterateTool(Tool):
         summary = report.summary()
         if not report.success:
             last = next((i.run_error for i in reversed(report.iterations) if i.run_error), None)
-            return ToolResult.fail(f"Build nahi ho paya: {report.stopped_reason or 'no usable result'}" + (f" (aakhri galti: {last})" if last else ""))
+            return ToolResult.fail(f"Build failed: {report.stopped_reason or 'no usable result'}" + (f" (last error: {last})" if last else ""))
         summary["script_file"] = os.path.join(folder, f"iteration_{report.best_iteration}.py") if report.best_iteration else None
         summary["view_images"] = report.images
-        summary["note"] = ("Target score tak pahunch gaya." if report.reached_target else
-                           f"Score {report.best_score:g}/10 (target {cfg.target_score:g}) - user ko batao ki yeh poora perfect nahi hai; "
-                           "chahe to build.iterate dobara ya mesh.edit se sudhaar sakte hain.")
+        summary["note"] = ("Target score reached." if report.reached_target else
+                           f"Score {report.best_score:g}/10 (target {cfg.target_score:g}) - tell the user it is not perfect yet; "
+                           "build.iterate again or mesh.edit can improve it.")
         return ToolResult.ok(summary)

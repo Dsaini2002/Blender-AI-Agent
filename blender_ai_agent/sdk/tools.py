@@ -1,11 +1,4 @@
-"""
-Tool SDK — Step 10.5
-=========================
-Hinglish: Third-party developers ke liye boilerplate kam karta hai.
-Bina SDK ke, ek naya tool banane ke liye developer ko Tool class,
-dataclass input model, __post_init__ validation — sab manually
-likhna padta. SDK ye pattern automate karta hai.
-"""
+"""Tool SDK"""
 
 from dataclasses import make_dataclass, field as dataclass_field
 from typing import Any, Callable, Dict, Type
@@ -20,11 +13,7 @@ def create_tool(
     fields: Dict[str, Any],
     run_fn: Callable[[Any, Any], ToolResult],
 ) -> Type[Tool]:
-    """
-    Hinglish: Developer isko call karke, bina manually Tool subclass
-    likhe, ek naya tool bana sakta hai.
-
-    `fields` — dataclass fields dict, jaise {"name": str, "count": int}
+    """`fields`
     `run_fn` — signature: run_fn(self, validated_input) -> ToolResult
 
     Example:

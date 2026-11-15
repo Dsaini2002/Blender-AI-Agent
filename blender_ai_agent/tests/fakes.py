@@ -1,13 +1,7 @@
-"""
-fakes.py
-========
-Hinglish: SceneInspector, Object/Material/Modifier/Camera/GeometryNodes/
-Animation Tools ko test karne ke liye "Fake" BlenderBridge.
-"""
+"""fakes.py"""
 
 
 class FakeModifier:
-    """bpy Modifier jaisa dikhne waala fake modifier."""
 
     def __init__(self, name, type_):
         self.name = name
@@ -19,7 +13,6 @@ class FakeModifier:
 
 
 class FakeModifierCollection:
-    """obj.modifiers jaisa dikhne waala fake collection."""
 
     def __init__(self):
         self._modifiers = []
@@ -40,7 +33,6 @@ class FakeModifierCollection:
 
 
 class FakeObject:
-    """bpy Object jaisa dikhne waala fake object."""
 
     def __init__(self, name, type_="MESH", location=None, rotation=None, scale=None,
                  non_manifold_edge_count=0, flipped_normal_count=0, bounding_box_size=1.0,
@@ -52,9 +44,9 @@ class FakeObject:
         self.scale = scale or [1.0, 1.0, 1.0]
         self.material_name = None
         self.modifiers = FakeModifierCollection()
-        self.keyframes = []  # list of (frame, location) tuples — Step 9.13
+        self.keyframes = []  # list of (frame, location) tuples —
 
-        # QA stats — Step 12.7
+        # QA stats —
         self.non_manifold_edge_count = non_manifold_edge_count
         self.flipped_normal_count = flipped_normal_count
         self.bounding_box_size = bounding_box_size
@@ -66,7 +58,6 @@ class FakeObject:
         self.hidden = False
 
 class FakeMaterial:
-    """bpy Material jaisa dikhne waala fake material."""
 
     def __init__(self, name, color=None, roughness=0.5, metallic=0.0):
         self.name = name
@@ -78,7 +69,6 @@ class FakeMaterial:
 
 
 class FakeBridge:
-    """BlenderBridge jaisa interface, lekin bpy ke bina."""
 
     def __init__(self, scene_name="TestScene", objects=None, materials=None):
         self._scene_name = scene_name
@@ -124,9 +114,6 @@ class FakeBridge:
         return True
 
     def list_blend_objects(self, filepath):
-        # Hinglish: Fake mein hum simulate karte hain ki file mein
-        # 3 fixed objects hain - real Blender mein ye asli .blend
-        # file padh kar aata hai.
         return ["fake_blend_obj_a", "fake_blend_obj_b", "fake_blend_obj_c"]
 
     def import_blend(self, filepath, object_names=None, name_prefix=None):
@@ -190,7 +177,7 @@ class FakeBridge:
         return obj
 
     # ---------------------------------------------------------
-    # Materials — Step 2.5
+    # Materials —
     # ---------------------------------------------------------
     def get_material(self, name):
         for mat in self._materials:
@@ -234,7 +221,7 @@ class FakeBridge:
         return material
 
     # ---------------------------------------------------------
-    # Modifiers — Step 2.6
+    # Modifiers —
     # ---------------------------------------------------------
     def add_modifier(self, object_name, modifier_name, modifier_type="BEVEL"):
         obj = self.get_object(object_name)
@@ -270,7 +257,7 @@ class FakeBridge:
         return modifier
 
     # ---------------------------------------------------------
-    # Camera / Render — Step 2.7
+    # Camera / Render —
     # ---------------------------------------------------------
     def create_camera(self, name, location=None, rotation=None):
         camera_obj = FakeObject(
@@ -290,12 +277,11 @@ class FakeBridge:
         return True
 
     def render_preview(self, filepath):
-        # Real file save nahi karte tests mein — bas path record karte hain
         self._last_render_path = filepath
         return filepath
 
     # ---------------------------------------------------------
-    # Geometry Nodes — Step 9.8
+    # Geometry Nodes —
     # ---------------------------------------------------------
     def add_geometry_nodes(self, object_name, node_group_name):
         obj = self.get_object(object_name)
@@ -309,7 +295,7 @@ class FakeBridge:
             return None
         return obj.modifiers.get(modifier_name)
     # ---------------------------------------------------------
-    # Geometry QA — Step 12.7
+    # Geometry QA —
     # ---------------------------------------------------------
     def get_mesh_stats(self, object_name):
         obj = self.get_object(object_name)
@@ -430,7 +416,7 @@ class FakeBridge:
         return dict(self.world)
 
     # ---------------------------------------------------------
-    # Animation — Step 9.13
+    # Animation —
     # ---------------------------------------------------------
     def insert_keyframe(self, object_name, frame, location=None):
         obj = self.get_object(object_name)

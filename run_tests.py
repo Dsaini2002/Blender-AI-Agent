@@ -1,11 +1,4 @@
-"""
-run_tests.py
-============
-Hinglish: Ye repo ROOT mein hai — `blender_ai_agent` package ke andar
-NAHI. Isiliye ye fake `bpy` ko `import blender_ai_agent...` hone se
-PEHLE install kar sakta hai, jisse root __init__.py ka `import bpy`
-fail nahi hota.
-"""
+"""run_tests.py"""
 
 import sys
 import types
@@ -37,7 +30,6 @@ def install_fake_bpy():
     sys.modules["bpy.utils"] = fake_utils
 
 
-# CRITICAL: stub install karo test discovery/import shuru hone se PEHLE
 install_fake_bpy()
 
 

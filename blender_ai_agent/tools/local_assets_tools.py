@@ -1,12 +1,4 @@
-"""
-Local Asset Tools (GitHub CC0 models)
-======================================
-Hinglish: `download_models.py` jo 991 CC0 GLB models aapke PC par utaarta hai, unhe yahan se
-agent search karta hai (asset.search_local) aur scene mein laga deta hai (asset.place_local).
-Download ke bina ye tools saaf message dete hain ki pehle script chalao.
-
-Index ki jagah: env var BLENDER_AI_MODELS_DIR, warna ~/BlenderAIAgent/models/index.json
-"""
+"""Local Asset Tools (GitHub CC0 models)"""
 
 import json
 import math
@@ -18,14 +10,10 @@ from .base import Permission, Tool, ToolResult
 from .models import PlaceLocalAssetInput, SearchLocalAssetsInput
 
 
-# Hinglish: Kai GLB models ke saath ek "collision proxy" box/mesh aata hai (physics ke liye, jaise
-# `Barrel_collider`). Scene mein wo ek safed dibba dikhta hai aur asli model uske andar ghus jaata hai —
-# isliye import ke baad aise helper objects hata dete hain.
 _HELPER_NAME = re.compile(r"(collider|collision|hitbox|_col$|^ucx_|^ubx_|^usp_|^ucp_)", re.IGNORECASE)
 
 
 def is_helper_object(name: str) -> bool:
-    """True agar ye naam collision-proxy / helper mesh jaisa lagta hai (Barrel_collider, UCX_Wall...)."""
     return bool(_HELPER_NAME.search(name or ""))
 
 
@@ -38,10 +26,6 @@ _INDEX_CACHE: Dict[str, Any] = {}
 
 
 def load_index() -> List[Dict[str, Any]]:
-    """
-    index.json padho. Na mile / kharab ho to FileNotFoundError / ValueError (tool use fail message mein badalta hai).
-    Hinglish: skills har message par isse poochhti hain, isliye file badalne tak (mtime) memory mein cache hota hai.
-    """
     path = os.path.join(models_dir(), "index.json")
     if not os.path.isfile(path):
         raise FileNotFoundError(
@@ -103,14 +87,6 @@ def search_index(index: List[Dict[str, Any]], query: str, limit: int = 8, projec
 
 
 def resolve_entry(index: List[Dict[str, Any]], ref: str):
-    """
-    Hinglish: `asset_id` ke taur par LLM kabhi opaque id galat copy kar deta hai (jaise 'xyz-006' vs
-    'christmas-006') aur galat model lag jaata hai. Isliye insaani-padhne-layak naam bhi maante hain:
-        'medieval-fair-003'          -> exact id
-        'christmas/Fireplace'        -> collection/naam
-        'Fireplace'                  -> exact naam (agar sirf ek model ka ho)
-    Return (entry, candidates). entry None + candidates khaali = nahi mila; candidates bhari = ambiguous.
-    """
     wanted = (ref or "").strip()
     if not wanted:
         return None, []
@@ -171,6 +147,34 @@ class SearchLocalAssetsTool(Tool):
         return ToolResult.ok({"query": validated_input.query, "count": len(hits), "results": [_summary(h) for h in hits]})
 
 
+# Typical real-world heights (metres). Downloaded models come in any unit; when an import is far off (more than
+# 2x too big or too small) it is rescaled to this height so it fits next to everything else.
+REAL_HEIGHTS = {
+    "bench": 0.85, "chair": 0.9, "stool": 0.5, "table": 0.75, "desk": 0.75, "sofa": 0.85, "couch": 0.85, "bed": 0.6,
+    "streetlamp": 4.5, "streetlight": 4.5, "lamppost": 4.5, "lamp": 1.6, "lantern": 0.4, "torch": 0.6,
+    "pine": 7.0, "palm": 8.0, "tree": 6.0, "bush": 1.0, "shrub": 1.0, "boulder": 1.5, "rock": 0.7, "stone": 0.4,
+    "barrel": 1.0, "crate": 0.6, "bottle": 0.3, "cup": 0.1, "mug": 0.1, "vase": 0.4, "car": 1.45, "truck": 3.0,
+    "bus": 3.2, "house": 6.0, "tent": 1.8, "fence": 1.1, "door": 2.1, "campfire": 0.4, "fountain": 1.5,
+    "statue": 2.0, "bin": 0.9, "trashcan": 0.9, "mailbox": 1.2, "bicycle": 1.0, "bike": 1.0, "plant": 0.6, "pot": 0.4,
+    "bookshelf": 1.9, "shelf": 1.8, "cabinet": 1.2, "wardrobe": 2.0, "fireplace": 1.2, "well": 1.5, "cart": 1.2,
+    "horse": 1.6, "cow": 1.4, "dog": 0.6, "cat": 0.3, "person": 1.75, "man": 1.75, "woman": 1.65, "character": 1.75,
+}
+
+
+def typical_height(*texts: str) -> Optional[float]:
+    words = []
+    for text in texts:
+        words += [_singular(w) for w in _words(text or "")]
+    joined = "".join(words)
+    for key in ("streetlamp", "streetlight", "lamppost", "trashcan", "bookshelf"):
+        if key in joined:
+            return REAL_HEIGHTS[key]
+    for word in words:
+        if word in REAL_HEIGHTS:
+            return REAL_HEIGHTS[word]
+    return None
+
+
 class PlaceLocalAssetTool(Tool):
     name = "asset.place_local"
     description = (
@@ -208,7 +212,6 @@ class PlaceLocalAssetTool(Tool):
                 return ToolResult.fail(
                     f"No downloaded model with id '{validated_input.asset_id}'.{maybe} Use asset.search_local first.")
 
-            # Hinglish: id + query dono diye hain to unka match hona zaroori hai — warna galat id copy hui hai
             if validated_input.query:
                 words = [_singular(w) for w in _words(validated_input.query) or validated_input.query.lower().split()]
                 if score_entry(entry, words) == 0:
@@ -232,10 +235,6 @@ class PlaceLocalAssetTool(Tool):
         except ValueError as exc:
             return ToolResult.fail(str(exc))
 
-        # Collision proxies (Barrel_collider...) scene mein ek safed dibba ban jaate hain — hata do.
-        # Hinglish: IMPORTANT — Blender mein delete hone ke baad object ka `.name` padhna crash karta hai
-        # ("StructRNA of type Object has been removed"). Isliye saare naam PEHLE padh lete hain, aur
-        # filter naam se nahi, object identity (id) se karte hain.
         names = {id(obj): obj.name for obj in imported}
         removed_helpers = []
         removed_ids = set()
@@ -245,10 +244,18 @@ class PlaceLocalAssetTool(Tool):
                 removed_ids.add(id(obj))
         imported = [obj for obj in imported if id(obj) not in removed_ids]
 
-        # Hinglish: glb ke andar hierarchy ho sakti hai — sirf ROOT objects (jinka parent nahi) ko
-        # move/scale/rotate karte hain, bachche unke saath chalte hain.
         yaw = math.radians(validated_input.yaw_degrees)
-        loc = validated_input.location
+        loc = list(validated_input.location)
+        path_note = None
+        if float(loc[2]) <= 0.05:                     # standing on the ground: keep it off paths
+            from . import paths as _paths
+            live = _paths.live_paths(self._bridge)
+            if live:
+                x, y, moved_off, _facing = _paths.clear_spot(float(loc[0]), float(loc[1]), 0.45, live)
+                if moved_off:
+                    path_note = (f"[{loc[0]:g}, {loc[1]:g}] was on {', '.join(moved_off)}; "
+                                 f"placed at the edge instead: [{x:.2f}, {y:.2f}]")
+                    loc = [round(x, 3), round(y, 3), loc[2]]
         scale = validated_input.scale
         roots = [o for o in imported if getattr(o, "parent", None) is None]
         for root in roots:
@@ -264,9 +271,65 @@ class PlaceLocalAssetTool(Tool):
                 scale=[s * scale for s in root.scale],
             )
 
+        auto_scale, size = self._fit_to_real_size(roots, entry, validated_input, loc)
+        baked = self._bake_scale(roots)
+
         return ToolResult.ok({
             "id": entry["id"], "name": entry["name"], "collection": entry.get("project_name"),
             "objects": [o.name for o in imported], "roots": [o.name for o in roots],
             "location": list(loc), "scale": scale, "license": entry.get("license", "CC0"),
-            "removed_helpers": removed_helpers,
+            "removed_helpers": removed_helpers, "auto_scale": auto_scale, "size": size,
+            "scale_baked": baked,
+            **({"moved_off_path": path_note} if path_note else {}),
         })
+
+    def _bake_scale(self, roots):
+        """Leave every root at scale 1.0 (its import unit scale moved into the mesh), so a later
+        object.transform(scale=[1, 1, 1]) cannot blow the model up 100x."""
+        bake = getattr(self._bridge, "bake_scale", None)
+        if bake is None:
+            return False
+        done = False
+        for root in roots:
+            try:
+                done = bool(bake(root.name)) or done
+            except Exception:  # noqa: BLE001
+                pass
+        return done
+
+    def _fit_to_real_size(self, roots, entry, v, loc):
+        """Rescale a wildly mis-sized import to a typical real height (only when the caller left scale at 1) and
+        make it stand on the placement height. Returns (factor applied or None, [x, y, z] size)."""
+        measure = getattr(self._bridge, "measure_objects", None)
+        names = [r.name for r in roots]
+        if measure is None or not names:
+            return None, None
+        try:
+            box = measure(names)
+        except Exception:  # noqa: BLE001
+            return None, None
+        if not box:
+            return None, None
+        height = box["max"][2] - box["min"][2]
+        factor = None
+        target = typical_height(v.query or "", entry.get("name", ""), " ".join(entry.get("tags", [])[:4]))
+        if target and abs(v.scale - 1.0) < 1e-6 and height > 1e-4:
+            ratio = height / target
+            if ratio > 2.0 or ratio < 0.5:
+                factor = target / height
+                for root in roots:
+                    rl = list(root.location)
+                    self._bridge.transform_object(
+                        root.name,
+                        location=[loc[0] + (rl[0] - loc[0]) * factor, loc[1] + (rl[1] - loc[1]) * factor,
+                                  loc[2] + (rl[2] - loc[2]) * factor],
+                        scale=[s * factor for s in root.scale])
+                box = measure(names) or box
+        bottom = box["min"][2]
+        if abs(bottom - loc[2]) > 0.01:                       # stand on the placement height, not float / sink
+            for root in roots:
+                rl = list(root.location)
+                self._bridge.transform_object(root.name, location=[rl[0], rl[1], rl[2] + (loc[2] - bottom)])
+            box = measure(names) or box
+        size = [round(box["max"][k] - box["min"][k], 3) for k in range(3)]
+        return (round(factor, 4) if factor else None), size

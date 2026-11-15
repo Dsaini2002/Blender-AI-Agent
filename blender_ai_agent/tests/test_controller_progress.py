@@ -23,7 +23,6 @@ class FakeLogger:
 
 
 class FakeAgent:
-    """Har run() ek 'agent' step hai; `script` = {step_text_ko_pehchaanne_wala_shabd: action}."""
 
     def __init__(self, clock=None, seconds=10, script=None, with_logger=False):
         self.received = []
@@ -100,7 +99,7 @@ class TestBigRequestsRunStepByStep(unittest.TestCase):
         controller, agent, tracker, _, _ = build()
         result = controller.submit(BIG)
         self.assertTrue(result.success, result.reply_text)
-        self.assertEqual(agent.received, PARTS)                          # har step alag, ek-ek karke, sahi order mein
+        self.assertEqual(agent.received, PARTS)
         snap = tracker.snapshot()
         self.assertEqual((snap.state, snap.total, snap.completed, snap.percent), ("done", 4, 4, 100.0))
 
@@ -144,7 +143,7 @@ class TestBigRequestsRunStepByStep(unittest.TestCase):
         controller, agent, tracker, skill, _ = build(skill=True)
         snapshots = []
         controller.submit(BIG, on_progress=lambda text, data: snapshots.append(tracker.snapshot().eta))
-        self.assertEqual(agent.received, ["draw a fancy dragon"])        # sirf ye LLM tak gaya
+        self.assertEqual(agent.received, ["draw a fancy dragon"])
         self.assertEqual([c["task"] for c in skill.contexts], ["make a campfire", "add a tent", "add a lantern"])
         self.assertEqual(snapshots[0], 3 + 3 + 3 + 20)                  # skill steps 3s, agent step 20s
 
@@ -157,7 +156,7 @@ class TestSmallRequestsAreUnchanged(unittest.TestCase):
         result = controller.submit(text)
         self.assertTrue(result.success)
         self.assertEqual(agent.received, [text])
-        self.assertEqual(result.reply_text, f"ok: {text}")               # koi summary nahi, jaisa pehle tha
+        self.assertEqual(result.reply_text, f"ok: {text}")
         self.assertEqual(tracker.snapshot().total, 0)                     # single-task progress
 
     def test_on_progress_reaches_the_logger_untouched_and_no_extra_calls(self):
@@ -168,9 +167,9 @@ class TestSmallRequestsAreUnchanged(unittest.TestCase):
             calls.append(event)
 
         controller.submit("make a cube", on_progress=on_progress)
-        self.assertEqual(agent.seen_callbacks, [on_progress])             # wahi function, koi wrapper nahi
-        self.assertIsNone(agent._logger.callback)                         # baad mein hata diya
-        self.assertEqual(calls, [])                                       # controller ne khud koi extra call nahi ki
+        self.assertEqual(agent.seen_callbacks, [on_progress])
+        self.assertIsNone(agent._logger.callback)
+        self.assertEqual(calls, [])
 
     def test_auto_split_can_be_switched_off(self):
         controller, agent, _, _, _ = build(auto_split=False)
@@ -229,7 +228,7 @@ class TestFailuresDoNotLoseProgress(unittest.TestCase):
     def test_quota_stops_the_remaining_steps_instead_of_failing_each_one(self):
         controller, agent, tracker, _, _ = build(script={"tent": "quota"})
         result = controller.submit(BIG)
-        self.assertEqual(agent.received, PARTS[:2])                        # step 2 par quota -> aage nahi
+        self.assertEqual(agent.received, PARTS[:2])
         self.assertFalse(result.success)
         lines = result.reply_text.splitlines()
         self.assertIn("✓ 1. make a campfire", lines)

@@ -91,7 +91,6 @@ class TestBenchmarkRunner(unittest.TestCase):
         self.assertTrue(len(result.errors) > 0)
 
     def test_run_suite_isolates_tasks(self):
-        """Hinglish: Task 1 ka Hero object Task 2 ko affect nahi karna chahiye."""
         task1 = BenchmarkTask(id="t1", instruction="Create a cube named Hero.")
         task2 = BenchmarkTask(id="t2", instruction="Create a cube named Hero.")
 

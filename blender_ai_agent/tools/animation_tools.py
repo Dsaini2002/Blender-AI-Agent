@@ -1,8 +1,4 @@
-"""
-Animation Tools — Step 9.13
-================================
-Hinglish: Keyframe insert karne ke liye Tool interface.
-"""
+"""Animation Tools"""
 
 from dataclasses import dataclass
 from typing import List, Optional

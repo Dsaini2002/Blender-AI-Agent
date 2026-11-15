@@ -1,11 +1,4 @@
-"""
-Tool (abstract base class) — Phase 2 upgrade
-===============================================
-Hinglish: Phase 1 mein Tool bahut simple thi — sirf name/description/execute().
-Phase 2 mein hum ise "production-grade" tool contract banayenge: name,
-description, input_schema (via typed input model), permission,
-validate(), run(), aur structured result — jaisa spec mein bataya gaya.
-"""
+"""Tool (abstract base class)"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -16,23 +9,13 @@ from ..input_coercion import coerce_arguments
 
 
 class Permission(str, Enum):
-    """
-    Hinglish: Har tool ka ek "risk level" hoga. Future Agent (Phase 3)
-    isko dekh kar decide karega — kis tool ko bina poochhe chala sakta
-    hai, aur kis tool ke liye user se confirmation lena zaroori hai.
-    """
-    READ_ONLY = "read_only"       # scene.inspect — kuch modify nahi karta
+    READ_ONLY = "read_only"
     SAFE_WRITE = "safe_write"     # object.create — reversible, low risk
-    DESTRUCTIVE = "destructive"   # object.delete — data loss ho sakta hai
+    DESTRUCTIVE = "destructive"
     PYTHON_EXECUTION = "python_execution"
 
 @dataclass
 class ToolResult:
-    """
-    Hinglish: Har tool ka result is EXACT same shape mein aayega —
-    random dict nahi. Isse Agent/UI/tests ko pata rehta hai result
-    kaise parse karna hai, chahe tool koi bhi ho (Consistency).
-    """
     success: bool
     data: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
@@ -50,45 +33,16 @@ TInput = TypeVar("TInput")
 
 
 class Tool(ABC, Generic[TInput]):
-    """
-    Hinglish: Har concrete tool isko extend karega.
-
-    Generic[TInput]: har Tool subclass apna khud ka typed input model
-    bata sakta hai (jaise Phase 2.4 mein CreateObjectInput). Abhi
-    read-only tools (scene.inspect) ke liye input_model None rahega.
-    """
 
     name: str = ""
     description: str = ""
     permission: Permission = Permission.SAFE_WRITE
-    input_model: Optional[Type[Any]] = None  # dataclass jo input define karega
+    input_model: Optional[Type[Any]] = None
+    # Creation tools give a missing `name` this default (Blender adds .001 if it is taken), so a forgotten
+    # name is not a failed call. Never set on tools whose `name` points at an existing object.
+    auto_name: Optional[str] = None
 
     def validate(self, input_data: Dict[str, Any]) -> TInput:
-        """
-        Hinglish: Raw dict ko typed input object mein convert karta hai.
-
-        Agar input_model set nahi hai (jaise scene.inspect), toh raw
-        dict hi wapas kar dete hain — backward compatible.
-
-        Agar input_model set hai, dataclass construct karte waqt:
-          - Missing/extra fields -> TypeError -> humara ValueError
-          - __post_init__ ke andar wale checks -> ValueError seedha propagate
-        Dono cases mein caller (execute()) ko clean ValueError milta hai.
-
-        PATCHED (robustness): Chhote/fast LLMs (jaise openai/gpt-oss-20b)
-        kabhi-kabhi tool ke exact field names follow nahi karte — jaise
-        `object.create` ke liye `primitive` ki jagah `type` bhej dete
-        hain. Isse pehle seedha TypeError crash hota tha. Ab yahan pehle
-        arguments ko dataclass ke asli field names ke saath normalize
-        karte hain: known aliases map karte hain, aur jo bhi key kisi
-        bhi field se match nahi hoti wo silently drop kar dete hain
-        (crash karne ki jagah) — taaki weaker model ka minor schema
-        mismatch poore task ko fail na kare.
-
-        PATCHED (type coercion): alias-normalize ke baad arguments ko dataclass ke type-hints ke hisaab
-        se sahi type mein badalte hain ("1, 2, 3" -> [1, 2, 3], "640" -> 640, "true" -> True, proto list ->
-        list). Dekho input_coercion.py. Isse har tool ko ek hi jagah se ye leniency milti hai.
-        """
         if self.input_model is None:
             return input_data  # type: ignore
 
@@ -98,11 +52,9 @@ class Tool(ABC, Generic[TInput]):
         try:
             return self.input_model(**normalized_input)
         except (TypeError, AttributeError, KeyError, IndexError) as exc:
-            # Hinglish: __post_init__ ke andar kisi galat type par aisi errors aati hain — clean ValueError banao,
-            # taaki task crash na ho (execute() ise ToolResult.fail mein badal deta hai).
-            raise ValueError(f"Invalid input for tool '{self.name}': {exc}") from exc
+            raise ValueError(f"Invalid input for tool '{self.name}': {exc}{self._argument_hint(input_data or {})}") from exc
         except ValueError:
-            raise  # __post_init__ ka apna ValueError hai, waisa hi propagate karo
+            raise
 
     # ---------------------------------------------------------
     # Common aliases models mistakenly use instead of the real field name.
@@ -124,7 +76,38 @@ class Tool(ABC, Generic[TInput]):
         "power": ("energy",),
         "brightness": ("energy",),
         "type_of_light": ("light_type",),
+        # object / material references
+        "object": ("object_name", "name"),
+        "obj": ("object_name", "name"),
+        "target": ("object_name", "name"),
+        "target_object": ("object_name", "name"),
+        "mesh": ("object_name", "name"),
+        "objects": ("names", "assign_to", "object_names"),
+        "object_names": ("names", "assign_to"),
+        "targets": ("names", "assign_to"),
+        "material": ("material_name",),
+        "mat": ("material_name",),
+        "material_id": ("material_name",),
+        "name": ("prefix", "object_name"),
+        "name_prefix": ("prefix",),
+        "points": ("profile", "polygon"),
+        "resolution": ("segments",),
+        "steps": ("segments",),
+        "height_m": ("height",),
     }
+
+    def _argument_hint(self, input_data: Dict[str, Any]) -> str:
+        """Tell the model which argument names are valid and which ones it sent were ignored."""
+        import dataclasses
+
+        if not dataclasses.is_dataclass(self.input_model):
+            return ""
+        valid = [f.name for f in dataclasses.fields(self.input_model)]
+        unknown = [k for k in input_data if k not in valid]
+        hint = f". Valid arguments: {', '.join(valid)}"
+        if unknown:
+            hint += f". Ignored unknown arguments: {', '.join(unknown)}"
+        return hint
 
     def _normalize_input(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         import dataclasses
@@ -140,44 +123,42 @@ class Tool(ABC, Generic[TInput]):
                 normalized[key] = value
                 continue
 
-            aliases = self._FIELD_ALIASES.get(key, ())
-            target = next((a for a in aliases if a in valid_fields and a not in normalized), None)
+            aliases = tuple(self._FIELD_ALIASES.get(key, ())) + self._derived_aliases(key)
+            target = next((a for a in aliases if a in valid_fields and a not in normalized
+                           and a not in input_data), None)
             if target is not None:
                 normalized[target] = value
-            # Hinglish: agar koi alias bhi nahi milta, is unknown key ko
-            # chhod dete hain — dataclass constructor ko crash nahi karne
-            # dete ek anjaani key ke liye.
 
+        if self.auto_name and "name" in valid_fields and not normalized.get("name"):
+            normalized["name"] = self.auto_name
         return normalized
+
+    @staticmethod
+    def _derived_aliases(key: str):
+        """object -> object_name, material_names -> materials, ... (only used when nothing else matches)."""
+        out = [f"{key}_name", f"{key}_names"]
+        if key.endswith("_name"):
+            out.append(key[:-5])
+        if key.endswith("_names"):
+            out.append(key[:-6] + "s")
+        if "_" in key:                                   # light_location -> location, camera_rotation -> rotation
+            out.append(key.split("_", 1)[1])
+            out.append(key.rsplit("_", 1)[1])
+        return tuple(out)
 
     @abstractmethod
     def run(self, validated_input: TInput) -> ToolResult:
-        """
-        Hinglish: Asli tool logic yahan likhna hai. Har subclass isko
-        implement karega. Ye validate() ke BAAD call hota hai — isliye
-        andar already-validated, typed input milta hai.
-        """
         raise NotImplementedError
 
     def execute(self, input_data: Dict[str, Any] = None) -> ToolResult:
-        """
-        Hinglish: TEMPLATE METHOD PATTERN.
-
-        Public entry point (`execute`) ka flow FIXED hai:
-            validate() -> run() -> errors ko ToolResult.fail() mein catch karo
-
-        Har subclass sirf `run()` implement karta hai — validation aur
-        error-handling baar-baar likhne ki zaroorat nahi, wo yahin
-        base class mein ek hi jagah handle ho gaya (DRY principle).
-        """
         try:
             validated = self.validate(input_data or {})
         except ValueError as exc:
             return ToolResult.fail(str(exc))
-        except Exception as exc:  # noqa: BLE001 — kisi anjaani validation galti se bhi task crash na ho
+        except Exception as exc:  # noqa: BLE001 
             return ToolResult.fail(f"Invalid input for tool '{self.name}': {exc}")
 
         try:
             return self.run(validated)
-        except Exception as exc:  # deliberately broad — ek tool crash se poora addon na gire
+        except Exception as exc:
             return ToolResult.fail(f"Tool '{self.name}' failed: {exc}")

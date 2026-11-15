@@ -18,7 +18,6 @@ _CACHE = {}
 
 
 def spec(**params):
-    """Builder mehnga hai (har character ~3-8 s): same params ko cache karte hain."""
     key = tuple(sorted((k, str(v)) for k, v in params.items()))
     if key not in _CACHE:
         _CACHE[key] = cb.build_character_spec(dict(params, quality="draft"))
@@ -94,7 +93,7 @@ class TestBuilder(unittest.TestCase):
         self.assertAlmostEqual(low, 0.0, delta=0.02)
         head_y = bbox(part(sp, "head"))[1]
         eye_y = bbox(part(sp, "eye_l_white"))[1]
-        self.assertGreater(eye_y[1], head_y[1] * 0.85)                    # aankhein chehre ki aage (+y) ki satah par
+        self.assertGreater(eye_y[1], head_y[1] * 0.85)
         self.assertGreater(part(sp, "mouth")["points"][0][1], 0.0)
         self.assertGreater(part(sp, "brow_l")["points"][0][1], 0.0)
 
@@ -111,13 +110,13 @@ class TestBuilder(unittest.TestCase):
     def test_expressions_change_the_face(self):
         def mouth_pts(e): return part(spec(expression=e), "mouth")["points"]
         smile, frown = mouth_pts("happy"), mouth_pts("sad")
-        self.assertGreater(smile[0][2], smile[len(smile) // 2][2])        # muskaan: kinare upar, beech neeche (U)
-        self.assertLess(frown[0][2], frown[len(frown) // 2][2])           # udaas: kinare neeche (n)
+        self.assertGreater(smile[0][2], smile[len(smile) // 2][2])
+        self.assertLess(frown[0][2], frown[len(frown) // 2][2])
         brow = lambda e: part(spec(expression=e), "brow_l")["points"]
         angry, sad = brow("angry"), brow("sad")
-        self.assertLess(angry[0][2], angry[2][2])                         # gussa: andar ka sira neeche
-        self.assertGreater(sad[0][2], sad[2][2])                          # udaas: andar ka sira upar
-        self.assertGreater(brow("surprised")[1][2], brow("happy")[1][2])  # hairan: bhaunhein upar
+        self.assertLess(angry[0][2], angry[2][2])
+        self.assertGreater(sad[0][2], sad[2][2])
+        self.assertGreater(brow("surprised")[1][2], brow("happy")[1][2])
         height = lambda e: bbox(part(spec(expression=e), "eye_l_white"))[2]
         sleepy, normal = height("sleepy"), height("happy")
         self.assertLess(sleepy[1] - sleepy[0], (normal[1] - normal[0]) * 0.4)
@@ -212,7 +211,7 @@ class TestInputAndTool(unittest.TestCase):
         self.assertEqual(head.type, "MESH")
         self.assertTrue(head.shade_smooth)
         rotation = getattr(head, "rotation", None) or head.rotation_euler
-        self.assertAlmostEqual(rotation[2], math.radians(180.0), places=6)           # Blender front view ki taraf
+        self.assertAlmostEqual(rotation[2], math.radians(180.0), places=6)
         self.assertEqual(head.scale, [2.0, 2.0, 2.0])
         self.assertTrue(any(o.name.startswith("Hero_brow") for o in bridge._objects))
         self.assertEqual(bridge.get_material("Hero_skin_mat").color[:3], cb.COLORS["peach"])

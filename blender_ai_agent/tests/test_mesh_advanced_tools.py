@@ -49,7 +49,7 @@ class TestEditMeshInput(unittest.TestCase):
     def test_ops_arrive_in_llm_formats(self):
         proto = EditMeshInput(object_name="B", ops=FakeRepeatedComposite([FakeMapComposite({"op": "noise", "amplitude": "0.02"})]))
         self.assertEqual(proto.final_ops[0]["op"], "noise")
-        single = EditMeshInput(object_name="B", ops={"op": "smooth"})                  # akela dict bhi chalega
+        single = EditMeshInput(object_name="B", ops={"op": "smooth"})
         self.assertEqual(len(single.final_ops), 1)
 
     def test_bad_ops_and_code_are_rejected_with_clear_messages(self):
@@ -68,10 +68,10 @@ class TestMeshEditTool(unittest.TestCase):
         result = MeshEditTool(bridge).execute({"object_name": "Bottle", "preset": "broken", "region": "neck", "strength": 0.4})
         self.assertTrue(result.success, result.error)
         self.assertEqual(result.data["operators"], ["preset:broken"])
-        self.assertTrue(result.data["uv_preserved"])                          # sirf vertices hile / faces hate
+        self.assertTrue(result.data["uv_preserved"])
         before = bottle(16, 10)[0]
         top_before = max(v[2] for v in before)
-        self.assertLess(max(v[2] for v in obj.mesh_vertices), top_before)       # upar ka kinara tooota
+        self.assertLess(max(v[2] for v in obj.mesh_vertices), top_before)
         self.assertGreater(result.data["removed_faces"], 0)
 
     def test_melted_changes_topology_and_reports_uv_reset(self):
@@ -151,7 +151,6 @@ class TestRunnerWithSeveralParts(unittest.TestCase):
         self.assertEqual(len(body["vertices"]), len(self.parts()[0]["vertices"]))
         top_y = max(v[2] for v in cap["vertices"])
         self.assertGreater(top_y, 3.5)
-        # twist poore model (z 0..4) par: Body ka upar wala kinara Cap ke neeche wale kinare se mel khaata hai (continuous)
         body_top = [v for v in body["vertices"] if abs(v[2] - 3.0) < 1e-6]
         cap_bottom = [v for v in cap["vertices"] if abs(v[2] - 3.0) < 1e-6]
         self.assertTrue(body_top and cap_bottom)

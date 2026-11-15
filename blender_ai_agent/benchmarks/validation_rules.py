@@ -1,12 +1,4 @@
-"""
-ValidationRule — Step 8.7
-=============================
-Hinglish: Har rule ek specific cheez check karta hai — scene ko
-source of truth maan kar (bridge se seedha padhta hai). Concrete
-rules: ObjectExistsRule, ObjectTypeRule, TransformRule, MaterialRule,
-ModifierRule — sab same `validate(bridge) -> ValidationResult`
-interface follow karte hain (Polymorphism).
-"""
+"""ValidationRule"""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict
@@ -59,7 +51,6 @@ class ObjectTypeRule(ValidationRule):
 
 
 class TransformRule(ValidationRule):
-    """Hinglish: Location ka ek axis check karta hai — X/Y/Z, tolerance ke saath (floats exact match nahi hote)."""
 
     def __init__(self, object_name: str, axis: str, expected_value: float, tolerance: float = 0.01):
         axis_index = {"x": 0, "y": 1, "z": 2}[axis.lower()]

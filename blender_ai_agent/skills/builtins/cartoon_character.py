@@ -1,14 +1,4 @@
-"""
-CartoonCharacterSkill
-======================
-Hinglish: "make a cartoon character", "cute girl with long blonde hair and glasses, laughing", "angry boy with spiky red hair",
-"cartoon face", "ladka character banao" jaise requests ko LLM (Gemini) ke bina seedha character.create se banata hai — zero quota.
-Text se ye cheezein khud nikalta hai: ladka/ladki, expression, baal ka style aur rang, aankh/skin/shirt/pants/shoes ka rang, dress,
-chashma/cap/hat, "face/head/bust" (sirf chehra), "named X". Jo samajh na aaye uska default (peach skin, brown baal, happy).
-
-Ye sirf NAYA character banane ke liye hai. "Character ke baal laal karo" jaise badlav, animation (walk/dance/rig), ya kai characters
-(3 characters) wale requests LLM ke paas jaate hain (wo character.create / mesh.edit khud chalata hai).
-"""
+"""CartoonCharacterSkill"""
 
 import math
 import re
@@ -45,7 +35,6 @@ def _color_before(text: str, nouns: str) -> Optional[str]:
 
 
 def parse_character_request(text: str) -> Dict[str, Any]:
-    """Text -> character.create ke arguments (sirf wahi jo text mein mile)."""
     t = " ".join((text or "").lower().replace(",", " , ").replace(".", " ").split())
     args: Dict[str, Any] = {}
 

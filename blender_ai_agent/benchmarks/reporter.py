@@ -1,9 +1,4 @@
-"""
-BenchmarkReporter — Step 8.42
-==================================
-Hinglish: Human-readable summary banata hai — spec ke exact format
-jaisa (headers, category breakdown, reliability, performance).
-"""
+"""BenchmarkReporter"""
 
 from .metrics import BenchmarkMetrics
 

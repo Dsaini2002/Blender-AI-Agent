@@ -1,16 +1,4 @@
-"""
-console_watch.py
-=================
-Hinglish: Kaam chalte waqt Blender ke console mein jo bhi chhapta hai (Python errors, C-level warnings jaise
-"QuadriFlow: mesh needs to be manifold", glTF importer ke messages) use PAKAD kar baad mein padhna.
-
-  ConsoleCapture      with-block ke andar ka stdout/stderr alag se jama karta hai AUR user ke console par pehle jaisa dikhata bhi rehta hai
-                      * fd-level (best): fd 1/2 ko pipe se jodta hai, ek thread asli console par wapas likhta rehta hai (C ke printf bhi pakde jaate hain)
-                      * python-level (fallback): sys.stdout/sys.stderr ko tee se badalta hai
-  analyze_console     text -> Finding list (error / warning / info), shor (blenderkit, TIMING...) hata kar, har ek ke saath hint
-
-Kuch bhi fail ho (fd na mile, Windows GUI mode...) to chupchap agle tareeke par; kabhi exception nahi uthta.
-"""
+"""console_watch.py"""
 
 import logging
 import os
@@ -22,7 +10,6 @@ from typing import List, Optional
 
 
 class _Tee:
-    """Python-level fallback: likhna asli stream par bhi, aur buffer mein bhi."""
 
     def __init__(self, original, sink):
         self._original, self._sink = original, sink
@@ -55,16 +42,13 @@ class _ListHandler(logging.Handler):
     def emit(self, record):
         try:
             self._sink(self.format(record) + "\n")
-            sys.stderr.write(self.format(record) + "\n")          # lastResort ki tarah dikhta bhi rahe
+            sys.stderr.write(self.format(record) + "\n")
         except Exception:  # noqa: BLE001
             pass
 
 
 class ConsoleCapture:
     MAX_CHARS = 300_000
-    # Windows par console ke sys.stdout ke print/flush fd ke bajaye seedha console handle se likhte hain; fd ko pipe se badalne par
-    # "OSError: [WinError 1] Incorrect function" aata hai (asli test run mein dikha). Isliye Windows par fd-level capture BAND:
-    # sirf Python-level (print / warnings / logging). C-level warnings (jaise QuadriFlow) wahan nahi pakde jaate.
     FD_SUPPORTED = os.name != "nt"
 
     def __init__(self, fd_level: bool = True):
@@ -112,7 +96,7 @@ class ConsoleCapture:
                 stream.flush()
             except Exception:  # noqa: BLE001
                 pass
-        try:                                                        # C stdio buffer bhi (printf)
+        try:
             import ctypes
             libc = ctypes.cdll.msvcrt if os.name == "nt" else ctypes.CDLL(None)
             libc.fflush(None)
@@ -124,7 +108,7 @@ class ConsoleCapture:
         started = []
         try:
             for fd in (1, 2):
-                saved = os.dup(fd)                                 # fd bandh/invalid ho to OSError
+                saved = os.dup(fd)
                 started.append((fd, saved))
                 read_fd, write_fd = os.pipe()
                 os.dup2(write_fd, fd)
@@ -133,7 +117,7 @@ class ConsoleCapture:
                 thread.start()
                 self._readers.append((fd, saved, read_fd, thread))
         except Exception:
-            for fd, saved in started:                              # jo ho chuka use wapas karo
+            for fd, saved in started:
                 try:
                     os.dup2(saved, fd)
                 except OSError:
@@ -145,7 +129,7 @@ class ConsoleCapture:
         self._flush_python_and_c()
         for fd, saved, read_fd, thread in self._readers:
             try:
-                os.dup2(saved, fd)                                 # asli console wapas; pipe ka write-end band
+                os.dup2(saved, fd)
             except OSError:
                 pass
         for fd, saved, read_fd, thread in self._readers:
@@ -162,7 +146,7 @@ class ConsoleCapture:
         sys.stdout = _Tee(sys.stdout, self._add)
         sys.stderr = _Tee(sys.stderr, self._add)
         root = logging.getLogger()
-        if not root.handlers:                                      # warna lastResort hat jaata
+        if not root.handlers:
             self._handler = _ListHandler(self._add)
             root.addHandler(self._handler)
         self.mode = "python"
@@ -242,7 +226,6 @@ _HINTS = [
 
 
 def analyze_console(text: str, max_findings: int = 8) -> List[Finding]:
-    """Console text -> shor hata kar, duplicate hata kar, Finding list (errors pehle)."""
     findings: List[Finding] = []
     seen = set()
     lines = (text or "").replace("\r", "").split("\n")
@@ -256,9 +239,8 @@ def analyze_console(text: str, max_findings: int = 8) -> List[Finding]:
             level = "warning"
         else:
             continue
-        if line.startswith("File ") or line.startswith("^"):            # traceback ke andar ki lines: Traceback line hi kaafi
+        if line.startswith("File ") or line.startswith("^"):
             continue
-        # traceback ho to aakhri "XError: ..." line bhi saath dikhao
         if re.search(r"Traceback \(most recent call last\)", line):
             tail = next((l.strip() for l in lines[index + 1:index + 40] if re.match(r"^\s*(?:\w+\.)*\w*(?:Error|Exception)\b: ", l)), "")
             line = (line + " ... " + tail) if tail else line
@@ -275,7 +257,7 @@ def analyze_console(text: str, max_findings: int = 8) -> List[Finding]:
                     level = "info"
                 break
         if level == "warning" and not hint:
-            continue                                                    # bina wajah wali generic warning: shor
+            continue
         findings.append(Finding(level, short, hint, actionable))
     order = {"error": 0, "warning": 1, "info": 2}
     findings.sort(key=lambda f: order[f.level])

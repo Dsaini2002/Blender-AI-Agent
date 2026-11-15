@@ -1,10 +1,4 @@
-"""
-VisualQualityOptimizer — Step 11.13
-========================================
-Hinglish: Render -> score -> agar acceptable nahi -> improve -> render
-again. CONTROLLED iterations — spec ka explicit rule: "Never infinite
-autonomous loops."
-"""
+"""VisualQualityOptimizer"""
 
 from dataclasses import dataclass, field
 from typing import Callable, List
@@ -32,15 +26,6 @@ class OptimizationResult:
 class VisualQualityOptimizer:
 
     def __init__(self, render_fn: Callable, score_fn: Callable, improve_fn: Callable, max_iterations: int = 3, target_score: float = 0.9):
-        """
-        Hinglish: Dependency Injection — teeno callables bahar se
-        aate hain, isse test karna aasan hai bina real render/vision
-        ke.
-
-        render_fn()       -> image/observation
-        score_fn(obs)      -> float (0.0-1.0)
-        improve_fn(obs)    -> None (scene ko modify karta hai)
-        """
         self._render_fn = render_fn
         self._score_fn = score_fn
         self._improve_fn = improve_fn

@@ -56,7 +56,7 @@ class TestTaskManager(unittest.TestCase):
         manager.create_task("t1", "task")
 
         with self.assertRaises(InvalidTaskTransition):
-            manager.complete("t1")  # QUEUED se seedha COMPLETED galat hai
+            manager.complete("t1")
 
     def test_cannot_transition_from_terminal_state(self):
         manager = TaskManager(FakeBridge())

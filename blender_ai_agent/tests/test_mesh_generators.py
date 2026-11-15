@@ -38,7 +38,7 @@ class TestLathe(unittest.TestCase):
             v, f = mg.lathe_preset(name, 1.0, 0.25, segments=24)
             self.assertTrue(valid(v, f), name)
             self.assertTrue(watertight(f), name)
-            self.assertGreater(volume(v, f), 0, name)                           # normals bahar ki taraf
+            self.assertGreater(volume(v, f), 0, name)
 
     def test_dimensions_follow_height_and_radius(self):
         v, _ = mg.lathe_preset("vase", height=2.0, radius=0.5)
@@ -120,7 +120,7 @@ class TestPrism(unittest.TestCase):
         bottom = max(math.hypot(p[0], p[1]) for p in v if p[2] < 0.1)
         self.assertAlmostEqual(top, bottom * 0.5, places=6)
         clockwise = list(reversed(mg.polygon_points("ngon", sides=6)))
-        self.assertGreater(volume(*mg.prism(clockwise, 0.2)), 0)               # ulta diya to bhi bahar-mukhi
+        self.assertGreater(volume(*mg.prism(clockwise, 0.2)), 0)
 
     def test_bad_input(self):
         with self.assertRaises(ValueError):
@@ -161,7 +161,7 @@ class TestSdf(unittest.TestCase):
         self.assertAlmostEqual(bottom, 0.4, delta=0.04)
         self.assertAlmostEqual(top, 0.1, delta=0.04)
         rounded, _ = mg.sdf_mesh([{"type": "round_cone", "radius": 0.4, "height": 0.6, "center": [0, 0, 0.3]}], 40)
-        self.assertLess(min(p[2] for p in rounded), 0.1)                           # round_cone neeche gol uthal
+        self.assertLess(min(p[2] for p in rounded), 0.1)
 
     def test_boolean_operations(self):
         a = {"type": "box", "size": [1, 1, 1]}
@@ -198,7 +198,6 @@ class TestSdf(unittest.TestCase):
         self.assertTrue(explicit)
 
     def test_no_duplicate_vertices_or_degenerate_faces_so_quadriflow_accepts_it(self):
-        """Real log: 'QuadriFlow: The mesh needs to be manifold' on the snowman (5 zero-area faces, 3 coincident vertices)."""
         shapes = [{"type": "sphere", "radius": 0.5, "center": [0, 0, 0.5]},
                   {"type": "sphere", "radius": 0.35, "center": [0, 0, 1.2], "op": "smooth_union", "k": 0.1}]
         for name, shp, res in (("snowman", shapes, 24), ("sphere", [{"type": "sphere", "radius": 0.5}], 30),
@@ -217,14 +216,14 @@ class TestSdf(unittest.TestCase):
             self.assertTrue(watertight(f), name)
 
     def test_weld_vertices_merges_and_drops_degenerates(self):
-        v = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 0)]                # 4 aur 0 ek hi jagah
+        v = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 0)]
         f = [[0, 1, 2, 3], [4, 1, 2], [4, 0, 1]]
         wv, wf = mg.weld_vertices(v, f, 1e-6)
         self.assertEqual(len(wv), 4)
-        self.assertEqual(len(wf), 2)                                                # [4,0,1] zero-area => hata
+        self.assertEqual(len(wf), 2)
         self.assertTrue(all(len(set(face)) == len(face) >= 3 for face in wf))
         same_v, same_f = mg.weld_vertices(v[:4], [[0, 1, 2, 3]], 1e-6)
-        self.assertEqual((len(same_v), same_f), (4, [[0, 1, 2, 3]]))                # kuch na ho to jaisa tha waisa
+        self.assertEqual((len(same_v), same_f), (4, [[0, 1, 2, 3]]))
 
     def test_bad_input(self):
         with self.assertRaises(ValueError):

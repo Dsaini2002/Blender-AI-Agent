@@ -1,10 +1,4 @@
-"""
-Concrete Tool Validators — Step 4.2
-======================================
-Hinglish: Validator (base class) ke concrete implementations. Har
-ek check karta hai ki tool ne jo promise kiya, scene mein actually
-wahi hua ya nahi — bridge se dobara padh kar (scene = source of truth).
-"""
+"""Concrete Tool Validators"""
 
 from typing import Any, Dict
 
@@ -12,7 +6,6 @@ from .validator import Validator, ValidationResult
 
 
 class ObjectExistsValidator(Validator):
-    """object.create ke baad: object sach mein exist karta hai aur type sahi hai?"""
 
     def validate(self, expected: Dict[str, Any], bridge) -> ValidationResult:
         name = expected.get("name")
@@ -31,20 +24,18 @@ class ObjectExistsValidator(Validator):
 
 
 class ObjectDeletedValidator(Validator):
-    """object.delete ke baad: object sach mein scene se gaya?"""
 
     def validate(self, expected: Dict[str, Any], bridge) -> ValidationResult:
-        name = expected.get("name")
-
-        obj = bridge.get_object(name)
-        if obj is not None:
-            return ValidationResult.failed(f"Object '{name}' still exists in scene.")
-
+        names = [expected.get("name")] if expected.get("name") else []
+        extra = expected.get("names")
+        names += [extra] if isinstance(extra, str) else list(extra or [])
+        for name in names:
+            if bridge.get_object(name) is not None:
+                return ValidationResult.failed(f"Object '{name}' still exists in scene.")
         return ValidationResult.ok()
 
 
 class TransformValidator(Validator):
-    """object.transform ke baad: location/rotation/scale actually update hui?"""
 
     def validate(self, expected: Dict[str, Any], bridge) -> ValidationResult:
         name = expected.get("name")
@@ -71,7 +62,6 @@ class TransformValidator(Validator):
 
 
 class MaterialAssignedValidator(Validator):
-    """material.assign ke baad: object pe sach mein wahi material laga hai?"""
 
     def validate(self, expected: Dict[str, Any], bridge) -> ValidationResult:
         object_name = expected.get("object_name")

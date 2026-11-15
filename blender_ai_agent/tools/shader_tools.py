@@ -1,12 +1,4 @@
-"""
-material.nodes / material.recipe / render.setup
-================================================
-Hinglish: Agent ko "pro" shading aur finishing ki taakat dene wale tools.
-
-  material.recipe   tayyar nuskhe: fire_flame, ember, smoke_volume, charred_wood, wood_grain, rough_stone, dirt_ground, glass, car_paint, ...
-  material.nodes    koi bhi node graph (Noise -> ColorRamp -> Mix...) JSON spec se, jaanch ke saath
-  render.setup      AgX/Filmic, exposure, depth of field, engine, samples, world colour, resolution — ek call mein ('cinematic', 'product', ...)
-"""
+"""material.nodes / material.recipe / render.setup"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -51,7 +43,7 @@ class MaterialNodesInput:
         self.settings = to_plain(self.settings) or {}
         self.assign_to = _names(self.assign_to, "MaterialNodesInput.assign_to")
         self.replace = _coerce_bool(self.replace, "MaterialNodesInput.replace")
-        self.spec = parse_material_spec(self.nodes, self.links, self.settings)          # galat spec yahin pakdi jaati hai
+        self.spec = parse_material_spec(self.nodes, self.links, self.settings)
 
 
 class MaterialNodesTool(Tool):
@@ -88,19 +80,21 @@ class MaterialNodesTool(Tool):
 # =============================================================================
 @dataclass
 class MaterialRecipeInput:
-    name: str
     recipe: str
+    name: str = ""
     params: Optional[Dict[str, Any]] = None
     assign_to: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if not self.name or not isinstance(self.name, str):
-            raise ValueError("MaterialRecipeInput.name must be a non-empty string")
         self.params = to_plain(self.params) or {}
         if not isinstance(self.params, dict):
             raise ValueError("MaterialRecipeInput.params must be an object like {\"color\": [1, 0.2, 0, 1]}")
         self.assign_to = _names(self.assign_to, "MaterialRecipeInput.assign_to")
-        self.spec = build_recipe(self.recipe, self.params)                         # unknown recipe / galat params yahin
+        if not self.name or not isinstance(self.name, str):
+            # a forgotten name is not an error: name it after the recipe (and the first object it goes on)
+            recipe = str(self.recipe or "material").strip().lower().replace(" ", "_")
+            self.name = f"{self.assign_to[0]}_{recipe}" if self.assign_to else f"{recipe}_material"
+        self.spec = build_recipe(self.recipe, self.params)
 
 
 class MaterialRecipeTool(Tool):
@@ -200,7 +194,9 @@ class RenderSetupTool(Tool):
         "Finishing pass that makes any scene look professional: colour management (AgX = natural highlights, no blown-out colours), exposure, depth of "
         "field on the camera, render engine, samples, resolution, world colour/strength. preset: cinematic (AgX + contrast + DOF) | product (bright "
         "studio world) | outdoor | night (dark blue world, for fires/lanterns) | clean. Any field overrides the preset. Call it LAST, after the camera "
-        "(camera.create) and lights exist; focus_object = the object the camera should keep sharp. Reports what changed and what this Blender could not do."
+        "(camera.create) and lights exist; focus_object = the object the camera should keep sharp. Keep the EEVEE engine: set "
+        "engine='cycles' ONLY when the user asks for Cycles / path tracing - Cycles makes the viewport and every render "
+        "slow enough to freeze Blender. Reports what changed and what this Blender could not do."
     )
     permission = Permission.SAFE_WRITE
     input_model = RenderSetupInput

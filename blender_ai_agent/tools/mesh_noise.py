@@ -1,9 +1,4 @@
-"""
-mesh_noise.py
-==============
-Hinglish: Mesh engine ka noise. Pure Python, bpy nahi. Value-noise (3D) + fBm (kai layer ka noise) + ridged.
-Same (x, y, z, seed) hamesha same value deta hai (deterministic), isliye same seed = same result.
-"""
+"""mesh_noise.py"""
 
 import math
 
@@ -52,10 +47,8 @@ def fbm(x: float, y: float, z: float, octaves: int = 3, lacunarity: float = 2.0,
 
 
 def ridged(x: float, y: float, z: float, octaves: int = 3, seed: int = 0) -> float:
-    """Ridged noise in [-1, 1] — pahaad / daraar jaisi tez kinaaron wali lakeerein."""
     return 1.0 - 2.0 * abs(fbm(x, y, z, octaves=octaves, seed=seed))
 
 
 def rand01(index: int, seed: int = 0) -> float:
-    """Index ke liye ek pakka random number [0, 1)."""
     return _hash(int(index), 7, 13, int(seed))

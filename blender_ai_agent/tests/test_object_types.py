@@ -9,9 +9,6 @@ from .fakes import FakeBridge
 
 
 class TestCreateOpsMapping(unittest.TestCase):
-    """Hinglish: har naya object_type/primitive combo ke liye ek REAL
-    (module, op_name) exist karna chahiye, aur wo Blender ka asli operator
-    hona chahiye - typo se koi bhi bhoot-operator define na ho jaye."""
 
     def test_all_categories_present(self):
         expected = {"MESH", "CURVE", "SURFACE", "METABALL", "EMPTY",
@@ -31,11 +28,11 @@ class TestCreateOpsMapping(unittest.TestCase):
         self.assertEqual(BlenderBridge._CREATE_OPS["EMPTY"]["ARROWS"], ("object", "empty_add"))
 
     def test_unsupported_object_type_raises_with_helpful_list(self):
-        bridge = BlenderBridge.__new__(BlenderBridge)  # bpy.* call avoid karne ke liye init skip
+        bridge = BlenderBridge.__new__(BlenderBridge)
         with self.assertRaises(ValueError) as ctx:
             bridge.create_object(name="x", object_type="FORCE_FIELD", primitive="WIND")
         self.assertIn("Unsupported object_type", str(ctx.exception))
-        self.assertIn("LIGHT", str(ctx.exception))   # supported list dikhni chahiye
+        self.assertIn("LIGHT", str(ctx.exception))
 
     def test_unsupported_primitive_for_valid_type_raises(self):
         bridge = BlenderBridge.__new__(BlenderBridge)
@@ -53,17 +50,13 @@ class TestCreateObjectInputNewTypes(unittest.TestCase):
         self.assertEqual(inp.primitive, "SUN")
 
     def test_mesh_primitive_in_object_type_field_still_normalizes(self):
-        # regression: chhota model kabhi-kabhi primitive naam object_type
-        # mein bhej deta hai - purana defensive-fix behaviour bacha rehna chahiye.
         inp = CreateObjectInput(name="Cube1", object_type="ICOSPHERE")
         self.assertEqual(inp.object_type, "MESH")
         self.assertEqual(inp.primitive, "ICOSPHERE")
 
     def test_ambiguous_circle_is_not_auto_normalized(self):
-        # CIRCLE MESH/CURVE/SURFACE/EMPTY sabmein hai - isliye ye
-        # _KNOWN_PRIMITIVES mein nahi, normalize nahi hota (ambiguous).
         inp = CreateObjectInput(name="C1", object_type="CIRCLE")
-        self.assertEqual(inp.object_type, "CIRCLE")   # unchanged, tool.execute() aage reject karega
+        self.assertEqual(inp.object_type, "CIRCLE")
 
 
 class TestCreateObjectToolPassesNewFields(unittest.TestCase):
@@ -77,8 +70,6 @@ class TestCreateObjectToolPassesNewFields(unittest.TestCase):
 
 
 class TestConfigureModifierInputAcceptsJSONString(unittest.TestCase):
-    """Hinglish: Gemini kabhi properties ko JSON string bhejta hai
-    (dict ki jagah) - crash nahi, parse ho jaana chahiye."""
 
     def test_dict_properties_pass_through_unchanged(self):
         inp = ConfigureModifierInput(
@@ -171,9 +162,6 @@ class TestImportModelToolWithFakeBridge(unittest.TestCase):
 
 
 class TestConfigureModifierResolvesObjectReferences(unittest.TestCase):
-    """Hinglish: BOOLEAN/MIRROR modifiers ke object-reference properties
-    (jaise 'object', 'mirror_object') string naam se resolve hone chahiye,
-    plain setattr(modifier, 'object', 'some_name') se crash nahi honi chahiye."""
 
     def test_object_ref_properties_constant_covers_known_cases(self):
         self.assertIn("object", _BB._OBJECT_REF_PROPERTIES)
@@ -181,8 +169,6 @@ class TestConfigureModifierResolvesObjectReferences(unittest.TestCase):
 
     def test_missing_referenced_object_raises_clear_error(self):
         bridge = _BB.__new__(_BB)
-        # bpy.data.objects.get sirf real Blender mein kaam karega — is test
-        # ka goal sirf ye hai ki method exist kare aur signature sahi ho.
         self.assertTrue(callable(bridge.configure_modifier))
 
 

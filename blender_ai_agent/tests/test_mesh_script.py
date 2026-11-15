@@ -22,7 +22,7 @@ class TestSandboxAllowsMath(unittest.TestCase):
     def test_inputs_are_available_and_normalised(self):
         verts, faces = bottle()
         result = run_script(info_for((verts, faces)), "dx = w * 0.0 + u * 0.0 + v * 0.0 + (size - 3.0) + (cz - 1.5) + (n - 280) + (maxz - 3.0) + (minz)")
-        self.assertEqual(result.moves, {})                                 # sab 0 => kuch nahi hila
+        self.assertEqual(result.moves, {})
 
     def test_reassigning_x_y_z_moves_the_vertex(self):
         verts, faces = cube()

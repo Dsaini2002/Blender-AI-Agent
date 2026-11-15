@@ -1,18 +1,3 @@
-"""
-self_correct.py  —  "Likho -> Render -> Dekho -> Sudharo" loop
-================================================================
-Hinglish: Jab hamare ready tools se koi cheez (kaar, jaanwar, machine...) seedhi na bane, to Gemini khud ek BUILD SCRIPT likhta hai
-(build_script.py ka safe Python subset, jo sirf hamare tools bulata hai). Phir:
-
-    1. script chalao                         (galti ho to uski line + wajah Gemini ko wapas)
-    2. kai angle se render (front/right/top/3-4)
-    3. Gemini VISION tasveerein dekhkar score + kaunsi cheez galat hai (JSON) batata hai
-    4. Gemini poori script dobara likhta hai (critique ke saath) -> purana hata kar chalao
-    5. score target tak ya iterations khatam: sabse achha version scene mein rehta hai
-
-Loop ko hamara code chalata hai (LLM ko nahi), isliye max iterations, rollback, sabse achha version chunna, aur quota khatam hone
-par "ab tak ka best" dena bharosemand hai. GEMINI_API_KEY wahi jo addon pehle se use karta hai.
-"""
 
 import base64
 import json
@@ -23,6 +8,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from .. import net as _net
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -42,8 +28,8 @@ class BuilderError(Exception):
 class BuilderConfig:
     api_key: str = ""
     api_base: str = "https://generativelanguage.googleapis.com/v1beta"
-    model: str = ""                         # khaali = key ke liye sabse naya "flash" khud dhoondho
-    fallback_model: str = ""                # khaali = uska "flash-lite" / pichhla flash
+    model: str = ""
+    fallback_model: str = ""
     max_iterations: int = 3
     target_score: float = 8.0
     views: Tuple[str, ...] = ("front", "right", "top", "three_quarter")
@@ -52,6 +38,8 @@ class BuilderConfig:
     max_script_retries: int = 2
     max_seconds: float = 1200.0
     output_dir: str = ""
+    vision_provider: str = ""          # "gemini" / "claude"; empty = the AI picked in the panel, else Gemini
+    vision_model: str = ""
 
 
 def builder_config_path() -> str:
@@ -60,7 +48,6 @@ def builder_config_path() -> str:
 
 
 def load_builder_config(path: Optional[str] = None) -> BuilderConfig:
-    """~/BlenderAIAgent/builder.json (optional) + env (GEMINI_API_KEY / GOOGLE_API_KEY). Kabhi exception nahi."""
     cfg = BuilderConfig()
     try:
         with open(path or builder_config_path(), "r", encoding="utf-8") as handle:
@@ -73,8 +60,26 @@ def load_builder_config(path: Optional[str] = None) -> BuilderConfig:
                     setattr(cfg, key, value)
     except (OSError, ValueError):
         pass
-    cfg.api_key = cfg.api_key or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
-    cfg.model = cfg.model or os.environ.get("BUILDER_MODEL", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+    claude_key = os.environ.get("ANTHROPIC_API_KEY", "") or os.environ.get("CLAUDE_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    # The AI that LOOKS at the renders is the AI picked in the panel (same provider, same model) - never another one.
+    active = os.environ.get("BLENDER_AI_ACTIVE_PROVIDER", "")
+    active_model = os.environ.get("BLENDER_AI_ACTIVE_MODEL", "")
+    wanted = (cfg.vision_provider or os.environ.get("BLENDER_AI_VISION", "") or
+              (active if active in ("gemini", "claude", "openai") else "")).strip().lower()
+    if not wanted:
+        wanted = "gemini" if gemini_key else "claude" if claude_key else "openai" if openai_key else "gemini"
+    cfg.vision_provider = wanted if wanted in ("gemini", "claude", "openai") else "gemini"
+    if cfg.vision_provider == "claude":
+        cfg.api_key = claude_key or cfg.api_key
+        cfg.vision_model = cfg.vision_model or (active_model if active == "claude" else "")
+    elif cfg.vision_provider == "openai":
+        cfg.api_key = openai_key or cfg.api_key
+        cfg.vision_model = cfg.vision_model or (active_model if active == "openai" else "")
+    cfg.api_key = cfg.api_key or gemini_key
+    cfg.model = cfg.model or os.environ.get("BUILDER_MODEL", "") or \
+        (active_model if cfg.vision_provider == "gemini" and active == "gemini" else "")
     try:
         cfg.max_iterations = max(1, min(6, int(cfg.max_iterations)))
         cfg.target_score = max(1.0, min(10.0, float(cfg.target_score)))
@@ -85,16 +90,26 @@ def load_builder_config(path: Optional[str] = None) -> BuilderConfig:
     return cfg
 
 
+def make_vision_client(cfg: "BuilderConfig"):
+    """The client that looks at renders: Claude when the config says so, otherwise Gemini."""
+    if getattr(cfg, "vision_provider", "") == "claude":
+        from ..providers.claude_provider import ClaudeVisionClient
+        return ClaudeVisionClient(cfg)
+    if getattr(cfg, "vision_provider", "") == "openai":
+        from ..providers.openai_provider import OpenAIVisionClient
+        return OpenAIVisionClient(cfg)
+    return GeminiClient(cfg)
+
+
 # =============================================================================
 # Gemini REST client (text + images)
 # =============================================================================
 class GeminiClient:
-    """generateContent: system + parts (text / inline images). Quota (429) / overload (503) par agle model par jaata hai."""
 
     def __init__(self, cfg: BuilderConfig, clock: Callable[[], float] = time.monotonic):
         self.cfg = cfg
         self._models: Optional[List[str]] = None
-        self._cooldown: Dict[str, float] = {}           # model -> kab tak chhodna hai (429 / 5xx ke baad)
+        self._cooldown: Dict[str, float] = {}
         self._clock = clock
 
     def _available(self) -> List[str]:
@@ -107,15 +122,20 @@ class GeminiClient:
         request = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET",
                                          headers={"x-goog-api-key": self.cfg.api_key, "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=self.cfg.request_timeout_s) as response:
+            with _net.urlopen(request, timeout=self.cfg.request_timeout_s) as response:
                 body = response.read()
                 status = response.status
         except urllib.error.HTTPError as exc:
             body, status = exc.read(), exc.code
         except urllib.error.URLError as exc:
-            raise BuilderError(f"cannot reach Gemini: {exc.reason}", f"Gemini se connect nahi ho paya ({exc.reason}).") from exc
+            raise BuilderError(f"cannot reach Gemini: {exc.reason}", f"Could not connect to Gemini ({exc.reason}).") from exc
         except (socket.timeout, TimeoutError) as exc:
-            raise BuilderError("timeout", f"Gemini ne {self.cfg.request_timeout_s:.0f}s mein jawab nahi diya.") from exc
+            raise BuilderError("timeout", f"Gemini did not answer within {self.cfg.request_timeout_s:.0f}s.") from exc
+        except OSError as exc:            # e.g. a broken certificate file set by another add-on
+            raise BuilderError(f"connection error: {type(exc).__name__}: {exc}",
+                               "Could not open a secure connection to Gemini "
+                               f"({type(exc).__name__}: {exc}). Another add-on may have changed Python's SSL "
+                               "settings; restart Blender and try again.") from exc
         try:
             parsed = json.loads(body.decode("utf-8", "replace"))
         except ValueError:
@@ -132,7 +152,7 @@ class GeminiClient:
         status, data = self._request(f"{self.cfg.api_base.rstrip('/')}/models?pageSize=200")
         if status != 200:
             message = (data.get("error") or {}).get("message", f"HTTP {status}")
-            raise BuilderError(f"list models failed: {message}", f"Gemini ke models ki list nahi mili ({status}): {message}")
+            raise BuilderError(f"list models failed: {message}", f"Could not list Gemini models ({status}): {message}")
         flash = []
         for model in data.get("models", []):
             name = str(model.get("name", "")).replace("models/", "")
@@ -144,7 +164,7 @@ class GeminiClient:
             match = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
             flash.append((float(match.group(1)) if match else 0.0, "lite" in name, "preview" in name, name))
         if not flash and not configured:
-            raise BuilderError("no flash model", "Is key par koi Gemini flash model nahi mila; builder.json mein 'model' likho.")
+            raise BuilderError("no flash model", "No Gemini flash model is available for this key; set 'model' in builder.json.")
         full = sorted((f for f in flash if not f[1]), key=lambda f: (-f[0], f[2], len(f[3])))
         lite = sorted((f for f in flash if f[1]), key=lambda f: (-f[0], f[2], len(f[3])))
         primary = self.cfg.model.replace("models/", "") or (full[0][3] if full else lite[0][3])
@@ -156,7 +176,7 @@ class GeminiClient:
     def generate(self, system: str, parts: List[Dict[str, Any]], json_mode: bool = False, temperature: float = 0.4,
                  max_output_tokens: int = 16384) -> str:
         if not self.cfg.api_key:
-            raise BuilderError("no key", "Gemini API key nahi mili (env GEMINI_API_KEY, wahi jo addon use karta hai).")
+            raise BuilderError("no key", "Gemini API key not found (set the GEMINI_API_KEY environment variable).")
         errors: List[str] = []
         for model in self._available():
             for with_json in ((True, False) if json_mode else (False,)):
@@ -165,28 +185,42 @@ class GeminiClient:
                     config["responseMimeType"] = "application/json"
                 payload = {"systemInstruction": {"parts": [{"text": system}]}, "contents": [{"role": "user", "parts": parts}],
                            "generationConfig": config}
-                status, data = self._request(f"{self.cfg.api_base.rstrip('/')}/models/{model}:generateContent", payload)
+                try:
+                    status, data = self._request(f"{self.cfg.api_base.rstrip('/')}/models/{model}:generateContent", payload)
+                except BuilderError as exc:
+                    if str(exc) != "timeout":
+                        raise
+                    errors.append(f"{model}: timeout")           # slow model: try the fallback model instead
+                    self._cooldown[model] = self._clock() + 60.0
+                    break
                 message = (data.get("error") or {}).get("message", "")
                 if status == 200:
                     block = (data.get("promptFeedback") or {}).get("blockReason")
                     if block:
-                        raise BuilderError(f"blocked {block}", f"Gemini ne request block kar di ({block}). Prompt badal ke dekho.")
+                        raise BuilderError(f"blocked {block}", f"Gemini blocked the request ({block}). Try rephrasing the prompt.")
                     text = "".join(part.get("text", "") for cand in data.get("candidates", [])[:1]
                                    for part in (cand.get("content") or {}).get("parts", []))
+                    try:
+                        from ..observability import token_meter
+                        meta = data.get("usageMetadata") or {}
+                        token_meter.record("gemini", model, meta.get("promptTokenCount", 0),
+                                           meta.get("candidatesTokenCount", 0))
+                    except Exception:  # noqa: BLE001
+                        pass
                     if text.strip():
                         return text
                     errors.append(f"{model}: empty reply")
                     break
                 if status == 400 and with_json and "mime" in message.lower():
-                    continue                                     # JSON mode nahi chalta: bina uske
+                    continue
                 if status in (429, 500, 503):
                     errors.append(f"{model}: {status}")
                     self._cooldown[model] = self._clock() + (120.0 if status == 429 else 20.0)
-                    break                                         # agle (fallback) model par; kuch der us par wapas nahi aate
-                raise BuilderError(f"gemini {status}: {message}", f"Gemini ne error di ({status}): {message[:200]}")
+                    break
+                raise BuilderError(f"gemini {status}: {message}", f"Gemini returned an error ({status}): {message[:200]}")
         quota = any(" 429" in e for e in errors)
-        raise BuilderError("; ".join(errors), "Gemini ka quota khatam ho gaya (429). Kuch der baad dobara try karo." if quota
-                           else "Gemini ne jawab nahi diya: " + "; ".join(errors))
+        raise BuilderError("; ".join(errors), "Gemini quota is used up (429). Try again in a little while." if quota
+                           else "Gemini did not answer: " + "; ".join(errors))
 
 
 def image_part(path: str) -> Dict[str, Any]:
@@ -195,7 +229,7 @@ def image_part(path: str) -> Dict[str, Any]:
     mime = "image/png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg" if raw[:3] == b"\xff\xd8\xff" else "image/webp" \
         if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP" else None
     if mime is None:
-        raise BuilderError("bad image", f"Ye image PNG/JPG/WEBP nahi lagti: {path}")
+        raise BuilderError("bad image", f"This image is not a PNG/JPG/WEBP file: {path}")
     return {"inline_data": {"mime_type": mime, "data": base64.b64encode(raw).decode("ascii")}}
 
 
@@ -364,10 +398,10 @@ class Critique:
     problems: List[Dict[str, str]] = field(default_factory=list)
     keep: List[str] = field(default_factory=list)
     raw_ok: bool = True
+    missing: List[str] = field(default_factory=list)
 
 
-def parse_critique(text: str) -> Critique:
-    """Gemini ka JSON (kabhi fence ya extra text ke saath) -> Critique. Samajh na aaye to raw_ok False aur score 0."""
+def parse_critique(text: str, measured: Optional[List[str]] = None) -> Critique:
     candidate = (text or "").strip()
     match = re.search(r"\{.*\}", candidate, re.DOTALL)
     if match:
@@ -383,33 +417,111 @@ def parse_critique(text: str) -> Critique:
     except (TypeError, ValueError):
         score = 0.0
     problems = []
-    for item in (data.get("problems") or [])[:6]:
+    for item in (data.get("problems") or [])[:10]:
         if isinstance(item, dict):
             problems.append({"severity": str(item.get("severity", "medium")).lower(), "where": str(item.get("where", ""))[:80],
                              "issue": str(item.get("issue", ""))[:300], "fix": str(item.get("fix", ""))[:300]})
         elif isinstance(item, str):
             problems.append({"severity": "medium", "where": "", "issue": item[:300], "fix": ""})
     keep = [str(k)[:120] for k in (data.get("keep") or [])[:8]]
-    return Critique(score, bool(data.get("matches_prompt", score >= 7)), str(data.get("summary", ""))[:300], problems, keep)
+    missing = []
+    for item in (data.get("checklist") or [])[:40]:
+        if not isinstance(item, dict) or not str(item.get("item", "")).strip():
+            continue
+        name = str(item["item"])[:120]
+        try:
+            wanted, seen = int(item.get("wanted", 0) or 0), int(item.get("seen", -1) if item.get("seen") is not None else -1)
+        except (TypeError, ValueError):
+            wanted, seen = 0, -1
+        if item.get("present") is False:
+            missing.append(name)
+        elif wanted and 0 <= seen < wanted:
+            missing.append(f"{name} ({seen} of {wanted} seen - {wanted - seen} more needed)")
+        if item.get("where_ok") is False and len(problems) < 14:
+            problems.append({"severity": "high", "where": name[:80],
+                             "issue": str(item.get("issue") or "not in the right place")[:300],
+                             "fix": "move / resize it to where the request and the checklist say"})
+    for entry in (data.get("measured") or [])[:30]:
+        if not isinstance(entry, dict) or entry.get("real") is not True or not measured:
+            continue
+        try:
+            line = measured[int(entry.get("line", 0)) - 1]
+        except (TypeError, ValueError, IndexError):
+            continue
+        if len(problems) < 16:
+            problems.append({"severity": "high", "where": "measured", "issue": line[:300],
+                             "fix": "the measured fix in the line"})
+    return Critique(score, bool(data.get("matches_prompt", score >= 7)), str(data.get("summary", ""))[:300], problems, keep,
+                    missing=missing)
 
 
+STRICT_REVIEW = """
+PRECISION REVIEW - the user wants a 10/10 result, so be exact:
+1. Add "checklist": [{"item": "<element>", "present": true|false}] listing EVERY element the request names AND every element
+   this kind of scene or object obviously needs (a house: walls, roof, door, windows, steps...; a stadium: pitch, markings,
+   goals, stands, lights...). Each missing element is also a HIGH problem.
+2. Inspect precisely and report every flaw, small ones too (severity low), up to 10:
+   - doors and windows sit flush IN their wall (not floating in front, not sunk inside), door bottoms exactly on the floor,
+     real heights (door about 2.1 m, window sill about 0.9 m), centred / aligned on the facade where they should be;
+   - repeated items (columns, legs, lamps, posts, seats, stands, windows) have EQUAL heights and sizes, even spacing, and line up;
+   - symmetry where the real thing is symmetric; nothing tilted, floating, sunk or cutting through something by mistake;
+   - no two objects inside each other: a shelf through a wardrobe, a desk inside a bookshelf, furniture through a wall -
+     name both objects in "where";
+   - real-world proportions between objects (a person 1.75 m, a chair seat 0.45 m); fitting materials; lighting shows everything.
+3. Score 10 ONLY when the checklist is complete and you find no flaw at all; any remaining flaw, even low, means at most 9."""
 
-def critique_renders(generate: Callable[..., str], request: str, view_paths: List[str], reference: Optional[str] = None) -> Critique:
-    """Renders ko Gemini vision se jaancho. `generate(system, parts, **kw) -> text` (GeminiClient.generate ya uska wrapper)."""
-    order = (["the REFERENCE image the user supplied"] if reference else []) + \
-        [f"render view '{os.path.basename(p).rsplit('_', 1)[-1][:-4]}'" for p in view_paths]
+
+DEEP_REVIEW = """
+DEEP CHECK - you get the scene from EVERY side (front, back, left, right, top, a low eye-level view, two
+three-quarter views), ZOOMED OUT (wide: the whole scene and its surroundings) and ZOOMED IN (one close-up per
+checklist thing). Use all of them; a thing hidden in one view is visible in another.
+1. "checklist": answer EVERY line of the CHECKLIST: {"item": "...", "wanted": <count>, "seen": <count you can see>,
+   "present": true|false, "where_ok": true|false, "issue": "<what is wrong with it or its place, '' if nothing>"}.
+   seen < wanted means copies are missing. where_ok = it is where the user said (or a sensible place when the user
+   said nothing), resting on its support, not inside something, not floating, the right size.
+2. "measured": the agent MEASURED the scene; for each MEASURED line say if the images confirm it:
+   [{"line": <number>, "real": true|false}]. A measured problem you can see is a HIGH problem.
+3. Score 10 only when every checklist line is present with the full count and where_ok, and nothing measured is real."""
+
+
+def critique_renders(generate: Callable[..., str], request: str, view_paths: List[str], reference: Optional[str] = None,
+                     strict: bool = False, note: str = "", checklist: str = "", measured: Optional[List[str]] = None,
+                     labels: Optional[Dict[str, str]] = None) -> Critique:
+    labels = labels or {}
+
+    def label(path: str) -> str:
+        if path in labels:
+            return labels[path]
+        base = os.path.basename(path)
+        if "_cutaway_" in base:
+            return "cutaway render (outer walls hidden on purpose)"
+        view = base[:-4].split("_", 1)[-1] if "_" in base else base[:-4]
+        return f"render view '{view}'"
+    order = (["the REFERENCE image the user supplied"] if reference else []) + [label(p) for p in view_paths]
     parts: List[Dict[str, Any]] = [{"text": f"REQUEST: {request}"}]
+    if note:
+        parts.append({"text": f"NOTE: {note}"})
+    if checklist:
+        parts.append({"text": "CHECKLIST (what the request asks for - check every line):\n" + checklist})
+    if measured:
+        parts.append({"text": "MEASURED by the agent in the scene (confirm or reject each with the images):\n" +
+                              "\n".join(f"{i}. {line}" for i, line in enumerate(measured, 1))})
     if reference:
         parts.append({"text": "Reference image:"})
         parts.append(image_part(reference))
     for path in view_paths:
-        parts.append({"text": os.path.basename(path)})
+        parts.append({"text": label(path)})
         parts.append(image_part(path))
-    text = generate(CRITIC_SYSTEM.format(order=", ".join(order)), parts, json_mode=True, temperature=0.2, max_output_tokens=2048)
-    return parse_critique(text)
+    system = CRITIC_SYSTEM.format(order=", ".join(order))
+    if strict:
+        system = system.replace("At most 6 problems", "At most 10 problems") + STRICT_REVIEW
+    if checklist or measured:
+        system += DEEP_REVIEW
+    text = generate(system, parts, json_mode=True, temperature=0.2,
+                    max_output_tokens=6144 if (checklist or measured) else 4096 if strict else 2048)
+    return parse_critique(text, measured)
 
 
-# build.iterate ne kab review kiya (time.time()): post-run check dobara vision na chalaye
 REVIEW_LOG: List[float] = []
 
 # =============================================================================
@@ -489,7 +601,6 @@ class SelfCorrectingBuilder:
 
     @staticmethod
     def _clearance(request: str) -> float:
-        """Kitni jagah chhodni hai: gaadi / imaarat badi, jaanwar beech ki, baaki chhoti."""
         try:
             from ..tools.capability import assess_request
             category = assess_request(request).hard_category
@@ -510,7 +621,6 @@ class SelfCorrectingBuilder:
         return [0.0, 0.0, 0.0]
 
     def _collisions(self, created: List[str], existing: List[Dict[str, Any]]) -> List[str]:
-        """Physical fact-check: naya object purane objects mein ghus raha hai? (render mein baaki objects chhupe hote hain, isliye vision ye nahi dekhta)"""
         measure = getattr(self.bridge, "measure_objects", None)
         if measure is None or not created:
             return []
@@ -527,7 +637,7 @@ class SelfCorrectingBuilder:
                     continue
                 size = [box["max"][k] - box["min"][k] for k in range(3)]
                 if max(size) > 30 or (size[2] < 0.05 and size[0] * size[1] > 25):
-                    continue                                            # zameen / bada plane: overlap gina nahi jaata
+                    continue
                 overlap = [min(new_box["max"][k], box["max"][k]) - max(new_box["min"][k], box["min"][k]) for k in range(3)]
                 if all(o > 0.08 for o in overlap):
                     found.append(f"it overlaps the existing object '{obj.get('name')}' (by {overlap[0]:.1f} x {overlap[1]:.1f} x {overlap[2]:.1f} m): "
@@ -557,7 +667,6 @@ class SelfCorrectingBuilder:
         return WRITER_SYSTEM.replace("{tools}", describe_tools(self.registry, self.tool_names)).replace("{recipes}", recipes)
 
     def _checked_script(self, system: str, parts: List[Dict[str, Any]], text: str) -> str:
-        """Script nikaalo + jaancho; syntax / sandbox galti par Gemini se max_script_retries baar theek karwao."""
         script = extract_script(text)
         for attempt in range(self.cfg.max_script_retries + 1):
             try:
@@ -644,7 +753,7 @@ class SelfCorrectingBuilder:
             if folder:
                 self._save(folder, f"iteration_{number}.py", script)
 
-            if current_names:                                       # pichhla version hata do
+            if current_names:
                 self._rollback(current_names)
                 current_names = []
             self.status(f"iteration {number}/{self.cfg.max_iterations}: building")
@@ -662,7 +771,7 @@ class SelfCorrectingBuilder:
                 report.iterations.append(iteration)
                 continue
 
-            iteration.run_ok = True                                  # script chali aur objects bane
+            iteration.run_ok = True
             try:
                 self.status(f"iteration {number}/{self.cfg.max_iterations}: rendering views")
                 views_dir = os.path.join(folder, f"iteration_{number}") if folder else None
@@ -674,9 +783,9 @@ class SelfCorrectingBuilder:
                 report.iterations.append(iteration)
                 report.stopped_reason = exc.user_message
                 if best is None:
-                    best = iteration                                  # review nahi hua par kuch bana to hai
+                    best = iteration
                 break
-            except Exception as exc:  # noqa: BLE001 — render / image galti
+            except Exception as exc:  # noqa: BLE001 
                 iteration.summary = f"not reviewed: {type(exc).__name__}: {exc}"
                 report.iterations.append(iteration)
                 report.stopped_reason = iteration.summary
@@ -690,7 +799,7 @@ class SelfCorrectingBuilder:
             for text in collisions:
                 iteration.problems.insert(0, {"severity": "high", "where": "placement", "issue": text, "fix": "change the anchor position"})
             if collisions:
-                iteration.score = max(0.0, min(iteration.score, self.cfg.target_score - 0.5) - 1.0)      # overlap = kabhi "target tak pahunch gaya" nahi
+                iteration.score = max(0.0, min(iteration.score, self.cfg.target_score - 0.5) - 1.0)
             report.iterations.append(iteration)
             history.append(f"{iteration.score:g}")
             if best is None or iteration.score >= best.score:
@@ -704,7 +813,6 @@ class SelfCorrectingBuilder:
             if not critique.raw_ok:
                 feedback = "The reviewer's answer was unreadable; re-check proportions, missing parts and attachment yourself and improve."
 
-        # ---- sabse achha version scene mein rakho
         if best is not None and best.script and (not report.iterations or report.iterations[-1] is not best):
             self.status(f"restoring the best version (iteration {best.number})")
             if current_names:

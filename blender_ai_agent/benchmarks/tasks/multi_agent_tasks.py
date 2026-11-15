@@ -1,9 +1,4 @@
-"""
-Multi-Agent benchmark tasks — Step 11.21
-=============================================
-Hinglish: Single-agent vs multi-agent architecture ko SAME task pe
-compare karne ke liye ek common task definition.
-"""
+"""Multi-Agent benchmark tasks"""
 
 from ..models import BenchmarkTask, Difficulty
 from ..validation_rules import MaterialRule, ObjectExistsRule

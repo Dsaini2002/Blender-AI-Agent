@@ -5,7 +5,6 @@ from blender_ai_agent.tools.mesh_damage import DamagePlan, REGIONS, STYLES, plan
 
 
 def bottle(segments=16, rings=12, radius=0.4, height=3.0):
-    """Ek simple 'bottle': khada cylinder, Z upar."""
     verts = [(radius * math.cos(2 * math.pi * s / segments), radius * math.sin(2 * math.pi * s / segments),
               height * r / (rings - 1)) for r in range(rings) for s in range(segments)]
     faces = [[r * segments + s, r * segments + (s + 1) % segments, (r + 1) * segments + (s + 1) % segments,
@@ -24,7 +23,7 @@ class TestRegions(unittest.TestCase):
         region = region_vertex_indices(verts, "top", 0.25)
         self.assertTrue(region)
         self.assertTrue(all(verts[i][2] >= 3.0 * 0.75 - 1e-9 for i in region))
-        self.assertEqual(max(region.values()), 1.0)                       # sabse upar wale vertices depth 1.0
+        self.assertEqual(max(region.values()), 1.0)
         top_ring = [i for i, v in enumerate(verts) if v[2] == 3.0]
         self.assertTrue(all(region[i] == 1.0 for i in top_ring))
 
@@ -52,22 +51,21 @@ class TestRegions(unittest.TestCase):
 
 
 class TestBroken(unittest.TestCase):
-    """'The top of the bottle should look a little broken.'"""
 
     def test_top_rim_is_lowered_unevenly_and_nothing_below_the_region_moves(self):
         verts, faces = bottle()
         plan = plan_damage(verts, faces, "top", 0.2, 0.15, "broken", seed=3)
         region = region_vertex_indices(verts, "top", 0.2)
-        self.assertEqual(set(plan.moves), set(region))                    # sirf region ke vertices hile
+        self.assertEqual(set(plan.moves), set(region))
         after = apply(verts, plan)
         for i in range(len(verts)):
             if i not in region:
-                self.assertEqual(after[i], verts[i])                      # baaki bottle bilkul wahi
+                self.assertEqual(after[i], verts[i])
         top_ring = [i for i, v in enumerate(verts) if v[2] == 3.0]
         drops = [verts[i][2] - after[i][2] for i in top_ring]
-        self.assertTrue(all(d >= -1e-9 for d in drops))                   # kinara neeche gaya, upar nahi
-        self.assertGreater(max(drops) - min(drops), 0.05)                 # aur barabar nahi — kaante / notches
-        self.assertLess(max(a[2] for a in after), 3.0)                    # ab sabse upar ka point pehle se neecha
+        self.assertTrue(all(d >= -1e-9 for d in drops))
+        self.assertGreater(max(drops) - min(drops), 0.05)
+        self.assertLess(max(a[2] for a in after), 3.0)
 
     def test_some_faces_are_removed_only_inside_the_region(self):
         verts, faces = bottle(segments=24, rings=20)
@@ -76,7 +74,7 @@ class TestBroken(unittest.TestCase):
         self.assertGreater(len(plan.remove_faces), 0)
         for face_index in plan.remove_faces:
             self.assertTrue(all(v in region for v in faces[face_index]))
-        self.assertLess(len(plan.remove_faces), len(faces) * 0.2)         # poori bottle gayab nahi
+        self.assertLess(len(plan.remove_faces), len(faces) * 0.2)
 
     def test_strength_scales_the_damage(self):
         verts, faces = bottle()
@@ -100,7 +98,7 @@ class TestBroken(unittest.TestCase):
         plan = plan_damage(verts, faces, "bottom", 0.2, 0.2, "broken", seed=1)
         after = apply(verts, plan)
         bottom_ring = [i for i, v in enumerate(verts) if v[2] == 0.0]
-        self.assertTrue(all(after[i][2] >= verts[i][2] - 1e-9 for i in bottom_ring))      # neeche wala kinara upar utha
+        self.assertTrue(all(after[i][2] >= verts[i][2] - 1e-9 for i in bottom_ring))
         self.assertGreater(max(after[i][2] - verts[i][2] for i in bottom_ring), 0.01)
 
 
@@ -119,7 +117,7 @@ class TestOtherStyles(unittest.TestCase):
         radius = lambda v: math.hypot(v[0], v[1])
         moved = [i for i in plan.moves if radius(after[i]) < radius(verts[i]) - 1e-9]
         self.assertTrue(moved)
-        self.assertTrue(all(radius(after[i]) <= radius(verts[i]) + 1e-9 for i in plan.moves))   # kuch bahar nahi gaya
+        self.assertTrue(all(radius(after[i]) <= radius(verts[i]) + 1e-9 for i in plan.moves))
         self.assertEqual(plan.remove_faces, [])
 
     def test_dent_on_the_whole_object(self):
@@ -133,7 +131,7 @@ class TestOtherStyles(unittest.TestCase):
         region = region_vertex_indices(verts, "top", 0.2)
         self.assertEqual(set(plan.moves), set(region))
         biggest = max(math.dist(verts[i], plan.moves[i]) for i in plan.moves)
-        self.assertLess(biggest, 0.1 * 3.0 * 0.3 * 1.8 + 1e-9)            # strength*size*0.3 * sqrt(3) se zyada nahi
+        self.assertLess(biggest, 0.1 * 3.0 * 0.3 * 1.8 + 1e-9)
 
     def test_every_style_and_region_combination_runs(self):
         verts, faces = bottle(segments=8, rings=6)

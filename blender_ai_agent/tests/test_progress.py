@@ -51,9 +51,9 @@ class TestHistory(unittest.TestCase):
         self.assertEqual(history.estimate("skill"), 3.0)
         for seconds in (10, 30, 12):
             history.record("agent", seconds)
-        self.assertEqual(history.estimate("agent"), 12)                      # median, outliers se nahi hilta
+        self.assertEqual(history.estimate("agent"), 12)
         history.record("agent", 8)
-        self.assertEqual(history.estimate("agent"), 11)                      # even count: beech ka average
+        self.assertEqual(history.estimate("agent"), 11)
 
     def test_nonsense_timings_are_ignored(self):
         history = ProgressHistory(None)
@@ -128,8 +128,8 @@ class TestSteppedProgress(unittest.TestCase):
             percents.append(snap.percent)
             etas.append(snap.eta)
         self.assertEqual(percents, sorted(percents))
-        self.assertTrue(all(0 <= p <= 99 for p in percents[:-1]))            # beech mein kabhi 100 nahi
-        self.assertEqual(percents[-1], 100.0)                                 # aakhri step khatam hote hi 100
+        self.assertTrue(all(0 <= p <= 99 for p in percents[:-1]))
+        self.assertEqual(percents[-1], 100.0)
         self.assertGreater(etas[0], etas[-1])
         tracker.finish(ok=True)
         done = tracker.snapshot()
@@ -141,7 +141,7 @@ class TestSteppedProgress(unittest.TestCase):
         self.run_step(tracker, clock, 0, 4)                                  # but took 4s
         self.run_step(tracker, clock, 1, 4)
         snap = tracker.snapshot()
-        self.assertLess(snap.eta, 3 * 20.0 * 0.5)                           # 3 baaki: ~12s, 60s nahi
+        self.assertLess(snap.eta, 3 * 20.0 * 0.5)
         self.assertGreaterEqual(snap.eta, 3 * 4.0 * 0.9)
 
     def test_eta_adapts_when_steps_are_slower_than_expected(self):
@@ -182,7 +182,7 @@ class TestSteppedProgress(unittest.TestCase):
         tracker.begin("t", steps=["a", "b"], kinds=["agent", "agent"])
         self.run_step(tracker, clock, 0, 5)
         self.run_step(tracker, clock, 1, 5)
-        snap = tracker.snapshot()                                            # tracker.finish() se pehle
+        snap = tracker.snapshot()
         self.assertEqual((snap.state, snap.percent, snap.eta), ("running", 100.0, 0.0))
 
     def test_skip_remaining_marks_pending_and_running(self):
@@ -242,7 +242,7 @@ class TestSingleTaskProgress(unittest.TestCase):
         self.assertIsNone(snap.percent)
         self.assertEqual(tracker.status_line(), "Working 0:07  (usually ~0:12)")
         tracker.finish(ok=True)
-        clock.advance(100)                                                   # finish ke baad elapsed freeze rehta hai
+        clock.advance(100)
         self.assertEqual(tracker.snapshot().elapsed, 7)
         self.assertEqual(tracker.status_line(), "Done in 0:07")
 

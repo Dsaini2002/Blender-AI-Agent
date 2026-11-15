@@ -1,10 +1,4 @@
-"""
-Guardrails — Step 11.20
-============================
-Hinglish: Autonomy ke saath hard safety limits — agar exceed ho
-jaayein, Agent turant RUKTA hai, state save karta hai, aur user ko
-explain karta hai. Ye "infinite autonomous loop" se bachata hai.
-"""
+"""Guardrails"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -35,11 +29,6 @@ class GuardrailLimits:
 
 
 class GuardrailMonitor:
-    """
-    Hinglish: Runtime ke dauran counters track karta hai. Har
-    "check_*" method violation par GuardrailViolation return karta
-    hai (ya None agar sab theek hai) — Agent isse check karke rukega.
-    """
 
     def __init__(self, limits: GuardrailLimits = None):
         self._limits = limits or GuardrailLimits()
@@ -57,7 +46,6 @@ class GuardrailMonitor:
         self.scene_changes += 1
 
     def check(self, elapsed_seconds: float = 0.0) -> Optional[GuardrailViolation]:
-        """Hinglish: Sab limits check karta hai, PEHLI violation jo mile wahi return."""
         if self.steps_taken > self._limits.max_steps:
             return GuardrailViolation.MAX_STEPS_EXCEEDED
         if self.retries_taken > self._limits.max_retries:

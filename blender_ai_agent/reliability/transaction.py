@@ -1,22 +1,10 @@
-"""
-TransactionManager — Step 4.4
-=================================
-Hinglish: Snapshot aur Rollback ko ek clean lifecycle mein jodta hai:
-
-    BEGIN   -> snapshot le lo (safety net)
-    COMMIT  -> sab theek raha, snapshot discard (changes rakho)
-    ROLLBACK -> kuch galat hua, snapshot se scene restore karo
-
-Ek waqt mein sirf EK active transaction ho sakta hai — nested
-transactions abhi support nahi karte (zaroorat nahi hai abhi).
-"""
+"""TransactionManager"""
 
 from .rollback import RollbackManager
 from .snapshot import SnapshotManager
 
 
 class TransactionError(Exception):
-    """Galat lifecycle usage par (jaise commit bina begin ke)."""
     pass
 
 
@@ -40,7 +28,7 @@ class TransactionManager:
     def commit(self) -> None:
         if not self.is_active:
             raise TransactionError("No active transaction to commit.")
-        self._active_snapshot = None  # snapshot discard — changes permanent rehte hain
+        self._active_snapshot = None
 
     def rollback(self):
         if not self.is_active:

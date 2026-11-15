@@ -1,16 +1,3 @@
-"""
-GeminiVisionProvider — REAL vision provider (pehle sirf Mock tha)
-======================================================================
-Hinglish: VisionObserveTool render leta hai, phir yahan image ko
-Gemini ki multimodal API ko bhejte hain. Model ko strict JSON output
-karne ko bolte hain (description, objects_detected, issues,
-confidence) taaki VisualObservation mein reliably map ho sake.
-
-Ye wahi "render -> dekho -> khud sudharo" loop enable karta hai jo
-GPT-6 Astra ke Blender demo mein dikhaya gaya - hamara agent bhi ab
-apna khud ka render "dekh" sakta hai, sirf coordinates ke hisaab se
-guess nahi karta.
-"""
 
 import base64
 import json
@@ -22,9 +9,13 @@ from ..models import VisualObservation
 class GeminiVisionProvider(VisionProvider):
 
     def __init__(self, api_key: str, model_name: str = "gemini-3.6-flash"):
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        self._genai = genai
+        self._api_key = api_key
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            self._genai = genai
+        except ImportError:                 # not in Blender's Python: use the REST client instead
+            self._genai = None
         self._model_name = model_name
 
     def analyze(self, image, context):
@@ -42,6 +33,14 @@ class GeminiVisionProvider(VisionProvider):
             '"confidence": 0.0-1.0}. If nothing looks wrong, "issues" should be an '
             "empty list and confidence should be high (close to 1.0)."
         )
+
+        if self._genai is None:
+            from ...agent import self_correct as sc
+            client = sc.GeminiClient(sc.BuilderConfig(api_key=self._api_key, model=self._model_name))
+            text = client.generate(prompt, [{"inline_data": {"mime_type": "image/png",
+                                                             "data": base64.b64encode(image_bytes).decode("ascii")}}],
+                                   json_mode=True, temperature=0.2, max_output_tokens=2048)
+            return self._parse_response(text)
 
         model = self._genai.GenerativeModel(model_name=self._model_name)
         response = model.generate_content([
@@ -63,9 +62,6 @@ class GeminiVisionProvider(VisionProvider):
         try:
             data = json.loads(cleaned)
         except (ValueError, TypeError):
-            # Hinglish: Model kabhi-kabhi JSON ke aas-paas extra text de deta hai -
-            # raw text ko hi description bana kar, low-confidence observation
-            # return karte hain, crash nahi karte.
             return VisualObservation(
                 description=cleaned[:500] if cleaned else "No response from vision model.",
                 confidence=0.3,

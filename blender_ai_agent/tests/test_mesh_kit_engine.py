@@ -14,7 +14,6 @@ def bottle(segments=20, rings=14, radius=0.4, height=3.0):
 
 
 def cube(n=1):
-    """Band cube (6 quads) — topology tests ke liye."""
     v = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
     f = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
     return v, f
@@ -85,7 +84,7 @@ class TestSelection(unittest.TestCase):
         sphere = self.weights({"sphere": {"center": [0.5, 0.5, 0.5], "radius": 0.2}})
         mid = [i for i, v in enumerate(self.verts) if abs(v[2] - 1.5) < 0.2]
         self.assertTrue(any(sphere[i] > 0 for i in mid))
-        self.assertEqual(sphere[0], 0.0)                                   # neeche ka kinara bahar
+        self.assertEqual(sphere[0], 0.0)
         box = self.weights({"box": {"min": [0, 0, 0.8], "max": [1, 1, 1]}})
         self.assertTrue(all(self.verts[i][2] >= 0.8 * 3.0 - 1e-9 for i, w in enumerate(box) if w > 0))
         slab = self.weights({"slab": {"axis": "z", "from": 0.4, "to": 0.6}})
@@ -135,7 +134,7 @@ class TestVertexOperators(unittest.TestCase):
         out = apply(self.verts, run({"op": "twist", "angle": 180, "centered": False}, self.verts, self.faces))
         bottom = [i for i, v in enumerate(self.verts) if v[2] == 0.0]
         top = [i for i, v in enumerate(self.verts) if v[2] == 3.0]
-        self.assertTrue(all(abs(out[i][0] - self.verts[i][0]) < 1e-9 for i in bottom))      # t=0: koi ghumav nahi
+        self.assertTrue(all(abs(out[i][0] - self.verts[i][0]) < 1e-9 for i in bottom))
         self.assertTrue(all(abs(out[i][0] + self.verts[i][0]) < 1e-6 for i in top))          # t=1: 180 degree
         self.assertTrue(all(abs(out[i][2] - self.verts[i][2]) < 1e-9 for i in range(len(out))))
         self.assertTrue(all(abs(math.hypot(out[i][0], out[i][1]) - math.hypot(*self.verts[i][:2])) < 1e-9 for i in range(len(out))))
@@ -144,8 +143,8 @@ class TestVertexOperators(unittest.TestCase):
         out = apply(self.verts, run({"op": "bend", "angle": 60, "axis": "z", "direction": "x"}, self.verts, self.faces))
         top_before = max(v[2] for v in self.verts)
         top_after = max(v[2] for v in out)
-        self.assertLess(top_after, top_before)                                                # jhukne se top neeche
-        self.assertGreater(max(v[0] for v in out), max(v[0] for v in self.verts) + 0.3)       # aur bagal mein gaya
+        self.assertLess(top_after, top_before)
+        self.assertGreater(max(v[0] for v in out), max(v[0] for v in self.verts) + 0.3)
         self.assertTrue(finite(out))
 
     def test_taper_stretch_bulge_inflate(self):
@@ -260,7 +259,6 @@ class TestTopology(unittest.TestCase):
         verts, faces = bottle(16, 10)
         result = me.apply_topology({"op": "subdivide", "levels": 1, "select": "top"}, verts, faces)
         self.assertGreater(len(result.faces), len(faces))
-        # bottle khula hai (upar/neeche ring); koi bhi khula kinara sirf unhi do ring par ho => beech mein T-junction / daraar nahi
         open_edges = [e for e, c in edges_manifold(result.faces).items() if c == 1]
         self.assertTrue(open_edges)
         for a, b in open_edges:
@@ -274,7 +272,7 @@ class TestTopology(unittest.TestCase):
         self.assertAlmostEqual(max(v[2] for v in result.vertices), 0.5)
         self.assertAlmostEqual(min(v[2] for v in result.vertices), 0.0)
         self.assertTrue(all(c == 2 for c in edges_manifold(result.faces).values()))
-        self.assertIn(-1, result.face_source)                                               # cap = naya face
+        self.assertIn(-1, result.face_source)
         above = me.apply_topology({"op": "cut", "axis": "z", "at": 0.25, "keep": "above"}, verts, faces)
         self.assertAlmostEqual(min(v[2] for v in above.vertices), 0.25)
 
@@ -299,9 +297,9 @@ class TestTopology(unittest.TestCase):
         verts, faces = bottle(20, 14)
         result = me.apply_topology({"op": "shatter", "pieces": 8, "spread": 0.3, "seed": 2}, verts, faces)
         self.assertEqual(len(result.faces), len(faces))
-        self.assertGreater(len(result.vertices), len(verts))                                  # vertices duplicate hue
+        self.assertGreater(len(result.vertices), len(verts))
         manifold = edges_manifold(result.faces)
-        self.assertTrue(any(c == 1 for c in manifold.values()))                               # ab kinaare khule hain
+        self.assertTrue(any(c == 1 for c in manifold.values()))
         self.assertTrue(finite(result.vertices))
 
 

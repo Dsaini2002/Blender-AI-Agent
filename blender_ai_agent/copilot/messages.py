@@ -1,10 +1,4 @@
-"""
-Message model — Step 6.5
-============================
-Hinglish: Copilot chat ke messages — jaisa agent/models.py mein
-Message tha (LLM ke liye), ye UI-facing hai — zyada roles, aur
-metadata field jisme tool naam, error code, etc. attach ho sakta hai.
-"""
+"""Message model"""
 
 from dataclasses import dataclass, field
 from enum import Enum

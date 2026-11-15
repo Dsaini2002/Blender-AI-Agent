@@ -1,29 +1,17 @@
-"""
-RepairableExecutionLoop — Step 4.8
-======================================
-Hinglish: Phase 3 ka ExecutionLoop sirf execute karta tha. Ye class
-poora reliability cycle add karti hai:
-
-    Execute -> Observe (Validate) -> Success?
-                                        YES -> Continue
-                                        NO  -> Diagnose -> Repair -> Retry
-                                               (max_retries tak)
-                                               Still failed -> Rollback
-
-Composition: TransactionManager + Validator-per-tool + RecoveryManager
-+ RetryPolicy + Logger — sab yahan jud rahe hain, koi bhi giant class
-nahi ban rahi (SRP maintained hai, har piece apna kaam karta hai).
-"""
+"""RepairableExecutionLoop"""
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import json
+import re
+import time
 import uuid
 
 from .execution_loop import AgentRunResult, ExecutionRecord
 from .models import Message, ModelRequest, ToolCall
 from .prompts import SYSTEM_PROMPT
 from .state import ConversationState
+from .tool_selection import select_tools
 from ..reliability.errors import classify_tool_error, classify_validation_error
 from ..reliability.friendly_errors import friendly_error_message, is_quota_error
 from ..reliability.retry import RetryPolicy
@@ -41,22 +29,10 @@ class RepairRunResult(AgentRunResult):
 
 class RepairableExecutionLoop:
 
-    # Tools jinhe "already done" check se skip nahi karna (state-dependent hain,
-    # ya jaanbujhkar dobara chalna chahiye — vision.observe ka result har baar
-    # alag ho sakta hai chahe args same ho, isliye dedup ISE bhi skip NAHI karega).
     _NEVER_DEDUPE = {"scene.inspect", "object.delete", "vision.observe"}
-    # Ek request mein max kitni baar render.preview chalega (prompt ignore ho
-    # jaye tab bhi code enforce karta hai).
     MAX_RENDERS_PER_RUN = 1
-    # Lagatar itne turns mein koi naya kaam nahi hua -> loop rok do.
     MAX_IDLE_TURNS = 2
 
-    # Hinglish: dormant optimization/visual_optimizer.py (VisualQualityOptimizer)
-    # ka wahi "render -> score -> improve, CONTROLLED iterations, never
-    # infinite" design yahan LIVE agent loop mein apply kiya hai - alag
-    # class instantiate karne ki jagah seedha yahan, kyunki humara
-    # "render_fn"/"improve_fn" asal mein Gemini/Claude/Astra model ke apne
-    # tool-calls hain, koi standalone synchronous callable nahi.
     MAX_VISION_ITERATIONS = 3
 
     def __init__(
@@ -70,16 +46,9 @@ class RepairableExecutionLoop:
         logger,
         validators: Optional[Dict[str, object]] = None,
         retry_policy: Optional[RetryPolicy] = None,
-        # Hinglish: 100 bahut zyada tha — Blender ka poora UI is loop ke
-        # dauraan FREEZE rehta hai (synchronous execution, koi
-        # background thread nahi), isliye worst-case bahut lambi
-        # (kai minute) freeze ban sakti thi. 25 zyada tar complex
-        # objects (table, chair, poora furniture set) ke liye kaafi
-        # hai, bina bahut lambi freeze ke risk ke.
         max_iterations: int = 25,
-        # Kitne failed tool calls ke baad poora task rollback ho. 1 = purana
-        # behaviour (pehli failure par rollback). Real app 3 use karta hai.
         max_failed_steps: int = 1,
+        guardrails=None,
     ):
         self._model_provider = model_provider
         self._tool_caller = tool_caller
@@ -92,6 +61,23 @@ class RepairableExecutionLoop:
         self._retry_policy = retry_policy or RetryPolicy()
         self._max_iterations = max_iterations
         self._max_failed_steps = max(1, max_failed_steps)
+        # Hard safety limits (GuardrailLimits): total tool calls, repair retries, runtime, objects added/removed.
+        # None = no extra limits (only max_iterations), which is what the unit tests use.
+        self._guardrails = guardrails
+        # Set by the controller: a no-argument callable that returns True when the user pressed Stop.
+        self.should_stop = None
+        # Set by the controller per request: remembered preferences / project facts, and (team mode) the
+        # specialist role text plus a filter that limits which tools this role may use.
+        self.memory_context = ""
+        # The controller turns this off when the automatic check (post_verify) reviews renders after the run anyway:
+        # asking the model to call vision.observe as well spent the same quota twice.
+        self.vision_nudges = True
+        self.role_hint = ""
+        self.tool_filter = None
+        self.ai_tools = None               # the tools the AI planner picked for this request (None = keyword rules)
+        self.expects_action = False        # the request asks to build / change something: a text-only answer is sent back
+
+    MAX_ACT_NUDGES = 2
 
     def run(self, user_message: str, state: Optional[ConversationState] = None) -> RepairRunResult:
         task_id = str(uuid.uuid4())[:8]
@@ -102,10 +88,14 @@ class RepairableExecutionLoop:
 
         transaction = TransactionManager(self._bridge)
         transaction.begin()
+        monitor = self._new_monitor()
+        started = time.monotonic()
+        start_objects = self._object_count()
 
         executed_steps: List[ExecutionRecord] = []
         repairs_attempted = 0
-        done_keys = set()          # successful (tool, args) - dobara execute nahi honge
+        done_keys = {}                     # call -> scene revision when it ran
+        self._revision = 0                 # +1 after every successful call that changes the scene
         render_count = 0
         idle_turns = 0
         skipped_tool_calls = 0
@@ -113,11 +103,15 @@ class RepairableExecutionLoop:
         vision_checked = False
         vision_iterations = 0
         last_vision_issues = None  # None = not yet checked; [] = checked, clean; [...] = issues to fix
-        # Hinglish: vision.observe ka API quota khatam ho jaye to wo OPTIONAL check hai —
-        # poora build rollback nahi hona chahiye. Is flag ke baad vision dobara try nahi hota.
         vision_unavailable_reason = None
+        act_nudges = 0
 
         for turn in range(1, self._max_iterations + 1):
+            if self._stop_requested():
+                return self._stopped_result(transaction, task_id, executed_steps, turn - 1, repairs_attempted)
+            violation = self._check_guardrails(monitor, started, start_objects)
+            if violation:
+                return self._guardrail_result(violation, transaction, task_id, executed_steps, turn - 1, repairs_attempted)
             request = self._build_request(state, executed_steps)
             self._logger.info("model.request", task_id=task_id, turn=turn)
             response = self._model_provider.generate(request)
@@ -127,21 +121,9 @@ class RepairableExecutionLoop:
                 self._logger.info("model.plan", task_id=task_id, turn=turn, planned_tools=planned)
 
             if not response.has_tool_calls:
-                # Hinglish: Agar vision.observe registered hai (real vision
-                # provider available hai) aur ek bade multi-part build ke
-                # baad model ne bina apna render "dekhe" hi "done" bol diya,
-                # to ek hi baar nudge karte hain - prompt ki request par
-                # sirf bharosa nahi karte, code khud enforce karta hai.
-                # (Isse infinite loop na ho, sirf ONE nudge per run.)
-                # Hinglish: Ye ab EK-BAAR ka nudge nahi hai - VisualQualityOptimizer
-                # jaisa CONTROLLED multi-round loop hai: render -> vision.observe ->
-                # agar issues hain -> fix karo -> vision.observe phir se -> jab tak
-                # issues khatam na ho ya MAX_VISION_ITERATIONS (3) na aa jaye.
-                # Isi model (Gemini/Claude/Astra) se code bhi likhwate hain aur
-                # usi se apna render dekh kar sudharne ko bolte hain - koi alag
-                # "reviewer" nahi, wahi agent loop, bas bounded-repeat.
                 needs_vision_attention = (
-                    render_count > 0
+                    self.vision_nudges
+                    and render_count > 0
                     and len(executed_steps) > 4
                     and self._tool_caller.has_tool("vision.observe")
                     and vision_iterations < self.MAX_VISION_ITERATIONS
@@ -169,6 +151,26 @@ class RepairableExecutionLoop:
                     state.add_user_message(nudge_text)
                     continue
 
+                # A fix round or a team step that ends without doing anything is the model giving up early
+                # ("I've completed it"): send it back to work, twice at most.
+                must_act = user_message.startswith("AUTOMATIC CHECK") or bool(self.role_hint) or self.expects_action
+                done_any = any(getattr(getattr(r, "tool_result", None), "success", False) for r in executed_steps)
+                if must_act and not done_any and act_nudges < self.MAX_ACT_NUDGES:
+                    act_nudges += 1
+                    self._logger.info("task.act_nudge", task_id=task_id, nudge=act_nudges)
+                    try:
+                        from ..observability import token_meter
+                        token_meter.mark_waste("the AI answered with text only - no tool call")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    state.add_assistant_message(response.content or "(no tool call)")
+                    state.add_user_message(
+                        "You have not called any tool yet, so nothing in the scene changed. Reply with tool calls "
+                        "now: start with the first item of the list (missing elements first - build them with the "
+                        "specialised tools: mesh.building, library.place, mesh.field_markings, curve.create ...), "
+                        "then the next ones. Do not answer with text only.")
+                    continue
+
                 self._logger.info("task.complete", task_id=task_id)
                 state.add_assistant_message(response.content)
                 transaction.commit()
@@ -183,8 +185,14 @@ class RepairableExecutionLoop:
 
             plan = self._planner.create_plan(response)
             new_work_this_turn = 0
+            # The same mistake repeated across one batch (e.g. 6x library.place with a model
+            # name that does not exist) counts as ONE failure: the model gets to correct it
+            # next turn instead of the whole step being undone.
+            turn_failures = set()
 
             for step in plan.steps:
+                if self._stop_requested():
+                    return self._stopped_result(transaction, task_id, executed_steps, turn, repairs_attempted)
                 if vision_unavailable_reason and step.tool_call.tool_name == "vision.observe":
                     skipped_tool_calls += 1
                     state.add_tool_result_message(
@@ -195,8 +203,6 @@ class RepairableExecutionLoop:
 
                 skip_note = self._skip_reason(step.tool_call, done_keys, render_count)
                 if skip_note is not None:
-                    # Hinglish: Model wahi kaam dobara maang raha hai (ya extra
-                    # render). Execute mat karo - bas model ko batao.
                     skipped_tool_calls += 1
                     state.add_tool_result_message(
                         step.tool_call, ToolResult.ok({"skipped": True, "note": skip_note})
@@ -206,8 +212,14 @@ class RepairableExecutionLoop:
 
                 record, repaired_count = self._execute_with_repair(step.tool_call, task_id)
                 new_work_this_turn += 1
+                if monitor is not None:
+                    monitor.record_step()
+                    for _ in range(repaired_count):
+                        monitor.record_retry()
                 if record.tool_result.success:
-                    done_keys.add(self._call_key(record.tool_call))
+                    if not self._reads_scene(record.tool_call.tool_name):
+                        self._revision += 1
+                    done_keys[self._call_key(record.tool_call)] = self._revision
                     if record.tool_call.tool_name == "render.preview":
                         render_count += 1
                     if record.tool_call.tool_name == "vision.observe":
@@ -227,8 +239,8 @@ class RepairableExecutionLoop:
                 )
                 if vision_quota_hit:
                     vision_unavailable_reason = record.tool_result.error
-                    vision_iterations = self.MAX_VISION_ITERATIONS  # nudge band: dobara vision ke liye mat dhakelo
-                    new_work_this_turn -= 1  # ye "naya kaam" nahi tha
+                    vision_iterations = self.MAX_VISION_ITERATIONS
+                    new_work_this_turn -= 1
                     self._logger.error("task.vision_quota_exhausted", task_id=task_id)
                     state.add_tool_result_message(record.tool_call, ToolResult.fail(
                         "vision.observe is unavailable right now (API quota exhausted). Do NOT call it again. "
@@ -236,21 +248,19 @@ class RepairableExecutionLoop:
                     ))
                     continue
                 if not state_result.success:
-                    # Hinglish: Model ko error ke saath scene ke ASLI object
-                    # naam bhi do, taaki wo stale naam (jo user ne manually
-                    # delete kar diya) chhodkar khud sudhar sake.
                     state_result = ToolResult.fail(f"{state_result.error}{self._existing_objects_hint()}")
                 state.add_tool_result_message(record.tool_call, state_result)
 
-                if not record.tool_result.success:
+                if not record.tool_result.success and not str(record.tool_result.error or "").startswith("Not run:"):
+                    signature = (record.tool_call.tool_name, self._error_signature(record.tool_result.error))
+                    if signature in turn_failures:
+                        self._logger.error("task.step_failed_repeat", task_id=task_id, tool=record.tool_call.tool_name)
+                        continue
+                    turn_failures.add(signature)
                     failed_steps += 1
                     if failed_steps < self._max_failed_steps:
-                        # Hinglish: Ek galat call (jaise purana naam) poore task ko
-                        # rollback na kare - model ko error dikhao, wo agle turn
-                        # mein khud correct karega.
                         self._logger.error("task.step_failed_continuing", task_id=task_id, tool=record.tool_call.tool_name)
                         continue
-                    # Hinglish: Limit tak fail hua — transaction rollback karo, ruk jao.
                     self._logger.error("task.failed_after_repair", task_id=task_id, tool=record.tool_call.tool_name)
                     transaction.rollback()
                     return RepairRunResult(
@@ -265,8 +275,12 @@ class RepairableExecutionLoop:
                         repairs_attempted=repairs_attempted,
                     )
 
-            # ---- Progress check: agar poora turn sirf repeats/skips tha ----
             if new_work_this_turn == 0:
+                try:
+                    from ..observability import token_meter
+                    token_meter.mark_waste("a step where the AI only repeated calls that were already done")
+                except Exception:  # noqa: BLE001
+                    pass
                 idle_turns += 1
                 if idle_turns >= self.MAX_IDLE_TURNS:
                     transaction.commit()
@@ -286,19 +300,6 @@ class RepairableExecutionLoop:
             else:
                 idle_turns = 0
 
-        # Hinglish: PEHLE yahan transaction.rollback() hota tha —
-        # matlab agar 25 turns mein kaam poora nahi hua, ab tak ka
-        # SAARA build hua kaam (jo objects/materials successfully
-        # ban chuke the) delete ho jaata tha, aur user ko sirf ek
-        # khaali "reply_text=None" milta tha — koi wajah nahi batayi
-        # jaati thi. Ye do tarah se nuksaan-dayak tha: (1) partial
-        # progress waste ho jaata tha, (2) user ko pata hi nahi
-        # chalta tha kyun fail hua.
-        #
-        # Ab hum COMMIT karte hain (jo bhi successfully ban chuka hai,
-        # wo scene mein rehta hai) aur ek clear, actionable message
-        # dete hain — user ko pata chalta hai kitna kaam hua, aur wo
-        # "continue" bol ke aage badha sakta hai.
         transaction.commit()
         self._logger.error("task.max_iterations", task_id=task_id)
         completed_tools = [record.tool_call.tool_name for record in executed_steps if record.tool_result.success]
@@ -323,19 +324,84 @@ class RepairableExecutionLoop:
     # Private helpers
     # ---------------------------------------------------------
     @staticmethod
+    def _error_signature(error) -> str:
+        """Error text with quoted names and numbers removed, so 'No model named X' == 'No model named Y'."""
+        import re
+        text = str(error or "")
+        text = re.sub(r"'[^']*'|\"[^\"]*\"", "'?'", text)
+        text = re.sub(r"-?\d+(\.\d+)?", "#", text)
+        return text[:160]
+
+    def _new_monitor(self):
+        if self._guardrails is None:
+            return None
+        from ..autonomy.guardrails import GuardrailMonitor
+        return GuardrailMonitor(self._guardrails)
+
+    def _object_count(self) -> int:
+        try:
+            return len(self._bridge.get_objects())
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def _check_guardrails(self, monitor, started: float, start_objects: int):
+        if monitor is None:
+            return None
+        monitor.scene_changes = abs(self._object_count() - start_objects)
+        return monitor.check(elapsed_seconds=time.monotonic() - started)
+
+    _GUARDRAIL_TEXT = {
+        "MAX_STEPS_EXCEEDED": "it used the maximum number of tool calls for one request",
+        "MAX_RETRIES_EXCEEDED": "too many repair retries were needed",
+        "MAX_RUNTIME_EXCEEDED": "it ran longer than the time limit",
+        "MAX_SCENE_CHANGES_EXCEEDED": "it added or removed more objects than the safety limit allows",
+    }
+
+    def _guardrail_result(self, violation, transaction, task_id, executed_steps, turns, repairs_attempted):
+        """A safety limit was hit: keep what was built (commit), stop, and say why."""
+        transaction.commit()
+        self._logger.error("task.guardrail", task_id=task_id, violation=violation.value)
+        reason = self._GUARDRAIL_TEXT.get(violation.value, violation.value)
+        done = sum(1 for record in executed_steps if record.tool_result.success)
+        return RepairRunResult(
+            reply_text=(f"Stopped by a safety limit: {reason}. {done} step(s) were completed and kept. "
+                        "Send 'continue' to carry on."),
+            executed_steps=executed_steps,
+            turns_used=turns,
+            stopped_reason="guardrail",
+            task_id=task_id,
+            repairs_attempted=repairs_attempted,
+        )
+
+    def _stop_requested(self) -> bool:
+        check = self.should_stop
+        try:
+            return bool(check()) if check is not None else False
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _stopped_result(self, transaction, task_id, executed_steps, turns, repairs_attempted):
+        """User pressed Stop: keep what was built so far (commit) and end the run right away."""
+        transaction.commit()
+        self._logger.info("task.stopped", task_id=task_id)
+        done = sum(1 for record in executed_steps if record.tool_result.success)
+        return RepairRunResult(
+            reply_text=f"Stopped by user after {done} completed step(s). The scene keeps what was built.",
+            executed_steps=executed_steps,
+            turns_used=turns,
+            stopped_reason="cancelled",
+            task_id=task_id,
+            repairs_attempted=repairs_attempted,
+        )
+
+    @staticmethod
     def _with_quota_note(reply: Optional[str], vision_unavailable_reason: Optional[str]) -> Optional[str]:
-        """Hinglish: Vision quota khatam hua tha to reply ke ant mein ek saaf note jodo."""
         if not vision_unavailable_reason:
             return reply
         note = friendly_error_message(vision_unavailable_reason, tool_name="vision.observe")
         return f"{reply or 'Done.'}\n\n{note}"
 
     def _execute_with_repair(self, tool_call: ToolCall, task_id: str):
-        """
-        Hinglish: Ek tool call execute karta hai, validate karta hai,
-        aur fail hone par RetryPolicy ke hisaab se repair+retry karta hai.
-        Return: (final ExecutionRecord, kitni baar repair try hua)
-        """
         repairs_done = 0
         current_call = tool_call
 
@@ -358,10 +424,14 @@ class RepairableExecutionLoop:
                         result=validated_result.data,
                     )
                     return ExecutionRecord(tool_call=current_call, tool_result=validated_result), repairs_done
-                result = validated_result  # validation fail hui, isse aage error-handling common hai
+                result = validated_result
+
+            if str(result.error or "").startswith("Not run:"):          # refused by the user: never retry
+                return ExecutionRecord(tool_call=current_call, tool_result=result), repairs_done
 
             error = classify_tool_error(result.error)
-            self._logger.error("tool.failed", task_id=task_id, tool=current_call.tool_name, code=error.code.value)
+            self._logger.error("tool.failed", task_id=task_id, tool=current_call.tool_name, code=error.code.value,
+                               message=str(result.error or "")[:400], arguments=current_call.arguments)
 
             if not error.recoverable or not self._retry_policy.should_retry(repairs_done):
                 return ExecutionRecord(tool_call=current_call, tool_result=result), repairs_done
@@ -375,19 +445,9 @@ class RepairableExecutionLoop:
             repairs_done += 1
 
     def _validate(self, tool_call: ToolCall, result: ToolResult) -> ToolResult:
-        """
-        Hinglish: Agar is tool ke liye validator registered hai, scene
-        ko cross-check karo. Ye SCENE-level validators (Phase 4) ke
-        liye hai — jaise ObjectExistsValidator.
-
-        Vision-based validation (VisualValidator, Step 5.12) alag hai
-        aur explicitly `validate_visually()` se call hoti hai, kyunki
-        wo image capture (expensive) maangti hai — har tool call ke
-        baad automatically nahi chalani chahiye.
-        """
         validator = self._validators.get(tool_call.tool_name)
         if validator is None:
-            return result  # koi validator nahi — ToolResult.success pe hi bharosa karte hain
+            return result
 
         validation = validator.validate(tool_call.arguments, self._bridge)
         if validation.valid:
@@ -397,36 +457,37 @@ class RepairableExecutionLoop:
         return ToolResult.fail(error.message)
 
     def validate_visually(self, filepath: str, expected: dict, vision_context_manager, visual_validator):
-        """
-        Hinglish: Step 5.12 — Vision + Reliability integration.
-
-        Agent explicitly ye call karega jab visual confirmation
-        chahiye ho (jaise "make sure it's nicely framed"). Ye
-        Reliability ke error-classification/repair pattern follow
-        karta hai, lekin VISUAL validation ke liye.
-
-        Return: ValidationResult (agent/caller decide karega repair
-        chahiye ya nahi, jaisa normal tool validation ke saath hota hai).
-        """
         context = vision_context_manager.build_context(filepath=filepath)
         return visual_validator.validate(context.visual_observation, expected)
 
     def _build_request(self, state: ConversationState, executed_steps=None) -> ModelRequest:
-        tool_definitions = self._tool_caller.get_tool_definitions()
         messages = state.get_messages()
+        recent_user_text = " ".join(m.content for m in messages if m.role == "user")[-4000:]
+        used = {record.tool_call.tool_name for record in (executed_steps or [])}
+        all_definitions = self._tool_caller.get_tool_definitions()
+        if self.ai_tools:
+            # the planner read the request and picked the tools: send only those (+ core + already used) - every
+            # step's request gets much smaller
+            keep = set(self.ai_tools) | used
+            tool_definitions = [d for d in all_definitions if d.name in keep]
+        else:
+            tool_definitions = select_tools(all_definitions, recent_user_text, used)
+        if not self.vision_nudges:                 # the automatic check reviews the renders: no second vision call
+            tool_definitions = [d for d in tool_definitions if d.name != "vision.observe"]
+        if self.tool_filter is not None:
+            allowed = [d for d in tool_definitions if self.tool_filter(d.name)]
+            tool_definitions = allowed or tool_definitions
 
-        # Hinglish: Scene context HAMESHA fresh banta hai (state mein
-        # save nahi hota) - taaki objects move/delete hone pe LLM ko
-        # stale info na mile.
         extra = []
+        if self.role_hint:
+            extra.append(Message(role="system", content=self.role_hint))
+        if self.memory_context:
+            extra.append(Message(role="system", content=self.memory_context))
         if self._context_manager is not None:
             context_text = self._context_manager.build_context_text()
             if context_text:
                 extra.append(Message(role="system", content=context_text))
 
-        # Hinglish: History trim hoti hai (last N messages), isliye model
-        # purana kaam "bhool" jaata tha aur material.assign/create dobara
-        # karta tha. Ye ledger poore run ka kaam yaad dilata hai.
         ledger = self._progress_ledger(executed_steps or [])
         if ledger:
             extra.append(Message(role="system", content=ledger))
@@ -439,11 +500,20 @@ class RepairableExecutionLoop:
         try:
             summary = self._context_manager.build_context()
             names = [o["name"] for o in summary.get("objects_summary", [])]
-        except Exception:  # noqa: BLE001 - hint sirf help ke liye hai, crash nahi hona chahiye
+        except Exception:  # noqa: BLE001 
             return ""
         if not names:
             return " (The scene currently has no objects.)"
         return " Objects that actually exist right now: " + ", ".join(names[:40]) + "."
+
+    _OUTPUT = re.compile(r"(^scene\.save$|^render\.|export|measure|inspect|^library\.list|^asset\.search|"
+                         r"^vision\.|^scene\.stats|^scene\.info)")
+
+    @classmethod
+    def _reads_scene(cls, name: str) -> bool:
+        """Calls whose RESULT depends on the scene as it is now (saving the file, rendering, measuring): repeating one
+        after the scene changed is new work."""
+        return bool(cls._OUTPUT.search(name or ""))
 
     @staticmethod
     def _call_key(tool_call: ToolCall) -> str:
@@ -458,7 +528,10 @@ class RepairableExecutionLoop:
         if name == "render.preview" and render_count >= self.MAX_RENDERS_PER_RUN:
             return ("A preview was already rendered for this request. Do NOT render again. "
                     "If everything the user asked for exists, reply with a short final text and stop.")
-        if name not in self._NEVER_DEDUPE and self._call_key(tool_call) in done_keys:
+        key = self._call_key(tool_call)
+        if name not in self._NEVER_DEDUPE and key in done_keys:
+            if self._reads_scene(name) and done_keys[key] != getattr(self, "_revision", 0):
+                return None        # save / render / measure AFTER the scene changed: a new result, not a repeat
             return ("This exact call was already completed successfully. Do NOT repeat it. "
                     "If all requested parts exist, reply with a short final text and stop.")
         return None

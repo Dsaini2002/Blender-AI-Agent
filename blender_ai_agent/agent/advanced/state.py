@@ -1,10 +1,4 @@
-"""
-AdvancedAgentState — Step 9.35
-===================================
-Hinglish: Complex task ke poore lifecycle ka current stage track
-karta hai — jaisa Phase 6 ka CopilotUIState tha, lekin advanced
-agent ke internal execution ke liye.
-"""
+"""AdvancedAgentState"""
 
 from enum import Enum
 
@@ -23,11 +17,6 @@ class AgentState(str, Enum):
 
 
 class AgentStateMachine:
-    """
-    Hinglish: State transitions ko track karta hai, aur INVALID
-    transitions ko block karta hai (jaise IDLE se seedha COMPLETED
-    jaana galat hai — planning/executing se guzarna chahiye).
-    """
 
     _VALID_TRANSITIONS = {
         AgentState.IDLE: {AgentState.PLANNING},

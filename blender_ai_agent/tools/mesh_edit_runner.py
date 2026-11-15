@@ -1,13 +1,4 @@
-"""
-mesh_edit_runner.py
-====================
-Hinglish: Imported model ke KAI mesh-hisse ho sakte hain (body + dhakkan...). Sab ko ek saath jod kar operators chalata hai
-(taaki twist/bend/cut poore object par ek jaisa lage), phir natija wapas har hisse mein baant deta hai. Pure Python; bpy nahi.
-
-parts  : [{"name", "vertices" (world), "faces"}]
-return : har hisse ke liye {"name", "vertices", "faces", "face_source", "topology_changed", "removed_faces",
-                            "orig_vertices", "orig_faces"}  + summary notes
-"""
+"""mesh_edit_runner.py"""
 
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -52,7 +43,6 @@ def run_edit_on_parts(parts: Sequence[Dict[str, Any]], ops: Sequence[Dict[str, A
             })
         return outputs, result.notes
 
-    # topology badli: faces ko unke asli hisse ke hisaab se baanto
     vertex_owner: Dict[int, int] = {}
     face_owner: List[int] = []
     for new_index, face in enumerate(result.faces):
@@ -62,7 +52,7 @@ def run_edit_on_parts(parts: Sequence[Dict[str, Any]], ops: Sequence[Dict[str, A
         if owner >= 0:
             for v in face:
                 vertex_owner.setdefault(v, owner)
-    for new_index, face in enumerate(result.faces):            # cap jaise bilkul naye faces: apne vertices ke malik ke saath
+    for new_index, face in enumerate(result.faces):
         if face_owner[new_index] < 0:
             owners = [vertex_owner[v] for v in face if v in vertex_owner]
             face_owner[new_index] = owners[0] if owners else 0

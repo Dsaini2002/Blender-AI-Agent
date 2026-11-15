@@ -9,7 +9,6 @@ from blender_ai_agent.reliability.friendly_errors import (
 from blender_ai_agent.tools.base import Permission, Tool, ToolResult
 from .test_repair_loop import build_repair_loop
 
-# Exactly the error from the user's screenshot (Gemini free tier, daily limit)
 GEMINI_DAILY_429 = (
     "Tool 'vision.observe' failed: 429 You exceeded your current quota, please check your plan and billing "
     "details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. "
@@ -91,7 +90,6 @@ class QuotaVisionTool(Tool):
 
 
 class TestVisionQuotaDoesNotDestroyTheBuild(unittest.TestCase):
-    """Screenshot bug: quota hit in the OPTIONAL vision check rolled back the whole task."""
 
     def _loop(self, responses):
         loop, bridge, logger = build_repair_loop(responses, max_iterations=6)

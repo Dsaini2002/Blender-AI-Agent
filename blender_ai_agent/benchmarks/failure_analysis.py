@@ -1,9 +1,4 @@
-"""
-Failure Classification + Analysis — Step 8.34 / 8.35
-==========================================================
-Hinglish: "Failed" itna kaafi nahi — WHY fail hua, us reason ko
-category dena zaroori hai, taaki debugging/improvement targeted ho sake.
-"""
+"""Failure Classification + Analysis"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -34,7 +29,6 @@ class FailureDiagnosis:
 class FailureAnalyzer:
 
     def classify(self, result: BenchmarkResult) -> FailureCategory:
-        """Hinglish: Result ke status/errors/validation_results dekh kar category decide karta hai."""
         if result.status == TaskStatus.TIMEOUT:
             return FailureCategory.TIMEOUT
 
@@ -58,7 +52,6 @@ class FailureAnalyzer:
         return FailureCategory.UNKNOWN_FAILURE
 
     def analyze(self, result: BenchmarkResult) -> FailureDiagnosis:
-        """Hinglish: Ek readable diagnosis banata hai — spec ke example jaisa."""
         category = self.classify(result)
 
         if category == FailureCategory.VALIDATION_FAILURE and result.failed_rules:
@@ -76,5 +69,4 @@ class FailureAnalyzer:
         return FailureDiagnosis(task_id=result.task_id, category=category, summary=summary)
 
     def analyze_all(self, results: List[BenchmarkResult]) -> List[FailureDiagnosis]:
-        """Hinglish: Sirf failed tasks (PASS chhod ke) analyze karta hai."""
         return [self.analyze(r) for r in results if r.status != TaskStatus.PASS]

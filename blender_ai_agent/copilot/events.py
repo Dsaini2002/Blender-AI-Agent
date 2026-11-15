@@ -1,13 +1,4 @@
-"""
-EventBus — Step 6.23 / 6.24
-================================
-Hinglish: Agent ke internal events (TASK_STARTED, TOOL_COMPLETED, etc.)
-ko UI tak pahunchane ka decoupled mechanism — publish/subscribe pattern.
-
-Agent ko UI ka pata nahi hona chahiye, aur UI ko Agent ke internal
-code mein nahi ghusna chahiye. EventBus beech mein ek loose-coupling
-layer hai.
-"""
+"""EventBus"""
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List

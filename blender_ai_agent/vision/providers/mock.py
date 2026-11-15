@@ -1,8 +1,5 @@
-"""
-MockVisionProvider — Step 5.1 / 5.18
-========================================
-Hinglish: Real vision API ke bina test karne ke liye — jaisa
-MockProvider (Phase 3) LLM ke bina test karne dete tha.
+"""MockVisionProvider
+==================
 
 Same "scripted responses" pattern — predictable, deterministic.
 """
@@ -15,7 +12,7 @@ class MockVisionProvider(VisionProvider):
     def __init__(self, observations=None):
         self._observations = list(observations) if observations else []
         self._call_count = 0
-        self.received_calls = []  # (image, context) pairs — testing/debugging ke liye
+        self.received_calls = []
 
     def analyze(self, image, context):
         self.received_calls.append((image, context))

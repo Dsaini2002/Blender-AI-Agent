@@ -1,22 +1,4 @@
-"""
-input_coercion.py
-==================
-Hinglish: LLM (khaaskar chhote/free models) tool arguments ko kabhi bilkul sahi type mein nahi bhejte:
-
-    "location": "1, 2, 3"            (list ki jagah string)
-    "color": ["0.3", "0.4", "0.5"]   (numbers ki jagah strings)
-    "width": 640.0 / "640"           (int ki jagah float/string)
-    "location": {"x": 1, "y": 2, "z": 3}
-    proto lists/dicts (Gemini SDK)   (asli list/dict nahi)
-
-Pehle har tool ke input model mein alag-alag patch lagane padte the aur har naye tool par wahi galti
-dobara aati thi. Ye module EK jagah (har tool ke dataclass ke type-hints dekhkar) arguments ko sahi type mein
-badal deta hai. Rules:
-  - kabhi exception nahi uthata — kuch samajh na aaye to value jaisi hai waisi chhod deta hai
-    (phir tool ka apna validation saaf error deta hai)
-  - sirf type-hint ke hisaab se badalta hai; str/dict/Any fields ko nahi chhedta
-  - sirf standard library
-"""
+"""input_coercion.py"""
 
 import dataclasses
 import re
@@ -34,7 +16,6 @@ _NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e-?\d+)?|-?\.\d+", re.IGNORECASE)
 
 
 def to_plain(value: Any) -> Any:
-    """Gemini ke proto list/dict -> asli Python list/dict (recursive). Plain data par koi asar nahi."""
     if value is None or isinstance(value, (str, bytes, bool, int, float)):
         return value
     if isinstance(value, dict) or (hasattr(value, "items") and callable(value.items)):
@@ -90,13 +71,12 @@ def _to_bool(value: Any) -> Any:
 
 
 def _as_sequence(value: Any, element_type: Any) -> Optional[list]:
-    """value ko list banane ki koshish (string / x-y-z dict / tuple). Na ban sake to None."""
     if isinstance(value, (list, tuple)):
         return list(value)
     if isinstance(value, str):
         text = value.strip()
         if element_type is str:
-            return [value]                               # List[str] ko ek string mila -> [string]
+            return [value]
         text = text.strip("[]()")
         numbers = _NUMBER.findall(text)
         parts = [p for p in re.split(r"[,;\s]+", text) if p]
@@ -116,8 +96,20 @@ def _as_sequence(value: Any, element_type: Any) -> Optional[list]:
     return None
 
 
+def _json_value(value: Any) -> Any:
+    """A string that holds JSON ('{"a": 1}' or '[1, 2]') -> the parsed value; anything else unchanged."""
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in ("{", "[") and text[-1:] in ("}", "]"):
+            try:
+                import json
+                return json.loads(text)
+            except ValueError:
+                return value
+    return value
+
+
 def coerce_value(value: Any, annotation: Any) -> Any:
-    """Ek value ko type-hint ke hisaab se badalta hai. Kabhi exception nahi."""
     try:
         tp = _unwrap_optional(annotation)
         if value is None:
@@ -136,10 +128,16 @@ def coerce_value(value: Any, annotation: Any) -> Any:
             return value
 
         origin = get_origin(tp)
+        if tp is dict or origin is dict:
+            parsed = _json_value(value)
+            return parsed if isinstance(parsed, dict) else value
+        if tp is Any:
+            return _json_value(value)
         if tp in (list, tuple) or origin in (list, tuple, typing.Sequence):
             args = get_args(tp)
             element = args[0] if args else Any
-            sequence = _as_sequence(value, element)
+            parsed = _json_value(value) if isinstance(value, str) and value.strip().startswith("[") else value
+            sequence = list(parsed) if isinstance(parsed, (list, tuple)) else _as_sequence(value, element)
             if sequence is None:
                 return value
             if element is Any:
@@ -147,15 +145,11 @@ def coerce_value(value: Any, annotation: Any) -> Any:
             return [coerce_value(item, element) for item in sequence]
 
         return value
-    except Exception:  # noqa: BLE001 — coercion kabhi task ko fail na kare
+    except Exception:  # noqa: BLE001 
         return value
 
 
 def coerce_arguments(input_model: Any, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Tool ke `input_model` (dataclass) ke type-hints dekhkar `arguments` ke har field ko sahi type mein badalta hai.
-    Dataclass na ho / hints na milein to bas proto-containers ko plain karta hai. Original dict ko nahi chhedta.
-    """
     plain = to_plain(arguments) if arguments else {}
     if not isinstance(plain, dict):
         return plain

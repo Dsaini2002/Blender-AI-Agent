@@ -1,44 +1,4 @@
-"""
-ExecutionLoop — Step 3.7 + Step 3.8
-=======================================
-Hinglish: Ye Agent (Step 3.5) ka "multi-turn" upgrade hai.
-
-Agent.run() sirf EK LLM call handle karta hai. ExecutionLoop baar-baar
-LLM ko call karta hai jab tak LLM "final answer" na de:
-
-    User Request
-         ↓
-    Build request (poori history + tools)
-         ↓
-    LLM Response
-         ↓
-    Tool calls hain?
-      /         \
-    YES          NO
-     ↓            ↓
-  Planner      Final Reply
-     ↓          (loop ruk jaata hai)
-  Execute
-  har step
-     ↓
-  Observation
-  (state mein add)
-     ↓
-  Loop wapas upar
-  (agla LLM call)
-
-MULTI-STEP TASKS (3.8): Ek single LLM response mein MULTIPLE tool_calls
-ho sakte hain (Plan mein multiple steps) — sab sequentially execute
-hote hain. Aur poora loop khud kayi TURNS le sakta hai (max_iterations
-tak) — taaki "create chair" jaisa complex task multiple LLM calls mein
-naturally break ho.
-
-DIAGNOSTIC PATCH (temporary): Har turn ka LLM-call time aur tool-exec
-time print() hota hai, taaki System Console mein exactly dikhe ki
-poore "10 minute" mein time kahan ja raha hai — LLM (network+reasoning)
-mein, ya bpy tool calls execute karne mein. Debugging khatam hone ke
-baad ye print() lines hata dena — production mein noisy hain.
-"""
+"""ExecutionLoop"""
 
 import time
 
@@ -49,22 +9,17 @@ from .models import ModelRequest
 from .models import ToolCall
 from .state import ConversationState
 from ..tools.base import ToolResult
+from ..observability.debug import debug
 
 
 @dataclass
 class ExecutionRecord:
-    """Ek executed step ka record — kaunsa tool chala, kya result mila."""
     tool_call: ToolCall
     tool_result: ToolResult
 
 
 @dataclass
 class AgentRunResult:
-    """
-    Hinglish: Poore multi-turn run ka final summary — Agent ke
-    AgentStepResult se zyada rich hai, kyunki isme MULTIPLE steps
-    ho sakte hain, alag-alag turns mein.
-    """
     reply_text: Optional[str] = None
     executed_steps: List[ExecutionRecord] = field(default_factory=list)
     turns_used: int = 0
@@ -85,12 +40,6 @@ class ExecutionLoop:
         self._max_iterations = max_iterations
 
     def run(self, user_message: str, state: Optional[ConversationState] = None) -> AgentRunResult:
-        """
-        Hinglish: `state` optional hai — agar caller purani conversation
-        continue karna chahta hai (jaise "Make it red" ke liye pichla
-        context chahiye), wo apni existing ConversationState pass kar
-        sakta hai. Nahi diya toh naya banta hai.
-        """
         state = state if state is not None else ConversationState()
         state.add_user_message(user_message)
 
@@ -98,14 +47,14 @@ class ExecutionLoop:
 
         # ---- DIAGNOSTIC: overall timer ----
         run_start = time.perf_counter()
-        print(f"[TIMING] === ExecutionLoop.run() start: '{user_message}' ===")
+        debug(f"[TIMING] === ExecutionLoop.run() start: '{user_message}' ===")
 
         for turn in range(1, self._max_iterations + 1):
             turn_start = time.perf_counter()
 
             request = self._build_request(state)
             build_elapsed = time.perf_counter() - turn_start
-            print(f"[TIMING] Turn {turn}: request built in {build_elapsed:.2f}s "
+            debug(f"[TIMING] Turn {turn}: request built in {build_elapsed:.2f}s "
                   f"({len(request.messages)} messages, {len(request.tools)} tools)")
 
             llm_start = time.perf_counter()
@@ -117,13 +66,12 @@ class ExecutionLoop:
             if usage is not None:
                 usage_str = (f" [prompt_tokens={usage.prompt_tokens}, "
                              f"completion_tokens={usage.completion_tokens}]")
-            print(f"[TIMING] Turn {turn}: LLM call took {llm_elapsed:.2f}s{usage_str}")
+            debug(f"[TIMING] Turn {turn}: LLM call took {llm_elapsed:.2f}s{usage_str}")
 
             if not response.has_tool_calls:
-                # Hinglish: LLM ne final text jawab diya — loop yahin ruk jaata hai.
                 state.add_assistant_message(response.content)
                 total_elapsed = time.perf_counter() - run_start
-                print(f"[TIMING] === Done: turn {turn}, total {total_elapsed:.2f}s, "
+                debug(f"[TIMING] === Done: turn {turn}, total {total_elapsed:.2f}s, "
                       f"{len(executed_steps)} tool calls ===")
                 return AgentRunResult(
                     reply_text=response.content,
@@ -137,15 +85,11 @@ class ExecutionLoop:
             self._execute_plan(plan, state, executed_steps)
             tools_elapsed = time.perf_counter() - tools_start
             turn_total = time.perf_counter() - turn_start
-            print(f"[TIMING] Turn {turn}: {len(plan.steps)} tool(s) executed in "
+            debug(f"[TIMING] Turn {turn}: {len(plan.steps)} tool(s) executed in "
                   f"{tools_elapsed:.2f}s | turn total = {turn_total:.2f}s")
-            # Hinglish: Loop yahan RUKTA NAHI — agla turn shuru hota hai,
-            # taaki LLM tool results dekh kar agla decision le sake.
 
-        # Hinglish: max_iterations tak koi final text nahi mila —
-        # safety limit hit hui (infinite loop se bachne ke liye).
         total_elapsed = time.perf_counter() - run_start
-        print(f"[TIMING] === Stopped: max_iterations reached, total {total_elapsed:.2f}s, "
+        debug(f"[TIMING] === Stopped: max_iterations reached, total {total_elapsed:.2f}s, "
               f"{len(executed_steps)} tool calls ===")
         return AgentRunResult(
             reply_text=None,
@@ -162,12 +106,11 @@ class ExecutionLoop:
         return ModelRequest(messages=state.get_messages(), tools=tool_definitions)
 
     def _execute_plan(self, plan, state: ConversationState, executed_steps: List[ExecutionRecord]) -> None:
-        """Hinglish: Plan ke saare steps SEQUENTIALLY chalata hai (Step 3.8 — multi-step)."""
         for step in plan.steps:
             step_start = time.perf_counter()
             result = self._tool_caller.call(step.tool_call)
             step_elapsed = time.perf_counter() - step_start
-            print(f"[TIMING]   tool '{step.tool_call.tool_name}' -> "
+            debug(f"[TIMING]   tool '{step.tool_call.tool_name}' -> "
                   f"{step_elapsed:.3f}s (ok={result.success})")
             executed_steps.append(ExecutionRecord(tool_call=step.tool_call, tool_result=result))
             state.add_tool_result_message(step.tool_call, result)

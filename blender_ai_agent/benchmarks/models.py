@@ -1,9 +1,4 @@
-"""
-Benchmark models — Step 8.2 / 8.32 / 8.33
-==============================================
-Hinglish: Har benchmark task ek typed object hai. ValidationResult
-aur BenchmarkResult bhi typed — jaisa hamesha, random dict nahi.
-"""
+"""Benchmark models"""
 
 from dataclasses import dataclass, field
 from enum import Enum
@@ -27,7 +22,6 @@ class Difficulty(str, Enum):
 
 @dataclass
 class BenchmarkTask:
-    """Hinglish: Ek clearly defined benchmark task — Step 8.2."""
     id: str
     instruction: str
     expected_state: Dict[str, Any] = field(default_factory=dict)
@@ -45,7 +39,6 @@ class BenchmarkTask:
 
 @dataclass
 class ValidationResult:
-    """Hinglish: Ek single rule ka result — Step 8.33."""
     rule_id: str
     passed: bool
     expected: Any = None
@@ -59,7 +52,6 @@ class ValidationResult:
 
 @dataclass
 class BenchmarkResult:
-    """Hinglish: Poore task ka result — Step 8.32."""
     task_id: str
     status: TaskStatus
     score: float

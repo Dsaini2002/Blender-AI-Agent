@@ -24,12 +24,6 @@ from .fakes import FakeBridge
 
 
 class TestVisionIntegratedWithReliabilityLoop(unittest.TestCase):
-    """
-    Hinglish: Poore Phase 5 ka "real" integration test — spec ke
-    5.12 example jaisa: task complete hone ke baad, Agent explicitly
-    visual validation bhi kar sakta hai, aur RepairableExecutionLoop
-    ke saath side-by-side kaam karta hai.
-    """
 
     def test_task_completes_then_visual_validation_confirms_result(self):
         bridge = FakeBridge()
@@ -63,12 +57,12 @@ class TestVisionIntegratedWithReliabilityLoop(unittest.TestCase):
             logger=logger,
         )
 
-        # Step 1: Normal task execution (Phase 3/4)
+        # Normal task execution
         run_result = loop.run("Create a cube")
         self.assertEqual(run_result.stopped_reason, "stop")
         self.assertIsNotNone(bridge.get_object("Cube"))
 
-        # Step 2: Vision-based confirmation (Phase 5) — separate, explicit step
+        # Vision-based confirmation — separate, explicit step
         vision_provider = MockVisionProvider(observations=[
             VisualObservation(description="A cube is visible.", objects_detected=["cube"], confidence=0.95)
         ])

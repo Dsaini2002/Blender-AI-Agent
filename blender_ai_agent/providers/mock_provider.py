@@ -1,35 +1,14 @@
-"""
-MockProvider — Step 3.1
-==========================
-Hinglish: Ye ek FAKE AI provider hai — koi real API call nahi karta,
-koi internet ya API key ki zaroorat nahi.
-
-Kyun zaroori hai?
-- Agent/Planner ka poora logic test karna hai bina paisa kharch kiye
-- Predictable responses chahiye tests ke liye (real LLM har baar
-  thoda alag jawab de sakta hai — non-deterministic)
-- Jaisa humne Blender ke bina `FakeBridge` banaya tha, waisa hi ye
-  LLM ke bina `MockProvider` hai
-
-Isse hum pehle se HI decide kar sakte hain — "jab ye specific
-message aaye, ye specific response do" — taaki Agent ka behavior
-predictably test ho sake.
-"""
+"""MockProvider"""
 
 from .base import ModelProvider
 
 
 class MockProvider(ModelProvider):
-    """
-    Hinglish: Constructor mein ek "script" diya jaata hai — responses
-    ki list. Har `generate()` call pe list mein se agla response
-    return hota hai, order mein.
-    """
 
     def __init__(self, responses=None):
         self._responses = list(responses) if responses else []
         self._call_count = 0
-        self.received_requests = []  # debugging/testing ke liye — kya bheja gaya tha
+        self.received_requests = []
 
     def generate(self, request):
         self.received_requests.append(request)

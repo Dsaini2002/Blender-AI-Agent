@@ -9,7 +9,6 @@ from blender_ai_agent.agent.console_watch import ConsoleCapture, analyze_console
 
 
 def c_write(fd: int, text: str) -> None:
-    """Python ke sys.stdout/stderr se bachkar seedha fd par likhta hai (C-level print jaisa)."""
     os.write(fd, text.encode("utf-8"))
 
 
@@ -57,15 +56,15 @@ Warning: add-on missing 'bl_info', this can cause poor performance!: 'C:\\x\\run
     def test_dedupe_cap_and_ordering(self):
         text = "\n".join(f"Warning: texture image_{i}.png not found" for i in range(30)) + "\nRuntimeError: boom\n"
         findings = analyze_console(text)
-        self.assertEqual(findings[0].level, "error")                         # error pehle
+        self.assertEqual(findings[0].level, "error")
         self.assertLessEqual(len(findings), 8)
-        self.assertEqual(sum(1 for f in findings if "not found" in f.text), 1)   # numbers ek jaise => ek hi
+        self.assertEqual(sum(1 for f in findings if "not found" in f.text), 1)
 
     def test_quiet_and_unknown_text(self):
         self.assertEqual(analyze_console(""), [])
         self.assertEqual(analyze_console(None), [])
         self.assertEqual(analyze_console("hello world\nall fine\nDone in 2.1s"), [])
-        self.assertEqual(analyze_console("Warning: something odd happened"), [])      # bina hint ki generic warning = shor
+        self.assertEqual(analyze_console("Warning: something odd happened"), [])
 
 
 FD_OK = ConsoleCapture.FD_SUPPORTED
@@ -74,7 +73,6 @@ FD_OK = ConsoleCapture.FD_SUPPORTED
 class TestCapture(unittest.TestCase):
 
     def test_windows_rule_forces_python_level_capture(self):
-        """Windows par fd-level capture print() ko tod deta hai (WinError 1): wahan hamesha Python-level."""
         original = ConsoleCapture.FD_SUPPORTED
         ConsoleCapture.FD_SUPPORTED = False
         try:
@@ -90,7 +88,7 @@ class TestCapture(unittest.TestCase):
                 sys.stdout = before[0]
             self.assertEqual(cap.mode, "python")
             self.assertIn("printing works", cap.text())
-            self.assertIn("printing works", sink.getvalue())                       # console par bhi pahunchi
+            self.assertIn("printing works", sink.getvalue())
             self.assertEqual((sys.stdout, sys.stderr), before)
         finally:
             ConsoleCapture.FD_SUPPORTED = original
@@ -100,7 +98,7 @@ class TestCapture(unittest.TestCase):
     def test_fd_level_catches_c_style_writes_and_still_shows_them(self):
         shown = tempfile.TemporaryFile()
         saved_1, saved_2 = os.dup(1), os.dup(2)
-        os.dup2(shown.fileno(), 1)                                            # "asli console" = yeh file
+        os.dup2(shown.fileno(), 1)
         os.dup2(shown.fileno(), 2)
         try:
             with ConsoleCapture(fd_level=True) as cap:
@@ -119,7 +117,7 @@ class TestCapture(unittest.TestCase):
         text = cap.text()
         for line in ("needs to be manifold", "plain stdout line", "python print line", "printf style from C"):
             self.assertIn(line, text)
-            self.assertIn(line, passthrough)                                   # user ke console par bhi pahunchi
+            self.assertIn(line, passthrough)
 
     @unittest.skipUnless(FD_OK, "fd-level capture Windows par band hai")
     def test_fd_capture_restores_the_streams_and_is_reusable(self):
@@ -138,7 +136,7 @@ class TestCapture(unittest.TestCase):
             warnings.warn("old api", DeprecationWarning)
         self.assertEqual(cap.mode, "python")
         self.assertIs(sys.stdout, original_out)
-        self.assertIs(sys.stderr, original_err)                                # wapas pehle jaisa
+        self.assertIs(sys.stderr, original_err)
         self.assertIn("hello from print", cap.text())
         self.assertIn("Error: from stderr", cap.text())
 
@@ -162,7 +160,7 @@ class TestCapture(unittest.TestCase):
     def test_size_cap(self):
         import io
         real_out, sink = sys.stdout, io.StringIO()
-        sys.stdout = sink                                                     # test ka shor user ke terminal par na aaye
+        sys.stdout = sink
         try:
             cap = ConsoleCapture(fd_level=False)
             cap.MAX_CHARS = 1000
@@ -172,7 +170,7 @@ class TestCapture(unittest.TestCase):
         finally:
             sys.stdout = real_out
         self.assertLessEqual(len(cap.text()), 1100)
-        self.assertGreater(len(sink.getvalue()), 40000)                       # par console par sab kuch pahuncha
+        self.assertGreater(len(sink.getvalue()), 40000)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,4 @@
-"""
-AdvancedOrchestrator — Step 9.20 / 9.21 / 9.22
-====================================================
-Hinglish: Phase 9 ka main integration point.
-
-    Complex instruction -> TaskDecomposer -> TaskGraph (dependency order)
-        -> har sub-task ke liye: checkpoint -> skill/tool execute -> observe
-        -> agar fail: latest checkpoint tak rollback, poora restart nahi (Step 9.32)
-"""
+"""AdvancedOrchestrator"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -39,12 +31,6 @@ class AdvancedTaskResult:
 class AdvancedOrchestrator:
 
     def __init__(self, bridge, decomposer: TaskDecomposer, skill_executor):
-        """
-        Hinglish: `skill_executor` ek callable hai:
-            skill_executor(subtask: SubTask) -> bool (success/failure)
-        Ye orchestrator ko kisi specific Skill/Tool implementation se
-        decouple karta hai — Dependency Injection.
-        """
         self._bridge = bridge
         self._decomposer = decomposer
         self._skill_executor = skill_executor
@@ -98,7 +84,6 @@ class AdvancedOrchestrator:
         return success
 
     def _recover(self, result: AdvancedTaskResult) -> None:
-        """Hinglish: Step 9.32 — poora restart nahi, sirf latest valid checkpoint tak."""
         self._state_machine.transition_to(AgentState.FAILED)
         if self._checkpoint_manager.list_checkpoints():
             self._checkpoint_manager.rollback_to_latest()

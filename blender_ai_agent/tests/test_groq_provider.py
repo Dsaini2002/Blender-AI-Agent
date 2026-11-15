@@ -31,10 +31,6 @@ class _FakeHTTPResponse:
 
 
 class TestGroqProvider413Handling(unittest.TestCase):
-    """Hinglish: Groq ka free-tier TPM limit chhota hai (8000). Bada system
-    prompt + lambi conversation history 413 de sakti hai - 429 ki tarah
-    retry karne se fayda nahi (same size phir reject hoga), isliye
-    history trim karke ek baar retry karna chahiye."""
 
     def _messages(self, n):
         return [{"role": "user", "content": f"msg {i}"} for i in range(n)]

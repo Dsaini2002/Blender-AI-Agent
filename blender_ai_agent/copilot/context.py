@@ -1,10 +1,5 @@
-"""
-CopilotContext — Step 6.18
-==============================
-Hinglish: Selection/active object/camera ka awareness — lekin
-IMPORTANT: ye khud "source of truth" nahi hai, Blender state se
-DERIVE hota hai har baar. Independent truth maintain nahi karte
-(jaisa spec kehta hai) — warna state drift ho sakti hai.
+"""CopilotContext
+==============
 
     Blender -> SceneInspector -> CopilotContext
 """
@@ -22,19 +17,11 @@ class CopilotContext:
 
 
 class CopilotContextBuilder:
-    """Hinglish: Bridge se fresh CopilotContext banata hai — har baar naya, kabhi cache nahi karta."""
 
     def __init__(self, bridge):
         self._bridge = bridge
 
     def build(self, selected_object_names: List[str] = None) -> CopilotContext:
-        """
-        Hinglish: `selected_object_names` UI se aata hai (Blender ka
-        selection state) — humari FakeBridge/BlenderBridge khud
-        "selection" track nahi karti abhi, isliye ye explicitly UI
-        se pass hota hai. `active_object` isi list ka pehla item maana
-        jaata hai (simplification).
-        """
         selected = selected_object_names or []
         active_object = selected[0] if selected else None
 

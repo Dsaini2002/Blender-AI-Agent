@@ -1,24 +1,4 @@
-"""
-BlenderBridge
-=============
-Hinglish: Ye class Blender ke saare raw `bpy` calls ko encapsulate karti hai.
-
-PATCHED (thread-safety fix): Copilot ka worker thread (ui/panel.py mein
-AIAGENT_OT_copilot_submit) LLM se baat background thread pe karta hai,
-aur phir har tool call yahin BlenderBridge tak pahunchta hai — lekin
-WORKER THREAD SE HI. bpy ka poora API sirf MAIN THREAD pe safe hai;
-worker thread se seedha bpy.ops.* chalane par Blender crash ho sakta
-hai (ACCESS_VIOLATION, depsgraph ke andar mesh_copy_data jaisi jagah
-pe race condition — bilkul wahi crash jo bina is fix ke aata tha).
-
-Fix: har method jo bpy ko chhuti hai, uske andar ka actual kaam ek
-chhoti closure mein wrap karke `run_on_main_thread()` ko de dete hain.
-Agar hum already main thread pe hain (jaise unit tests, jahan koi
-threading involved nahi), `run_on_main_thread` seedha call kar deta
-hai — koi extra overhead nahi. Agar worker thread se aaya hai, to
-Blender ke modal-operator timer tick tak wait karta hai aur wahin
-(main thread pe) safely execute hota hai.
-"""
+"""BlenderBridge"""
 
 import bpy
 
@@ -26,7 +6,6 @@ from .main_thread_dispatch import run_on_main_thread
 
 
 class BlenderBridge:
-    """Blender ke saath saara low-level interaction is class ke through hoga."""
 
     # ---------------------------------------------------------
     # Scene level
@@ -46,14 +25,6 @@ class BlenderBridge:
     def get_object(self, name: str):
         return run_on_main_thread(lambda: bpy.data.objects.get(name))
 
-    # ---------------------------------------------------------
-    # Object level — write
-    # ---------------------------------------------------------
-    # Hinglish: Har object_type category ke apne primitives hain, jo
-    # Blender ke "Shift+A -> Add" menu ke operators se map hote hain.
-    # Ek dict of dicts: {object_type: {primitive: (module, op_name)}}.
-    # Wahi operators jo Blender khud use karta hai - koi "hidden" shape
-    # nahi hai.
     _CREATE_OPS = {
         "MESH": {
             "CUBE": ("mesh", "primitive_cube_add"),
@@ -123,7 +94,6 @@ class BlenderBridge:
     }
 
     def create_object(self, name: str, object_type: str = "MESH", primitive: str = "CUBE", location=None):
-        """Naya object banata hai. Supports MESH/CURVE/SURFACE/METABALL/EMPTY/LIGHT/ARMATURE/LATTICE."""
         object_type = (object_type or "MESH").upper()
         primitive = (primitive or "CUBE").upper()
 
@@ -219,8 +189,38 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
+    def bake_scale(self, name: str) -> bool:
+        """Move an object's scale into its mesh (and its children's parent inverse) so the
+        object reads scale 1.0 without changing size or position. Imported FBX / glTF files
+        often arrive at 0.01, and a model that later "fixes" that to 1.0 makes them 100x bigger."""
+        def _do():
+            from mathutils import Matrix
+
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                return False
+            s = [float(v) for v in obj.scale]
+            if all(abs(v - 1.0) < 1e-6 for v in s) or any(v <= 1e-9 for v in s):
+                return False                       # already 1, or mirrored / degenerate: leave alone
+            S = Matrix.Diagonal((s[0], s[1], s[2], 1.0))
+            if obj.type == "MESH" and obj.data is not None:
+                if obj.data.users > 1:
+                    obj.data = obj.data.copy()
+                obj.data.transform(S)
+                obj.data.update()
+            elif obj.type == "EMPTY":
+                obj.empty_display_size *= max(s)
+            else:
+                return False
+            for child in obj.children:
+                child.matrix_parent_inverse = S @ child.matrix_parent_inverse
+            obj.scale = (1.0, 1.0, 1.0)
+            return True
+
+        return run_on_main_thread(_do)
+
     # ---------------------------------------------------------
-    # Material level — Step 2.5
+    # Material level —
     # ---------------------------------------------------------
     def get_material(self, name: str):
         return run_on_main_thread(lambda: bpy.data.materials.get(name))
@@ -229,7 +229,7 @@ class BlenderBridge:
         def _do():
             material = bpy.data.materials.new(name=name)
             if getattr(material, "node_tree", None) is None:
-                material.use_nodes = True        # purane Blender ke liye; naye mein node_tree pehle se hota hai (use_nodes deprecated)
+                material.use_nodes = True
 
             if color is not None:
                 self._set_material_base_color(material, color)
@@ -272,8 +272,6 @@ class BlenderBridge:
                 if metallic is not None:
                     bsdf.inputs["Metallic"].default_value = metallic
 
-                # Hinglish: Blender 4.x mein socket "Emission Color" hai, 3.x mein
-                # "Emission" — dono versions ke liye fallback.
                 if emission_color is not None:
                     rgba = list(emission_color) + [1.0] if len(emission_color) == 3 else list(emission_color)
                     socket = bsdf.inputs.get("Emission Color") or bsdf.inputs.get("Emission")
@@ -289,10 +287,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def _get_principled_bsdf(self, material):
-        """Hinglish: Ye sirf node data padhta hai, bpy.ops nahi chalata —
-        isliye main-thread-safe caller ke andar hi use hota hai, isse
-        khud alag se wrap karne ki zaroorat nahi (already run_on_main_thread
-        ke andar call hota hai)."""
         if getattr(material, "node_tree", None) is None:
             return None
         for node in material.node_tree.nodes:
@@ -311,11 +305,6 @@ class BlenderBridge:
     # ---------------------------------------------------------
     def create_light(self, name: str, light_type: str = "POINT", location=None, rotation=None,
                      color=None, energy: float = 1000.0, size: float = 0.25, spot_angle: float = 45.0):
-        """
-        Hinglish: bpy.data se seedha light datablock + object banate hain
-        (bpy.ops nahi) — isse selection/active-object context par depend nahi
-        karna padta, aur name/colour/energy ek hi step mein set ho jaate hain.
-        """
         def _do():
             import math
 
@@ -343,11 +332,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def set_world(self, color=None, strength=None):
-        """
-        Hinglish: Scene ke World ka Background node set karta hai. Agar scene
-        mein world hi nahi hai to naya bana deta hai, aur agar Background node
-        missing hai to bana ke World Output se jod deta hai.
-        """
         def _do():
             scene = bpy.context.scene
             world = scene.world
@@ -356,7 +340,7 @@ class BlenderBridge:
                 scene.world = world
 
             if getattr(world, "node_tree", None) is None:
-                world.use_nodes = True           # naye Blender mein node_tree pehle se hota hai; use_nodes padhne par warning aati hai
+                world.use_nodes = True
             nodes = world.node_tree.nodes
             links = world.node_tree.links
 
@@ -382,14 +366,158 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
+    # Text, collections, saving
+    # ---------------------------------------------------------
+    def create_text(self, name: str, body: str, location=None, rotation=None, size: float = 1.0,
+                    extrude: float = 0.0, align: str = "CENTER"):
+        def _do():
+            curve = bpy.data.curves.new(name=name, type='FONT')
+            curve.body = body
+            curve.size = float(size)
+            curve.extrude = float(extrude)
+            align_x = str(align or "CENTER").upper()
+            curve.align_x = align_x if align_x in ("LEFT", "CENTER", "RIGHT", "JUSTIFY", "FLUSH") else "CENTER"
+            curve.align_y = 'CENTER'
+            obj = bpy.data.objects.new(name=name, object_data=curve)
+            bpy.context.collection.objects.link(obj)
+            if location is not None:
+                obj.location = location
+            if rotation is not None:
+                obj.rotation_euler = rotation
+            return obj
+
+        return run_on_main_thread(_do)
+
+    def move_to_collection(self, names, collection: str, parent: str = "") -> dict:
+        """Put objects in `collection` (created under the scene, or under `parent`) and nowhere else."""
+        def _do():
+            scene = bpy.context.scene
+            target = bpy.data.collections.get(collection)
+            if target is None:
+                target = bpy.data.collections.new(collection)
+                holder = bpy.data.collections.get(parent) if parent else None
+                (holder or scene.collection).children.link(target)
+            elif target.name not in [c.name for c in scene.collection.children_recursive]:
+                scene.collection.children.link(target)
+            moved, missing = [], []
+            for name in names:
+                obj = bpy.data.objects.get(name)
+                if obj is None:
+                    missing.append(name)
+                    continue
+                if obj.name not in target.objects:
+                    target.objects.link(obj)
+                for other in list(obj.users_collection):
+                    if other != target:
+                        other.objects.unlink(obj)
+                moved.append(obj.name)
+            return {"collection": target.name, "moved": moved, "missing": missing}
+
+        return run_on_main_thread(_do)
+
+    def list_collections(self) -> dict:
+        def _do():
+            return {c.name: [o.name for o in c.objects] for c in bpy.data.collections}
+
+        return run_on_main_thread(_do)
+
+    def save_blend(self, filepath: str) -> dict:
+        def _do():
+            bpy.ops.wm.save_as_mainfile(filepath=filepath, check_existing=False)
+            return {"filepath": bpy.data.filepath}
+
+        return run_on_main_thread(_do)
+
+    def set_custom_prop(self, name: str, key: str, value) -> bool:
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                return False
+            obj[key] = value
+            return True
+
+        return run_on_main_thread(_do)
+
+    def get_custom_prop(self, name: str, key: str):
+        def _do():
+            obj = bpy.data.objects.get(name)
+            return obj.get(key) if obj is not None else None
+
+        return run_on_main_thread(_do)
+
+    def recolor_object(self, name: str, color, keep_texture: bool = True, others=()) -> dict:
+        """Change an object's colour. A material used by objects outside `others` is copied first, so only these
+        objects change. Textured (node) materials keep their pattern: the colour is mixed in before the shader."""
+        def _do():
+            obj = bpy.data.objects.get(name)
+            if obj is None:
+                raise ValueError(f"object '{name}' not found")
+            rgba = list(color)[:3] + [1.0]
+            data = getattr(obj, "data", None)
+            if data is None or not hasattr(data, "materials"):
+                raise ValueError(f"'{name}' ({obj.type}) cannot have a material")
+            if len(obj.material_slots) == 0:
+                mat = bpy.data.materials.new(f"{name}_color")
+                mat.use_nodes = True
+                data.materials.append(mat)
+            allowed = set(others) | {name}
+            changed = []
+            for slot in obj.material_slots:
+                mat = slot.material
+                if mat is None:
+                    mat = bpy.data.materials.new(f"{name}_color")
+                    mat.use_nodes = True
+                    slot.material = mat
+                users = [o.name for o in bpy.data.objects if any(s.material == mat for s in o.material_slots)]
+                if any(u not in allowed for u in users):
+                    mat = mat.copy()                         # only the asked objects change colour
+                    mat.name = f"{name}_{slot.material.name}"[:60]
+                    slot.material = mat
+                mat.diffuse_color = rgba
+                tree = mat.node_tree if mat.use_nodes else None
+                bsdf = next((n for n in tree.nodes if n.type == 'BSDF_PRINCIPLED'), None) if tree else None
+                emit = next((n for n in tree.nodes if n.type == 'EMISSION'), None) if tree else None
+                target = None
+                if bsdf is not None:
+                    target = bsdf.inputs.get("Base Color")
+                elif emit is not None:
+                    target = emit.inputs.get("Color")
+                if target is not None:
+                    tint = tree.nodes.get("aiagent_tint")
+                    if tint is not None:                     # recoloured before: just change the colour
+                        b = next(i for i in tint.inputs if i.name == "B" and i.type == 'RGBA')
+                        b.default_value = rgba
+                    elif target.is_linked and keep_texture:
+                        source = target.links[0].from_socket
+                        tint = tree.nodes.new("ShaderNodeMix")
+                        tint.name = tint.label = "aiagent_tint"
+                        tint.data_type = 'RGBA'
+                        tint.blend_type = 'MIX'
+                        tint.location = (target.node.location.x - 220, target.node.location.y - 200)
+                        tint.inputs[0].default_value = 0.8
+                        a = next(i for i in tint.inputs if i.name == "A" and i.type == 'RGBA')
+                        b = next(i for i in tint.inputs if i.name == "B" and i.type == 'RGBA')
+                        out = next(o for o in tint.outputs if o.type == 'RGBA')
+                        tree.links.new(source, a)
+                        b.default_value = rgba
+                        tree.links.new(out, target)
+                    else:
+                        for link in list(target.links):
+                            tree.links.remove(link)
+                        target.default_value = rgba
+                changed.append(mat.name)
+            return {"name": name, "materials": changed}
+
+        return run_on_main_thread(_do)
+
+    def current_blend_path(self) -> str:
+        return run_on_main_thread(lambda: bpy.data.filepath or "")
+
+    # ---------------------------------------------------------
     # Custom mesh (vertices + faces)
     # ---------------------------------------------------------
     def create_mesh(self, name: str, vertices, faces, location=None, rotation=None, scale=None,
                     shade_smooth: bool = False):
-        """
-        Hinglish: vertices + faces se seedha mesh object banata hai (bpy.data, bpy.ops nahi). Isse cube/cone jaisi
-        primitives se na bannewale shape (triangle, wedge, roof...) ban jaate hain.
-        """
         def _do():
             mesh = bpy.data.meshes.new(name)
             mesh.from_pydata([tuple(v) for v in vertices], [], [tuple(f) for f in faces])
@@ -417,11 +545,6 @@ class BlenderBridge:
     # ---------------------------------------------------------
     def damage_mesh(self, object_name: str, region: str = "top", portion: float = 0.25, strength: float = 0.15,
                     style: str = "broken", seed: int = 1, detail: int = 1):
-        """
-        Hinglish: Mesh (ya imported model ke saare mesh-children) ka ek hissa toota/chipped/pichka banata hai.
-        Region WORLD axes mein dekhta hai ("top" = asal mein sabse upar), vertices ko hilata hai aur kuch faces hata
-        deta hai. Mesh dobara nahi banta, isliye UV aur materials bache rehte hain. Algorithm tools/mesh_damage.py mein.
-        """
         def _do():
             import bmesh
             from mathutils import Vector
@@ -441,13 +564,13 @@ class BlenderBridge:
             world, faces = [], []
             try:
                 for obj in targets:
-                    if obj.data.users > 1:           # shared mesh ko sirf isi object ke liye alag kar do
+                    if obj.data.users > 1:
                         obj.data = obj.data.copy()
                     matrix = obj.matrix_world.copy()
                     bm = bmesh.new()
                     bm.from_mesh(obj.data)
 
-                    if detail > 0 and len(targets) == 1:      # low-poly mein toot saaf dikhne ke liye extra cuts
+                    if detail > 0 and len(targets) == 1:
                         try:
                             bm.verts.ensure_lookup_table()
                             local = [tuple(matrix @ v.co) for v in bm.verts]
@@ -456,7 +579,7 @@ class BlenderBridge:
                                      if e.verts[0].index in in_region and e.verts[1].index in in_region]
                             if edges:
                                 bmesh.ops.subdivide_edges(bm, edges=edges, cuts=int(detail), use_grid_fill=True)
-                        except Exception:  # noqa: BLE001 — cuts na lage to bhi damage chalega
+                        except Exception:  # noqa: BLE001 
                             pass
 
                     bm.verts.ensure_lookup_table()
@@ -496,14 +619,7 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    # ---------------------------------------------------------
-    # Advanced mesh editing (mesh.edit / mesh.script): snapshot -> (worker thread mein compute) -> apply
-    # ---------------------------------------------------------
     def snapshot_mesh(self, object_name: str):
-        """
-        Hinglish: Mesh (ya imported model ke saare mesh-children) ke WORLD vertices + faces padhta hai. Bhaari hisaab
-        (mesh_engine) Blender ke main thread par nahi, tool ke worker thread par hota hai, taaki Blender atke nahi.
-        """
         def _do():
             root = bpy.data.objects.get(object_name)
             if root is None:
@@ -526,13 +642,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def apply_mesh_edit(self, results):
-        """
-        Hinglish: mesh_edit_runner ke natije mesh par lagata hai. Teen tareeke:
-          1. sirf vertices hile  -> vertex coordinates badlo (UV, material sab bache)
-          2. vertices + faces hate -> bmesh se faces delete (UV bache)
-          3. topology badli (subdivide/cut/extrude/shatter) -> mesh dobara banao; material per-face bacha rehta hai,
-             UV reset ho jaate hain (summary mein uv_preserved: False)
-        """
         def _do():
             import bmesh
             from mathutils import Vector
@@ -570,7 +679,7 @@ class BlenderBridge:
                     mesh.update()
                 else:
                     old_materials = [p.material_index for p in mesh.polygons]
-                    old_smooth = [p.use_smooth for p in mesh.polygons]      # smooth shading bhi bachao, warna facets dikhte hain
+                    old_smooth = [p.use_smooth for p in mesh.polygons]
                     local = [tuple(inverse @ Vector(p)) for p in item["vertices"]]
                     mesh.clear_geometry()
                     mesh.from_pydata(local, [], [list(f) for f in item["faces"]])
@@ -578,7 +687,6 @@ class BlenderBridge:
                     for polygon, source in zip(mesh.polygons, item["face_source"]):
                         if old_materials:
                             polygon.material_index = old_materials[source] if 0 <= source < len(old_materials) else old_materials[0]
-                        # naye cap jaise faces (source -1) flat hi rehte hain; baaki apne asli face ki shading lete hain
                         polygon.use_smooth = bool(old_smooth[source]) if 0 <= source < len(old_smooth) else False
                     summary["uv_preserved"] = False
                     strategy = "rebuilt mesh (materials kept, UVs reset)"
@@ -595,10 +703,6 @@ class BlenderBridge:
     # Node-based (procedural) material
     # ---------------------------------------------------------
     def build_node_material(self, name: str, spec, replace: bool = True):
-        """
-        shader_nodes.MaterialSpec se material banata hai (Noise -> ColorRamp -> Mix jaise node graph).
-        Galat socket/property par ValueError jisme maujooda valid naam likhe hote hain (taaki agent khud theek kar sake).
-        """
         from ..tools.shader_nodes import layout, viewport_color
 
         positions = layout(spec)
@@ -616,6 +720,11 @@ class BlenderBridge:
             for socket in sockets:
                 if socket.name == ref:
                     return socket
+            from ..tools.shader_nodes import resolve_socket_name
+            live = [s for s in sockets if not getattr(s, "unavailable", False)]
+            renamed = resolve_socket_name(str(ref), [s.name for s in live])
+            if renamed:
+                return next(s for s in live if s.name == renamed)
             names = [s.name for s in sockets if not getattr(s, "unavailable", False)]
             raise ValueError(f"{node_id}: no {'output' if outputs else 'input'} socket '{ref}'. Available: {names}")
 
@@ -639,7 +748,7 @@ class BlenderBridge:
             if material is None:
                 material = bpy.data.materials.new(name=name)
             if getattr(material, "node_tree", None) is None:
-                material.use_nodes = True              # purane Blender ke liye
+                material.use_nodes = True
             tree = material.node_tree
             tree.nodes.clear()
             built = {}
@@ -678,7 +787,7 @@ class BlenderBridge:
             tint = viewport_color(spec)
             if tint is not None:
                 try:
-                    material.diffuse_color = tint                  # solid viewport mein bhi sahi rang dikhe
+                    material.diffuse_color = tint
                 except Exception:  # noqa: BLE001
                     pass
             for key, value in spec.settings.items():
@@ -697,15 +806,23 @@ class BlenderBridge:
     # Render / colour management / DOF / world
     # ---------------------------------------------------------
     def setup_render(self, **opts):
-        """
-        engine (eevee|cycles), view_transform, look, exposure, samples, denoise, resolution_x/y, film_transparent,
-        dof + focus_object + aperture, world_color + world_strength. Jo is Blender mein nahi milta use chhod kar notes mein batata hai.
-        """
+        """engine (eevee|cycles), view_transform, look, exposure, samples, denoise, resolution_x/y, film_transparent,"""
         def _enum_items(owner, prop):
             try:
                 return [item.identifier for item in owner.bl_rna.properties[prop].enum_items]
             except Exception:  # noqa: BLE001
                 return []
+
+        def _try_set(owner, prop, candidates):
+            """Dynamic enums (view_transform, look) do not list their items through bl_rna in every Blender
+            version, so just try each candidate value."""
+            for value in candidates:
+                try:
+                    setattr(owner, prop, value)
+                    return value
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            return None
 
         def _do():
             scene = bpy.context.scene
@@ -714,18 +831,21 @@ class BlenderBridge:
             if engine:
                 wanted = {"eevee": ["BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"], "cycles": ["CYCLES"]}.get(str(engine).lower(), [str(engine).upper()])
                 items = _enum_items(scene.render, "engine")
-                pick = next((w for w in wanted if w in items), None)
+                # Cycles registers itself at runtime, so bl_rna may not list it: try every candidate.
+                pick = _try_set(scene.render, "engine", [w for w in wanted if w in items] + wanted)
                 if pick:
-                    scene.render.engine = pick
                     changed["engine"] = pick
                 else:
                     notes.append(f"engine '{engine}' not available (have {items})")
             view = opts.get("view_transform")
             if view:
                 items = _enum_items(scene.view_settings, "view_transform")
-                pick = next((i for i in items if i.lower() == str(view).lower()), None)
+                # bl_rna can list placeholder identifiers (e.g. 'NONE') that the real enum rejects,
+                # so every candidate is tried, matched items first.
+                matched = [i for i in items if i.lower() == str(view).lower()]
+                pick = _try_set(scene.view_settings, "view_transform",
+                                matched + [str(view), str(view).title(), str(view).upper()])
                 if pick:
-                    scene.view_settings.view_transform = pick
                     changed["view_transform"] = pick
                 else:
                     notes.append(f"view transform '{view}' not available (have {items})")
@@ -734,9 +854,11 @@ class BlenderBridge:
                 items = _enum_items(scene.view_settings, "look")
                 base = scene.view_settings.view_transform
                 candidates = [str(look), f"{base} - {look}", f"AgX - {look}", f"Filmic - {look}"]
-                pick = next((i for c in candidates for i in items if i.lower() == c.lower()), None)
+                if str(look).strip().lower() == "none":
+                    candidates = ["None", f"{base} - None", "NONE"]
+                matched = [i for c in candidates for i in items if i.lower() == c.lower()]
+                pick = _try_set(scene.view_settings, "look", list(dict.fromkeys(matched + candidates)))
                 if pick:
-                    scene.view_settings.look = pick
                     changed["look"] = pick
                 else:
                     notes.append(f"look '{look}' not available (have {items[:8]})")
@@ -798,11 +920,62 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    # ---------------------------------------------------------
-    # Naap (generated / imported model ko sahi size mein rakhne ke liye)
-    # ---------------------------------------------------------
+    def scene_snapshot(self) -> dict:
+        """READ-ONLY picture of the whole scene for the error finder: every object with its world box, transform,
+        materials, collections, light / camera data and how much of it the active camera sees. Changes nothing."""
+        def _do():
+            from mathutils import Vector
+            try:
+                from bpy_extras.object_utils import world_to_camera_view
+            except Exception:  # noqa: BLE001
+                world_to_camera_view = None
+
+            scene = bpy.context.scene
+            bpy.context.view_layer.update()
+            camera = scene.camera
+            objects = []
+            for obj in scene.objects:
+                entry = {"name": obj.name, "type": obj.type,
+                         "location": [round(v, 4) for v in obj.location],
+                         "rotation": [round(v, 4) for v in obj.rotation_euler],
+                         "scale": [round(v, 4) for v in obj.scale],
+                         "dimensions": [round(v, 4) for v in obj.dimensions],
+                         "parent": obj.parent.name if obj.parent else "",
+                         "collections": [c.name for c in obj.users_collection],
+                         "hidden": bool(obj.hide_viewport or obj.hide_render or obj.hide_get()),
+                         "materials": [], "box": None, "in_view": None}
+                data = getattr(obj, "data", None)
+                if data is not None and hasattr(data, "materials"):
+                    entry["materials"] = [m.name if m else "" for m in data.materials]
+                if obj.type == "MESH":
+                    entry["vertices"] = len(data.vertices)
+                    entry["faces"] = len(data.polygons)
+                if obj.type in ("MESH", "CURVE", "SURFACE", "META", "FONT"):
+                    corners = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+                    entry["box"] = {"min": [round(min(c[k] for c in corners), 4) for k in range(3)],
+                                    "max": [round(max(c[k] for c in corners), 4) for k in range(3)]}
+                    if camera is not None and world_to_camera_view is not None:
+                        seen = 0
+                        for c in corners:
+                            p = world_to_camera_view(scene, camera, c)
+                            if 0.0 <= p.x <= 1.0 and 0.0 <= p.y <= 1.0 and p.z > 0:
+                                seen += 1
+                        entry["in_view"] = round(seen / 8.0, 3)
+                if obj.type == "LIGHT":
+                    entry["light"] = {"type": data.type, "energy": round(float(data.energy), 3),
+                                      "color": [round(v, 3) for v in data.color]}
+                if obj.type == "CAMERA":
+                    entry["camera"] = {"lens": round(float(data.lens), 2), "active": obj == camera}
+                objects.append(entry)
+            world = scene.world
+            return {"objects": objects, "camera": camera.name if camera else "",
+                    "engine": scene.render.engine,
+                    "collections": {c.name: len(c.objects) for c in bpy.data.collections},
+                    "world": world.name if world else "", "frame": scene.frame_current}
+
+        return run_on_main_thread(_do)
+
     def measure_objects(self, names):
-        """Diye gaye objects (aur unke bachchon) ka WORLD bounding box: {"min": [x,y,z], "max": [x,y,z]} ya None."""
         def _do():
             from mathutils import Vector
 
@@ -824,15 +997,9 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    # ---------------------------------------------------------
-    # Kai angle se render (build.iterate ka "dekho aur jaancho")
-    # ---------------------------------------------------------
-    def render_views(self, names, views, resolution: int = 512, out_dir: str = None, stem: str = "view"):
-        """
-        Diye gaye objects (aur unke bachche) ko alag-alag view se render karke PNG paths deta hai.
-        Hinglish: Baaki saare objects render ke liye chhupa diye jaate hain (saaf tasveer), ek temporary camera + sun lagta hai,
-        aur ant mein sab kuch (camera, resolution, hide flags, filepath) pehle jaisa kar diya jaata hai — chahe render fail ho.
-        """
+    def render_views(self, names, views, resolution: int = 512, out_dir: str = None, stem: str = "view", focus=None):
+        """Render `names` from each view. focus = a few of them: the camera frames only those (a zoom-in close-up)
+        while the rest stays visible around them."""
         import math
         import os
         import tempfile
@@ -843,7 +1010,7 @@ class BlenderBridge:
         os.makedirs(out_dir, exist_ok=True)
         view_names = [normalize_view(v) for v in views]
 
-        def _do():
+        def _do(view_names, cutaways):
             from mathutils import Vector
 
             scene = bpy.context.scene
@@ -889,16 +1056,70 @@ class BlenderBridge:
                 render.resolution_percentage = 100
                 render.image_settings.file_format = "PNG"
                 scene.camera = cam
+                quick = self._fast_render_begin(scene)
+                from ..tools.render_views import occluders
+                boxes = {}
+                for name in keep:
+                    obj = bpy.data.objects.get(name)
+                    if obj is None or obj.type not in ("MESH", "CURVE", "SURFACE", "META", "FONT"):
+                        continue
+                    pts = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+                    boxes[name] = {"min": [min(p[k] for p in pts) for k in range(3)],
+                                   "max": [max(p[k] for p in pts) for k in range(3)]}
+                from ..tools.render_views import framing_box
+                focus_boxes = [boxes[n] for n in (focus or []) if n in boxes]
+                if focus_boxes:
+                    frame_lo = [min(b["min"][k] for b in focus_boxes) for k in range(3)]
+                    frame_hi = [max(b["max"][k] for b in focus_boxes) for k in range(3)]
+                else:
+                    frame_lo, frame_hi = framing_box(boxes, lo, hi)
                 for view in view_names:
-                    pose = camera_pose(lo, hi, view)
+                    from ..copilot import activity
+                    if activity.should_stop():
+                        raise RuntimeError("Stopped by user.")       # no more renders after Stop
+                    pose = camera_pose(frame_lo, frame_hi, view)
                     cam.location = pose["location"]
                     direction = Vector(pose["target"]) - Vector(pose["location"])
                     cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-                    path = os.path.join(out_dir, f"{stem}_{view}.png")
-                    render.filepath = path
-                    bpy.ops.render.render(write_still=True)
-                    paths.append(path)
+                    # see INTO enclosed scenes: hide the roof and the walls on the camera's side for this view
+                    blockers = [bpy.data.objects.get(n) for n in occluders(boxes, lo, hi, pose["location"])]
+                    blockers = [o for o in blockers if o is not None and not o.hide_render]
+                    for obj in blockers:
+                        obj.hide_render = True
+                    try:
+                        path = os.path.join(out_dir, f"{stem}_{view}.png")
+                        render.filepath = path
+                        bpy.ops.render.render(write_still=True)
+                        paths.append(path)
+                    finally:
+                        for obj in blockers:
+                            obj.hide_render = False
+                # buildings made by mesh.building: one more close view with the outer walls hidden, so the
+                # reviewer sees the rooms, halls and furniture instead of reporting them as missing
+                from ..tools.render_views import building_cutaways, cutaway_pose
+                for prefix, envelope in (sorted(building_cutaways(keep).items())[:2] if cutaways and not focus else []):
+                    box = boxes.get(prefix + "_walls")
+                    if box is None:
+                        continue
+                    pose = cutaway_pose(box["min"], box["max"])
+                    cam.location = pose["location"]
+                    direction = Vector(pose["target"]) - Vector(pose["location"])
+                    cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+                    blockers = [bpy.data.objects.get(n) for n in envelope]
+                    blockers = [o for o in blockers if o is not None and not o.hide_render]
+                    for obj in blockers:
+                        obj.hide_render = True
+                    try:
+                        path = os.path.join(out_dir, f"{stem}_cutaway_{prefix}.png")
+                        render.filepath = path
+                        bpy.ops.render.render(write_still=True)
+                        paths.append(path)
+                    finally:
+                        for obj in blockers:
+                            obj.hide_render = False
             finally:
+                if "quick" in locals():
+                    self._fast_render_end(scene, quick)
                 for obj in hidden:
                     obj.hide_render = False
                 (scene.camera, render.filepath, render.resolution_x, render.resolution_y, render.resolution_percentage,
@@ -912,19 +1133,25 @@ class BlenderBridge:
                 raise RuntimeError(f"render finished but no image was written: {missing[0]}")
             return paths
 
-        return run_on_main_thread(_do)
+        # one image per main-thread call: Blender's UI stays alive between images, so the Stop button can be
+        # pressed (and is honoured) in the middle of a deep check - not only after all of its renders
+        from ..copilot import activity
+        paths = []
+        for index, view in enumerate(view_names):
+            if activity.should_stop():
+                raise RuntimeError("Stopped by user.")
+            last = index == len(view_names) - 1
+            paths += run_on_main_thread(lambda v=view, c=last: _do([v], c))
+        if not view_names:
+            paths += run_on_main_thread(lambda: _do([], True))
+        return paths
 
     # ---------------------------------------------------------
     # Curves
     # ---------------------------------------------------------
     def create_curve(self, name: str, points, curve_type: str = "BEZIER", thickness: float = 0.05,
                      closed: bool = False, location=None, rotation=None, scale=None,
-                     fill_caps: bool = True, resolution: int = 12):
-        """
-        Hinglish: Ek curve object banata hai (Bezier/Poly/NURBS). `points` = [[x,y,z(,radius)], ...].
-        Har point ka `radius` bevel (thickness) ko us jagah ghata/badha deta hai — isi se
-        flame/branch jaise tapered shapes bante hain. bpy.ops nahi, seedha bpy.data.
-        """
+                     fill_caps: bool = True, resolution: int = 12, strokes=None):
         def _do():
             curve_data = bpy.data.curves.new(name=name, type="CURVE")
             curve_data.dimensions = "3D"
@@ -933,26 +1160,8 @@ class BlenderBridge:
             curve_data.bevel_resolution = 4
             curve_data.use_fill_caps = bool(fill_caps)
 
-            spline = curve_data.splines.new(curve_type)
-            count = len(points)
-
-            if curve_type == "BEZIER":
-                spline.bezier_points.add(count - 1)
-                for bezier_point, point in zip(spline.bezier_points, points):
-                    bezier_point.co = (point[0], point[1], point[2])
-                    bezier_point.radius = point[3] if len(point) > 3 else 1.0
-                    bezier_point.handle_left_type = "AUTO"
-                    bezier_point.handle_right_type = "AUTO"
-            else:
-                spline.points.add(count - 1)
-                for spline_point, point in zip(spline.points, points):
-                    spline_point.co = (point[0], point[1], point[2], 1.0)
-                    spline_point.radius = point[3] if len(point) > 3 else 1.0
-                if curve_type == "NURBS":
-                    spline.order_u = min(4, count)
-                    spline.use_endpoint_u = True
-
-            spline.use_cyclic_u = bool(closed)
+            for stroke in (strokes or [points]):
+                self._add_spline(curve_data, stroke, curve_type, closed)
 
             obj = bpy.data.objects.new(name=name, object_data=curve_data)
             bpy.context.collection.objects.link(obj)
@@ -968,8 +1177,31 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
+    @staticmethod
+    def _add_spline(curve_data, points, curve_type, closed):
+        spline = curve_data.splines.new(curve_type)
+        count = len(points)
+
+        if curve_type == "BEZIER":
+            spline.bezier_points.add(count - 1)
+            for bezier_point, point in zip(spline.bezier_points, points):
+                bezier_point.co = (point[0], point[1], point[2])
+                bezier_point.radius = point[3] if len(point) > 3 else 1.0
+                bezier_point.handle_left_type = "AUTO"
+                bezier_point.handle_right_type = "AUTO"
+        else:
+            spline.points.add(count - 1)
+            for spline_point, point in zip(spline.points, points):
+                spline_point.co = (point[0], point[1], point[2], 1.0)
+                spline_point.radius = point[3] if len(point) > 3 else 1.0
+            if curve_type == "NURBS":
+                spline.order_u = min(4, count)
+                spline.use_endpoint_u = True
+
+        spline.use_cyclic_u = bool(closed)
+
     # ---------------------------------------------------------
-    # Modifier level — Step 2.6
+    # Modifier level —
     # ---------------------------------------------------------
     def add_modifier(self, object_name: str, modifier_name: str, modifier_type: str = "BEVEL"):
         def _do():
@@ -981,10 +1213,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def set_object_visibility(self, object_name: str, hide: bool) -> bool:
-        """Hinglish: Boolean-cutter objects (jinka sirf shape chahiye, khud
-        wo dikhna nahi chahiye) ko viewport aur render dono se chhupata hai.
-        Object delete NAHI hota - Boolean modifier ko uski mesh data
-        chahiye hoti hai, isliye cutter zinda rehna zaroori hai."""
         def _do():
             obj = bpy.data.objects.get(object_name)
             if obj is None:
@@ -1010,13 +1238,6 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    # Hinglish: BOOLEAN modifier ka 'object' property aur MIRROR modifier
-    # ka 'mirror_object' - ye dono Blender mein ek REAL bpy.types.Object
-    # reference maangte hain, ek plain string naam nahi. Pehle
-    # configure_modifier seedha setattr(modifier, "object", "car_cutter")
-    # kar deta tha, jo silently fail ho jaata (ya crash) kyunki string
-    # ek Object nahi hai. Ab jin properties ko Object chahiye unke liye
-    # object naam ko real object mein resolve karte hain.
     _OBJECT_REF_PROPERTIES = {"object", "mirror_object", "target", "start_cap", "end_cap", "offset_object"}
 
     def configure_modifier(self, object_name: str, modifier_name: str, properties: dict):
@@ -1047,15 +1268,6 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    # ---------------------------------------------------------
-    # Camera / Render level — Step 2.7
-    # ---------------------------------------------------------
-    # Hinglish: Har extension ke liye Blender ka APNA built-in import
-    # operator hai - ye koi third-party asset download nahi karta, sirf
-    # ek file jo user ne khud disk par pehle se rakhi hai, scene mein
-    # LAATA hai. .obj aur .gltf/.glb Blender mein hamesha built-in hote
-    # hain; .fbx ke liye "Import-Export: FBX format" addon enabled hona
-    # chahiye (zyadatar installs mein by default hota hai).
     _IMPORT_OPS = {
         ".obj": lambda filepath: bpy.ops.wm.obj_import(filepath=filepath),
         ".fbx": lambda filepath: bpy.ops.import_scene.fbx(filepath=filepath),
@@ -1064,11 +1276,6 @@ class BlenderBridge:
     }
 
     def list_blend_objects(self, filepath: str):
-        """Hinglish: .blend file ke ANDAR kaun-kaun se objects hain, ye
-        bina kuch import kiye check karta hai - .blend files obj/fbx ki
-        tarah 'poori file import karo' nahi hoti, isme se specific named
-        objects CHUNNE padte hain (bpy.ops.wm.append), isliye pehle list
-        dekhna zaroori hai."""
         import os
         if not os.path.isfile(filepath):
             raise ValueError(f"File not found: {filepath}")
@@ -1082,11 +1289,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def import_blend(self, filepath: str, object_names=None, name_prefix: str = None):
-        """Hinglish: .blend file se specific object(s) (ya sab, agar
-        object_names na diya jaaye) current scene mein APPEND karta hai
-        aur unhe scene collection mein link karta hai (append akele se
-        sirf bpy.data mein aata hai, scene mein dikhta nahi jab tak
-        explicitly link na kiya jaaye)."""
         import os
         if not os.path.isfile(filepath):
             raise ValueError(f"File not found: {filepath}")
@@ -1120,7 +1322,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def import_model(self, filepath: str, name: str = None, scale=None):
-        """Ek local .obj/.fbx/.glb/.gltf file ko scene mein import karta hai."""
         import os
         ext = os.path.splitext(filepath)[1].lower()
         importer = self._IMPORT_OPS.get(ext)
@@ -1154,12 +1355,13 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def create_camera(self, name: str, location=None, rotation=None):
-        """Naya camera object banata hai scene mein."""
 
         def _do():
-            camera_data = bpy.data.cameras.new(name=f"{name}_data")
-            camera_obj = bpy.data.objects.new(name=name, object_data=camera_data)
-            bpy.context.collection.objects.link(camera_obj)
+            camera_obj = bpy.data.objects.get(name)
+            if camera_obj is None or camera_obj.type != "CAMERA":
+                camera_data = bpy.data.cameras.new(name=f"{name}_data")
+                camera_obj = bpy.data.objects.new(name=name, object_data=camera_data)
+                bpy.context.collection.objects.link(camera_obj)
 
             if location is not None:
                 camera_obj.location = location
@@ -1171,7 +1373,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def set_active_camera(self, name: str) -> bool:
-        """Scene ka active/render camera set karta hai."""
 
         def _do():
             obj = bpy.data.objects.get(name)
@@ -1183,15 +1384,98 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
 
-    def render_preview(self, filepath: str, resolution=None) -> str:
-        """
-        Current scene ka render leta hai aur ek POORE (absolute) path par save karta hai, wahi path return karta hai.
+    # ---------------------------------------------------------
+    # Checkpoints for "Revert AI changes"
+    # ---------------------------------------------------------
+    def save_checkpoint(self, filepath: str) -> dict:
+        """Write every object of the scene (with its mesh, materials, modifiers) to a small .blend, so a later
+        restore brings back deleted objects and edited meshes too - not only transforms."""
+        def _do():
+            scene = bpy.context.scene
+            objects = list(scene.objects)
+            info = {"objects": [{"name": o.name, "collections": [c.name for c in o.users_collection]} for o in objects],
+                    "camera": scene.camera.name if scene.camera else None,
+                    "scene_collection": scene.collection.name}
+            bpy.data.libraries.write(filepath, set(objects), fake_user=False)
+            return info
 
-        Hinglish: Pehle "/tmp/x.png" jaisa path Blender ke drive (C:\\tmp) par save hota tha, jabki Python/vision
-        use doosre drive par dhoondhta tha. Ab image_paths.resolve_image_path har tool ke liye ek hi pakka path
-        banata hai. Render ke baad file asal mein bani ya nahi, ye bhi check hota hai. `resolution=(w, h)` se
-        chhota/tez preview mil sakta hai; scene ki apni settings render ke baad wapas rakh di jaati hain.
-        """
+        return run_on_main_thread(_do)
+
+    def restore_checkpoint(self, filepath: str, info: dict) -> dict:
+        def _do():
+            scene = bpy.context.scene
+            removed = [o.name for o in scene.objects]
+            old_data, old_materials = [], []
+            for obj in list(scene.objects):
+                if obj.data is not None:
+                    old_data.append(obj.data)
+                    old_materials.extend(m for m in getattr(obj.data, "materials", []) or [] if m is not None)
+                bpy.data.objects.remove(obj, do_unlink=True)
+            # free the old meshes / materials first, so the restored ones keep their names (no '.001' copies)
+            for block in old_data + old_materials:
+                try:
+                    if block.users == 0:
+                        for pool in (bpy.data.meshes, bpy.data.curves, bpy.data.cameras, bpy.data.lights,
+                                     bpy.data.materials):
+                            if block.name in pool and pool[block.name] == block:
+                                pool.remove(block)
+                                break
+                except ReferenceError:
+                    pass                                    # already gone (shared by two removed objects)
+            wanted = [entry["name"] for entry in info.get("objects", [])]
+            with bpy.data.libraries.load(filepath, link=False) as (data_from, data_to):
+                data_to.objects = [name for name in data_from.objects if name in wanted]
+            restored = []
+            by_name = {entry["name"]: entry for entry in info.get("objects", [])}
+            for obj in data_to.objects:
+                if obj is None:
+                    continue
+                entry = by_name.get(obj.name, {})
+                linked = False
+                for col_name in entry.get("collections", []):
+                    collection = scene.collection if col_name == info.get("scene_collection") \
+                        else bpy.data.collections.get(col_name)
+                    if collection is not None and obj.name not in collection.objects:
+                        collection.objects.link(obj)
+                        linked = True
+                if not linked:
+                    scene.collection.objects.link(obj)
+                restored.append(obj.name)
+            camera = info.get("camera")
+            if camera and bpy.data.objects.get(camera) is not None:
+                scene.camera = bpy.data.objects[camera]
+            return {"removed": len(removed), "restored": restored}
+
+        return run_on_main_thread(_do)
+
+    @staticmethod
+    def _fast_render_begin(scene, samples: int = 16):
+        """Switch to a quick EEVEE render (Cycles at 128 samples froze Blender for 40+ s per image).
+        Returns what to restore."""
+        saved = {"engine": scene.render.engine}
+        for engine in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
+            try:
+                scene.render.engine = engine
+                break
+            except (TypeError, ValueError, AttributeError):
+                continue
+        eevee = getattr(scene, "eevee", None)
+        if eevee is not None and hasattr(eevee, "taa_render_samples"):
+            saved["eevee_samples"] = eevee.taa_render_samples
+            eevee.taa_render_samples = int(samples)
+        return saved
+
+    @staticmethod
+    def _fast_render_end(scene, saved) -> None:
+        try:
+            scene.render.engine = saved["engine"]
+        except (TypeError, ValueError, AttributeError, KeyError):
+            pass
+        eevee = getattr(scene, "eevee", None)
+        if eevee is not None and "eevee_samples" in saved:
+            eevee.taa_render_samples = saved["eevee_samples"]
+
+    def render_preview(self, filepath: str, resolution=None, fast: bool = False) -> str:
         import os
         import tempfile
 
@@ -1204,7 +1488,6 @@ class BlenderBridge:
         except OSError:
             pass
         if not os.path.isdir(directory) or not os.access(directory, os.W_OK):
-            # Folder likhne layak nahi (jaise C:\\ ka root) -> safe Temp folder
             filepath = os.path.join(tempfile.gettempdir(), os.path.basename(filepath))
 
         def _do():
@@ -1212,16 +1495,20 @@ class BlenderBridge:
             render = scene.render
             saved = (render.filepath, render.resolution_x, render.resolution_y,
                      render.resolution_percentage, render.image_settings.file_format)
+            quick = self._fast_render_begin(scene) if fast else None
             try:
                 render.filepath = filepath
                 render.image_settings.file_format = image_format_for(filepath)
-                if resolution is not None:
-                    render.resolution_x, render.resolution_y = int(resolution[0]), int(resolution[1])
+                size = resolution if resolution is not None else ((960, 540) if fast else None)
+                if size is not None:
+                    render.resolution_x, render.resolution_y = int(size[0]), int(size[1])
                     render.resolution_percentage = 100
                 bpy.ops.render.render(write_still=True)
             finally:
                 (render.filepath, render.resolution_x, render.resolution_y,
                  render.resolution_percentage, render.image_settings.file_format) = saved
+                if quick is not None:
+                    self._fast_render_end(scene, quick)
 
             if not os.path.isfile(filepath):
                 raise RuntimeError(f"Render finished but no image was written at {filepath}")
@@ -1230,10 +1517,9 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     # ---------------------------------------------------------
-    # Geometry Nodes — Step 9.8
+    # Geometry Nodes —
     # ---------------------------------------------------------
     def add_geometry_nodes(self, object_name: str, node_group_name: str):
-        """Object pe naya Geometry Nodes modifier add karta hai."""
 
         def _do():
             obj = bpy.data.objects.get(object_name)
@@ -1248,7 +1534,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def get_geometry_nodes(self, object_name: str, modifier_name: str):
-        """Object ke Geometry Nodes modifier ko dhundta hai."""
 
         def _do():
             obj = bpy.data.objects.get(object_name)
@@ -1258,7 +1543,7 @@ class BlenderBridge:
 
         return run_on_main_thread(_do)
     # ---------------------------------------------------------
-    # Geometry QA — Step 12.7
+    # Geometry QA —
     # ---------------------------------------------------------
     def get_mesh_stats(self, object_name: str):
         def _do():
@@ -1362,14 +1647,6 @@ class BlenderBridge:
                      decimate_ratio: float = 0.5, preserve_sharp: bool = True,
                      smooth_normals: bool = True, new_name: str = "",
                      hide_original: bool = True):
-        """
-        Hinglish: Original object ko kabhi modify nahi karta — uski COPY
-        banakar usi par remesh chalata hai, aur naya object return karta
-        hai. Isse retopology hamesha reversible rehti hai.
-
-        NOTE: bpy.ops yahan active/selected object par chalte hain, isliye
-        copy ko active banate hain. Kuch bhi fail ho to copy delete ho jaati hai.
-        """
         def _do():
             src = bpy.data.objects.get(object_name)
             if src is None or src.type != "MESH":
@@ -1447,10 +1724,9 @@ class BlenderBridge:
         return run_on_main_thread(_do)
     
     # ---------------------------------------------------------
-    # Animation — Step 9.13
+    # Animation —
     # ---------------------------------------------------------
     def insert_keyframe(self, object_name: str, frame: int, location=None):
-        """Object ki current (ya di gayi) location pe keyframe insert karta hai."""
 
         def _do():
             obj = bpy.data.objects.get(object_name)
@@ -1466,7 +1742,6 @@ class BlenderBridge:
         return run_on_main_thread(_do)
 
     def get_keyframes(self, object_name: str):
-        """Object ke location keyframes ki frame-number list deta hai."""
 
         def _do():
             obj = bpy.data.objects.get(object_name)

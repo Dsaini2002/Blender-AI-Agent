@@ -20,7 +20,6 @@ def png_bytes(width, height):
 
 
 class RecordingBridge:
-    """render_preview ko bas record karta hai (purane bridge jaisa: sirf filepath, resolution tabhi jab ho)."""
 
     def __init__(self, write_png=None):
         self.calls = []
@@ -187,7 +186,6 @@ class TestVisionObserveTool(unittest.TestCase):
 
 
 class TestRenderThenVisionAgree(unittest.TestCase):
-    """End to end idea: the same LLM-supplied string must lead render and vision to the same file."""
 
     def test_same_file_for_both_tools(self):
         given = "/tmp/room_preview.png"
@@ -195,7 +193,6 @@ class TestRenderThenVisionAgree(unittest.TestCase):
         analyzer = FakeAnalyzer()
         RenderPreviewTool(bridge).execute({"filepath": given})
         VisionObserveTool(analyzer).execute({"filepath": given})
-        # the bridge resolves with resolve_image_path (see bridge.render_preview); the vision tool does the same
         self.assertEqual(resolve_image_path(bridge.calls[0][0], "preview.png"), analyzer.calls[0])
 
 

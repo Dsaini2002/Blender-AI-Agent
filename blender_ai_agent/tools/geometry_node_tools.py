@@ -1,9 +1,4 @@
-"""
-Geometry Node Tools — Step 9.8
-===================================
-Hinglish: Geometry Nodes ko first-class Tool interface milta hai —
-same pattern jo modifier_tools.py mein tha.
-"""
+"""Geometry Node Tools"""
 
 from dataclasses import dataclass
 

@@ -1,10 +1,4 @@
-"""
-Material Tools — Step 2.5
-============================
-Hinglish: Object Tools jaisa hi pattern — har tool `Tool` extend
-karta hai, `run()` implement karta hai. Yahan bhi POLYMORPHISM hai:
-3 alag tools, same `execute()` interface.
-"""
+"""Material Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import AssignMaterialInput, CreateMaterialInput, ModifyMaterialInput
@@ -12,6 +6,7 @@ from .models import AssignMaterialInput, CreateMaterialInput, ModifyMaterialInpu
 
 class CreateMaterialTool(Tool):
     name = "material.create"
+    auto_name = "Material"
     description = "Creates a new material, optionally with a base color."
     permission = Permission.SAFE_WRITE
     input_model = CreateMaterialInput

@@ -39,7 +39,6 @@ class TestCampsiteRouting(unittest.TestCase):
 
     def test_ignores_unrelated_requests(self):
         skill, _ = build_skill()
-        # single props (campfire, tent...) belong to the model library, not the whole campsite scene
         for text in ("make a house", "start a campaign", "create a table", "add some content",
                      "make a campfire", "add a tent", "bonfire"):
             self.assertEqual(skill.can_handle(text), 0.0, text)
@@ -105,7 +104,6 @@ class TestCampsiteBuild(unittest.TestCase):
             self.assertLess(cap.scale[0], 0.1)
             self.assertAlmostEqual(cap.scale[1], cap.scale[2])
             self.assertEqual(cap.location[2], 0.0)
-        # the two caps sit at opposite ends, centred on the tent
         left, right = bridge.get_object("C_PanelLeft"), bridge.get_object("C_PanelRight")
         centre = [(left.location[i] + right.location[i]) / 2 for i in (0, 1)]
         for i in (0, 1):
@@ -234,8 +232,6 @@ class TestCampsiteBuild(unittest.TestCase):
 
 
 class TestLeftoverDefaults(unittest.TestCase):
-    """Agent ko pata hai ki startup Cube/Light scene mein pade hain — ab wo ignore nahi karta,
-    na chupchaap delete karta hai; poochta hai (ya user ke kehne par hataata hai)."""
 
     @staticmethod
     def _defaults():

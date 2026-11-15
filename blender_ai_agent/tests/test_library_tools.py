@@ -41,11 +41,6 @@ def full_registry(bridge):
 
 
 class NoDownloadedModels(unittest.TestCase):
-    """
-    Hinglish: Skill ab (fallback ke liye) downloaded models ka index dekhti hai. In tests ko aapke asli
-    ~/BlenderAIAgent/models se alag rakhte hain (khaali folder), warna "make a table" jaisa negative case
-    aapke asli Table model se match ho jaata.
-    """
 
     def setUp(self):
         super().setUp()

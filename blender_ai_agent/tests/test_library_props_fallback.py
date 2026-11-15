@@ -30,7 +30,6 @@ ENTRIES = [
 
 
 class TestAutomaticDownloadedFallback(unittest.TestCase):
-    """'Add a bottle' -> the agent cannot build it itself -> take it from the downloaded models."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

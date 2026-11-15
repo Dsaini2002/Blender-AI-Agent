@@ -32,7 +32,7 @@ class TestLoopGuards(unittest.TestCase):
         ])
         result = loop.run("make a car")
         self.assertEqual(result.stopped_reason, "stop")
-        self.assertEqual(len(result.executed_steps), 1)   # sirf ek baar execute hua
+        self.assertEqual(len(result.executed_steps), 1)
 
     def test_repeating_model_is_stopped_early_with_no_progress(self):
         create = ("object.create", {"primitive": "CUBE", "name": "car_body"})
@@ -148,9 +148,6 @@ if __name__ == "__main__":
 
 
 class TestVisionCheckEnforced(unittest.TestCase):
-    """Hinglish: Agar vision.observe registered hai, render ho chuka hai, aur
-    build bada hai (>4 parts), to model bina vision.observe call kiye
-    'done' nahi bol sakta - loop ek baar nudge karta hai."""
 
     def _build_loop_with_vision(self, scripted_responses, vision_tool=None):
         from blender_ai_agent.agent.context import ContextManager
@@ -193,9 +190,6 @@ class TestVisionCheckEnforced(unittest.TestCase):
     def _fake_vision_tool(self, issues_sequence=None):
         from blender_ai_agent.tools.base import Permission, Tool, ToolResult
 
-        # Hinglish: issues_sequence diya jaaye to har successive call ek
-        # alag result deta hai (jaise pehli baar issues, dusri baar clean)
-        # - multi-round improve loop test karne ke liye.
         call_count = {"n": 0}
 
         class _FakeVisionTool(Tool):
@@ -258,9 +252,6 @@ class TestVisionCheckEnforced(unittest.TestCase):
 
 
 class TestVisionControlledMultiRoundImprove(unittest.TestCase):
-    """Hinglish: VisualQualityOptimizer-style controlled loop - render ->
-    vision.observe -> agar issues hain to fix + phir se check -> jab tak
-    issues khatam na ho ya MAX_VISION_ITERATIONS (3) na aa jaye."""
 
     def _build(self, scripted_responses, issues_sequence):
         from blender_ai_agent.agent.context import ContextManager

@@ -45,7 +45,6 @@ class MaterialEchoTool(Tool):
 
 
 class BrokenPostInit:
-    """__post_init__ andar kisi galat type par AttributeError/KeyError uthata hai."""
 
     def __init__(self, name, thing=None):
         self.name = name

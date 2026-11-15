@@ -1,11 +1,4 @@
-"""
-Geometry Fix Tools — Step 12.4
-==================================
-Hinglish: Phase 12 ke QA layer ke liye "Astra" jaisa auto-fixer koi
-naya raw-bpy hack nahi hai — jaisa baaki poore codebase mein rule
-hai, "BlenderBridge = sole bpy touchpoint", waise hi yahan bhi fixes
-NORMAL Tool system ke through hi hote hain, permission-gated.
-"""
+"""Geometry Fix Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import RecalculateNormalsInput, SeparateOverlapInput

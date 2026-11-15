@@ -1,17 +1,4 @@
-"""
-capability.py
-==============
-Hinglish: "Kya hamara agent ye bana paayega?" ka faisla — prompt padhkar, bina LLM ke (zero quota).
-
-Verdict:
-  yes    hamare tools achhe se bana lenge (library, character, generators, primitives, edits, scene)
-  maybe  stylized shayad ban jaye; pehle library / downloaded models, na mile to image->3D
-  no     hamare tools se achha nahi banega (asli jaisi gaadi, jaanwar, insaan, machine...) YA user ne khud AI/image se maanga
-         -> route: "generate" (prompt -> image -> 3D) ya "from_image" (user ki image -> 3D)
-
-Faisla pehchaan par hai: HARD subjects (vehicles, animals, realistic humans, machines...) + REALISM shabd ("realistic",
-"detailed", "asli jaisi") + EXPLICIT AI shabd ("ai se", "from this image", "trellis").
-"""
+"""capability.py"""
 
 import re
 from dataclasses import dataclass, field
@@ -104,7 +91,6 @@ def _library_words() -> set:
 
 
 def assess_request(text: str) -> Assessment:
-    """Prompt ko padhkar Assessment deta hai. Kabhi exception nahi."""
     raw = (text or "").strip()
     lowered = raw.lower()
     words = _words(lowered)
@@ -126,30 +112,28 @@ def assess_request(text: str) -> Assessment:
         route = "from_image" if image_path or re.search(r"\b(?:this|the|my|an?) (?:image|picture|photo|pic)\b|image at", lowered) and image_path else "generate"
         if image_path:
             route = "from_image"
-        return Assessment("no", 1.0, route, reasons=["Aapne khud AI / image se banane ko kaha" + (f" (image: {image_path})" if image_path else "")], **base)
+        return Assessment("no", 1.0, route, reasons=["You asked for an AI / image-based build" + (f" (image: {image_path})" if image_path else "")], **base)
 
-    # character / face: hamara khud ka best tool hai (hard subject 'human'/'man' hone par bhi)
     if wordset & set(_BUILDABLE["characters"]) and not (realism and wordset & {"human", "person", "man", "woman"}):
-        return Assessment("yes", 0.95, "build", reasons=["Cartoon character / face: character.create ka kaam"], **base)
+        return Assessment("yes", 0.95, "build", reasons=["Cartoon character / face: handled by character.create"], **base)
 
     if hard:
         if realism and not simple:
-            return Assessment("no", 0.92, "generate", reasons=[f"'{hard[0]}' ({hard_category}) asli jaisa banana hamare tools se achha nahi hota; "
-                                                              "prompt -> image -> 3D behtar rahega"], **base)
+            return Assessment("no", 0.92, "generate", reasons=[f"'{hard[0]}' ({hard_category}) cannot be built realistically with our tools; "
+                                                              "prompt -> image -> 3D works better"], **base)
         if simple:
-            return Assessment("maybe", 0.6, "library_or_downloaded", reasons=[f"Stylized/low-poly '{hard[0]}': library / downloaded model ya "
-                                                                             "primitives se banane ki koshish theek hai"], **base)
-        return Assessment("maybe", 0.7, "generate_if_no_model", reasons=[f"'{hard[0]}' ({hard_category}) mushkil subject hai: pehle downloaded "
-                                                                       "models dekho, na mile to prompt -> image -> 3D"], **base)
+            return Assessment("maybe", 0.6, "library_or_downloaded", reasons=[f"Stylized/low-poly '{hard[0]}': a library / downloaded model or "
+                                                                             "primitives can do it"], **base)
+        return Assessment("maybe", 0.7, "generate_if_no_model", reasons=[f"'{hard[0]}' ({hard_category}) is a hard subject: try downloaded "
+                                                                       "models first, otherwise prompt -> image -> 3D"], **base)
 
     if buildable or _EDIT.search(lowered):
-        return Assessment("yes", 0.9, "build", reasons=["Ye hamare tools (library / generators / primitives / edit) se ban jaata hai"], **base)
+        return Assessment("yes", 0.9, "build", reasons=["Our tools (library / generators / primitives / edit) can build this"], **base)
 
-    return Assessment("maybe", 0.5, "llm", reasons=["Subject pehchaana nahi gaya: LLM koshish karega; na bane to image -> 3D"], **base)
+    return Assessment("maybe", 0.5, "llm", reasons=["Subject not recognised: the LLM will try; if that fails use image -> 3D"], **base)
 
 
 def image_prompt_for(subject_prompt: str, style: str = "auto") -> str:
-    """TRELLIS ko saaf, akeli cheez ki image chahiye: safed background, beech mein, 3/4 view, bina parchhai."""
     core = " ".join((subject_prompt or "").split())
     core = re.sub(r"^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:make|create|generate|build|design|draw|add|give|banao|bana do)\s+(?:me\s+)?"
                   r"(?:(?:a|an|the|some|one)\s+)?", "", core, flags=re.IGNORECASE)

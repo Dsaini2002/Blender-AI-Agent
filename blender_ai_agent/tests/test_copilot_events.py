@@ -51,7 +51,7 @@ class TestEventBus(unittest.TestCase):
 
     def test_publish_with_no_subscribers_does_not_error(self):
         bus = EventBus()
-        bus.publish(CopilotEvent.TASK_COMPLETED)  # exception nahi aani chahiye
+        bus.publish(CopilotEvent.TASK_COMPLETED)
 
 
 if __name__ == "__main__":

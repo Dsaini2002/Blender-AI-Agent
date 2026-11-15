@@ -1,8 +1,5 @@
-"""
-MemoryManager — Step 7.5
-============================
-Hinglish: Agent isi class se baat karega — store ke internal
-implementation (in-memory, SQLite, etc.) ka pata nahi chalega.
+"""MemoryManager
+=============
 
     Agent -> MemoryManager -> MemoryStore
 """
@@ -16,7 +13,6 @@ from .store import MemoryStore
 class MemoryManager:
 
     def __init__(self, store: MemoryStore):
-        # Dependency Injection — store bahar se di gayi hai
         self._store = store
 
     def remember(self, memory: Memory) -> None:

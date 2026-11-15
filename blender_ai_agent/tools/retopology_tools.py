@@ -1,14 +1,4 @@
-"""
-Retopology Tools
-=================
-Hinglish: Dense / messy mesh (sculpt, import, boolean ke baad) ko clean,
-kam-poly topology mein badalne ke tools. Rule wahi — raw bpy yahan nahi,
-sirf BlenderBridge ke through.
-
-Safety: retopology.remesh original ko kabhi overwrite nahi karta; wo
-hamesha ek NAYI copy banata hai. Isliye SAFE_WRITE hai, aur TransactionManager
-rollback sirf naya object delete karke poora undo kar sakta hai.
-"""
+"""Retopology Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import AnalyzeTopologyInput, RetopologyInput
@@ -57,8 +47,6 @@ class RetopologyTool(Tool):
         self._bridge = bridge
 
     def run(self, validated_input: RetopologyInput) -> ToolResult:
-        # Hinglish: Bridge ValueError/RuntimeError raise karta hai agar Blender
-        # ka operator cancel ho — Tool.execute() use ToolResult.fail mein badal deta hai.
         result = self._bridge.retopologize(
             object_name=validated_input.object_name,
             method=validated_input.method,

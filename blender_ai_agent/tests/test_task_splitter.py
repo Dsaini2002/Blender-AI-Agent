@@ -7,7 +7,7 @@ class TestSplitTask(unittest.TestCase):
 
     def test_short_or_single_requests_are_not_split(self):
         for text in ("make a campfire", "Create a red cube with a blue sphere on top",
-                     "make a red and blue cube", "add a tree. add a rock."):          # sirf 2 hisse < 3
+                     "make a red and blue cube", "add a tree. add a rock."):
             self.assertEqual(split_task(text), [text.strip()], text)
 
     def test_empty_input(self):

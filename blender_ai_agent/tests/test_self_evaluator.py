@@ -29,7 +29,6 @@ class TestSelfEvaluator(unittest.TestCase):
         self.assertTrue(len(report.all_reasons) > 0)
 
     def test_no_validators_means_not_valid(self):
-        """Hinglish: Koi validator registered nahi -> hum kuch verify nahi kar sake, safe default: invalid."""
         bridge = FakeBridge()
         evaluator = SelfEvaluator()
 

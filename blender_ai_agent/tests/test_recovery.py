@@ -52,10 +52,6 @@ class TestRecoveryManager(unittest.TestCase):
         self.assertIsNone(corrected)
 
     def test_missing_name_argument_fills_in_most_recently_created_object(self):
-        """Hinglish: Exact real-world case — LLM ne 'create a cylinder'
-        ke baad 'rotate it' bola aur object.transform mein 'name' hi
-        nahi bheja. RecoveryManager scene ke sabse recent object ka
-        naam bhar deta hai."""
         recovery = build_recovery(objects=[FakeObject(name="car_body"), FakeObject(name="car_wheel_fl")])
         tool_call = ToolCall(tool_name="object.transform", arguments={"rotation": [0, 90, 0]})
         error = ToolError(code=ErrorCode.MISSING_ARGUMENT, message="missing 1 required positional argument: 'name'", recoverable=True)

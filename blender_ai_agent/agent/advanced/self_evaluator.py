@@ -1,11 +1,4 @@
-"""
-SelfEvaluator — Step 11.7
-==============================
-Hinglish: Agent sirf "Done" nahi bolta — khud dobara verify karta hai
-ki jo expect kiya gaya tha wahi scene mein actually hua ya nahi.
-Multiple evaluation layers combine karta hai: structural (Phase 4
-Validator) + visual (Phase 5 VisualValidator) — jaisa spec kehta hai.
-"""
+"""SelfEvaluator"""
 
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -20,7 +13,6 @@ class SelfEvaluationReport:
 
     @property
     def overall_valid(self) -> bool:
-        """Hinglish: Dono layers (jo bhi provided hain) pass honi chahiye."""
         results = [r for r in (self.structural_result, self.visual_result) if r is not None]
         if not results:
             return False
@@ -39,11 +31,6 @@ class SelfEvaluationReport:
 class SelfEvaluator:
 
     def __init__(self, structural_validators=None, visual_validator=None):
-        """
-        Hinglish: `structural_validators` = dict {tool_name: Validator}
-        (Phase 4 style). `visual_validator` = VisualValidator (Phase 5),
-        optional — sab tasks ko vision nahi chahiye.
-        """
         self._structural_validators = structural_validators or {}
         self._visual_validator = visual_validator
 

@@ -1,8 +1,4 @@
-"""
-Input/Output Models — Step 2.2 + 2.4 + 2.5
-=============================================
-Hinglish: Har tool ka input ek typed dataclass hai — random dict nahi.
-"""
+"""Input/Output Models"""
 
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -11,29 +7,14 @@ import json
 
 @dataclass
 class CreateObjectInput:
-    """object.create tool ke liye input contract."""
     name: str
     object_type: str = "MESH"
     primitive: str = "CUBE"
     location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
-    # Hinglish: Chhote/fast models (jaise openai/gpt-oss-20b) kabhi-kabhi
-    # do-parameter schema confuse kar dete hain aur primitive naam
-    # (CUBE, SPHERE, etc.) galti se `object_type` field mein bhej dete
-    # hain, jabki `object_type` sirf "MESH" jaisi generic value expect
-    # karta hai. Isse "Unsupported object_type: CUBE" jaisi crash aati
-    # thi. Yahan defensively normalize karte hain: agar object_type mein
-    # koi known primitive naam aaye, usse primitive field mein shift
-    # kar dete hain aur object_type ko wapas "MESH" set kar dete hain —
-    # bina koi error diye, jaisa bada model (120b) khud karta hai.
-    # Hinglish: Sirf MESH-unique naam (CIRCLE/CUBE jaise naam CURVE/EMPTY
-    # mein bhi hain, isliye unhe yahan normalize nahi karte - ambiguous hai).
     _KNOWN_PRIMITIVES = {
         "CUBE", "SPHERE", "ICOSPHERE", "CONE", "CYLINDER", "PLANE", "TORUS", "GRID", "MONKEY",
     }
-    # object_type ke liye valid values - CreateObjectTool in sab categories
-    # mein se object bana sakta hai (har ek ke apne primitive names hain,
-    # dekho bridge/blender_bridge.py ki _CREATE_OPS).
     KNOWN_OBJECT_TYPES = {
         "MESH", "CURVE", "SURFACE", "METABALL", "EMPTY", "LIGHT", "ARMATURE", "LATTICE",
     }
@@ -51,16 +32,25 @@ class CreateObjectInput:
 
 @dataclass
 class DeleteObjectInput:
-    """object.delete tool ke liye input contract."""
-    name: str
+    name: str = ""
+    names: Optional[List[str]] = None
 
     def __post_init__(self):
-        if not self.name or not isinstance(self.name, str):
-            raise ValueError("DeleteObjectInput.name must be a non-empty string")
+        if self.name is not None and not isinstance(self.name, str):
+            raise ValueError("DeleteObjectInput.name must be a string")
+        extra = to_plain(self.names)
+        if isinstance(extra, str):
+            extra = [extra]
+        if extra is not None and not isinstance(extra, list):
+            raise ValueError("DeleteObjectInput.names must be a list of object names")
+        wanted = ([self.name] if self.name else []) + [str(n) for n in (extra or []) if str(n).strip()]
+        self.names = list(dict.fromkeys(n.strip() for n in wanted if n and n.strip()))
+        if not self.names:
+            raise ValueError("object.delete needs `name` (one object) or `names` (a list of objects)")
+        self.name = self.names[0]
 
 @dataclass
 class RecalculateNormalsInput:
-    """geometry.recalculate_normals tool ke liye input contract."""
     object_name: str
 
     def __post_init__(self):
@@ -70,7 +60,6 @@ class RecalculateNormalsInput:
 
 @dataclass
 class SeparateOverlapInput:
-    """geometry.separate_overlap tool ke liye input contract."""
     object_name: str
     offset: List[float] = field(default_factory=lambda: [2.0, 0.0, 0.0])
 
@@ -82,7 +71,6 @@ class SeparateOverlapInput:
         
 @dataclass
 class DuplicateObjectInput:
-    """object.duplicate tool ke liye input contract."""
     name: str
     new_name: str = ""
 
@@ -93,7 +81,6 @@ class DuplicateObjectInput:
 
 @dataclass
 class RenameObjectInput:
-    """object.rename tool ke liye input contract."""
     old_name: str
     new_name: str
 
@@ -106,7 +93,6 @@ class RenameObjectInput:
 
 @dataclass
 class TransformObjectInput:
-    """object.transform tool ke liye input contract."""
     name: str
     location: Optional[List[float]] = None
     rotation: Optional[List[float]] = None
@@ -116,9 +102,6 @@ class TransformObjectInput:
         if not self.name or not isinstance(self.name, str):
             raise ValueError("TransformObjectInput.name must be a non-empty string")
 
-        # Hinglish: Gemini kabhi "1, 2, 3" string, {"x":..,"y":..,"z":..} dict ya proto list bhejta hai —
-        # pehle ye sab "must have exactly 3 values" par fail hote the. Ab _vec3 inhe [x, y, z] banata hai,
-        # aur galat value par error mein asli value dikhata hai.
         for field_name in ("location", "rotation", "scale"):
             value = getattr(self, field_name)
             if value is not None:
@@ -130,7 +113,6 @@ class TransformObjectInput:
 
 @dataclass
 class CreateMaterialInput:
-    """material.create tool ke liye input contract."""
     name: str
     color: Optional[List[float]] = None
 
@@ -138,8 +120,6 @@ class CreateMaterialInput:
         if not self.name or not isinstance(self.name, str):
             raise ValueError("CreateMaterialInput.name must be a non-empty string")
         if self.color is not None:
-            # Hinglish: Gemini kabhi ["0.8","0.2","0.2"] (strings), "red", "#FF0000" ya {"r":..} bhejta hai —
-            # pehle ye seedha Blender tak jaata tha: "expected sequence items of type float, not str".
             self.color = _coerce_color(self.color, "CreateMaterialInput.color")
             if len(self.color) not in (3, 4):
                 raise ValueError("CreateMaterialInput.color must have 3 (RGB) or 4 (RGBA) values")
@@ -147,7 +127,6 @@ class CreateMaterialInput:
 
 @dataclass
 class AssignMaterialInput:
-    """material.assign tool ke liye input contract."""
     object_name: str
     material_name: str
 
@@ -160,7 +139,6 @@ class AssignMaterialInput:
 
 @dataclass
 class ModifyMaterialInput:
-    """material.modify tool ke liye input contract."""
     name: str
     color: Optional[List[float]] = None
     roughness: Optional[float] = None
@@ -179,8 +157,6 @@ class ModifyMaterialInput:
             self.emission_strength = _coerce_number(self.emission_strength, "ModifyMaterialInput.emission_strength")
             if not (0.0 <= self.emission_strength <= 1000.0):
                 raise ValueError("ModifyMaterialInput.emission_strength must be between 0.0 and 1000.0")
-        # Hinglish: sirf emission_color dene par strength default 0 hoti hai
-        # (Blender 4.x), matlab glow dikhega hi nahi — isliye sensible default.
         if self.emission_color is not None and self.emission_strength is None:
             self.emission_strength = 1.0
         if self.color is not None:
@@ -203,7 +179,6 @@ class ModifyMaterialInput:
             )
 @dataclass
 class AddModifierInput:
-    """modifier.add tool ke liye input contract."""
     object_name: str
     modifier_name: str
     modifier_type: str = "BEVEL"
@@ -217,7 +192,6 @@ class AddModifierInput:
 
 @dataclass
 class RemoveModifierInput:
-    """modifier.remove tool ke liye input contract."""
     object_name: str
     modifier_name: str
 
@@ -230,7 +204,6 @@ class RemoveModifierInput:
 
 @dataclass
 class ConfigureModifierInput:
-    """modifier.configure tool ke liye input contract."""
     object_name: str
     modifier_name: str
     properties: dict = field(default_factory=dict)
@@ -241,11 +214,6 @@ class ConfigureModifierInput:
         if not self.modifier_name or not isinstance(self.modifier_name, str):
             raise ValueError("ConfigureModifierInput.modifier_name must be a non-empty string")
 
-        # Hinglish: Gemini kabhi-kabhi `properties` ko dict ki jagah JSON
-        # STRING bhej deta hai (e.g. '{"width": 0.03}'), jisse pehle
-        # `.items()` par AttributeError crash hoti thi. Yahan defensively
-        # parse karte hain - jaise CreateObjectInput mein object_type/
-        # primitive ka defensive-fix hai.
         if isinstance(self.properties, str):
             try:
                 parsed = json.loads(self.properties)
@@ -269,8 +237,6 @@ class ConfigureModifierInput:
             raise ValueError("ConfigureModifierInput.properties must not be empty")
 @dataclass
 class ImportModelInput:
-    """asset.import_model tool ke liye input contract - koi LOCAL file
-    (.obj/.fbx/.glb/.gltf) jo user ne pehle se disk par rakha hai."""
     filepath: str
     name: Optional[str] = None
     scale: Optional[List[float]] = None
@@ -293,9 +259,6 @@ class ImportModelInput:
 
 @dataclass
 class BuildTemplateInput:
-    """template.build tool ke liye input contract - ek poore pre-defined
-    body structure (jaise 'humanoid') ko ek exact, fixed spec se banata
-    hai. Coordinates guess nahi hote - templates/<name>.json se aate hain."""
     template_name: str
     prefix: str = ""
     colors: Optional[dict] = None
@@ -307,9 +270,6 @@ class BuildTemplateInput:
         if not isinstance(self.prefix, str):
             raise ValueError("BuildTemplateInput.prefix must be a string")
 
-        # Hinglish: Gemini kabhi-kabhi `colors` ko dict ki jagah JSON
-        # STRING bhej deta hai (jaisa ConfigureModifierInput.properties
-        # mein hota tha) - defensively parse karte hain, crash nahi.
         if isinstance(self.colors, str):
             try:
                 parsed = json.loads(self.colors)
@@ -333,8 +293,6 @@ class BuildTemplateInput:
 
 @dataclass
 class ListBlendObjectsInput:
-    """asset.list_blend_objects tool ke liye input - .blend file ke andar
-    kaun se objects hain, ye dekhne ke liye (import karne se pehle)."""
     filepath: str
 
     def __post_init__(self):
@@ -346,8 +304,6 @@ class ListBlendObjectsInput:
 
 @dataclass
 class ImportBlendInput:
-    """asset.import_blend tool ke liye input - .blend file se specific
-    (ya sab) objects scene mein laata hai."""
     filepath: str
     object_names: Optional[List[str]] = None
     name_prefix: Optional[str] = None
@@ -363,7 +319,6 @@ class ImportBlendInput:
 
 @dataclass
 class CreateCameraInput:
-    """camera.create tool ke liye input contract."""
     name: str
     location: Optional[List[float]] = None
     rotation: Optional[List[float]] = None
@@ -379,7 +334,6 @@ class CreateCameraInput:
 
 @dataclass
 class SetCameraInput:
-    """camera.set tool ke liye input contract."""
     name: str
 
     def __post_init__(self):
@@ -389,23 +343,18 @@ class SetCameraInput:
 
 @dataclass
 class RenderPreviewInput:
-    """
-    render.preview tool ke liye input contract.
-
-    filepath : image ka naam (folder ignore ho sakta hai — dekho image_paths.resolve_image_path)
-    draft    : True = tez, chhota 640x360 preview (vision check ke liye kaafi)
-    width/height : pixels (16-8192). Sirf ek diya to doosra 16:9 se nikalta hai.
-    """
-    filepath: str
+    filepath: str = "preview.png"
     width: Optional[int] = None
     height: Optional[int] = None
     draft: bool = False
+    final: bool = False
 
     def __post_init__(self):
         if not self.filepath or not isinstance(self.filepath, str) or not self.filepath.strip():
             raise ValueError("RenderPreviewInput.filepath must be a non-empty string")
 
         self.draft = _coerce_bool(self.draft, "RenderPreviewInput.draft")
+        self.final = _coerce_bool(self.final, "RenderPreviewInput.final")
         for field_name in ("width", "height"):
             value = getattr(self, field_name)
             if value is not None:
@@ -415,7 +364,6 @@ class RenderPreviewInput:
                 setattr(self, field_name, value)
 
     def resolution(self):
-        """(width, height) jab size maanga gaya ho, warna None (scene ki apni resolution rehti hai)."""
         if self.width is not None and self.height is not None:
             return (self.width, self.height)
         if self.width is not None:
@@ -427,26 +375,16 @@ class RenderPreviewInput:
         return None
 
 
-# ---------------------------------------------------------
-# Plain-Python normalisation (Gemini SDK ke proto containers ke liye)
-# ---------------------------------------------------------
 def to_plain(value):
-    """
-    Hinglish: Gemini ka `fc.args` shallow dict(...) se aata hai, to uske andar ki lists/dicts
-    proto-plus ke `RepeatedComposite` / `MapComposite` objects hote hain. Ye print mein bilkul
-    [1.0, 0.4, 0.0] jaise dikhte hain, lekin `isinstance(x, list)` False deta hai — isi se
-    "must be a list of numbers" jaise confusing errors aaye. Ye function unhe recursively asli
-    Python list/dict/str/number mein badal deta hai. Plain data par koi asar nahi.
-    """
     if value is None or isinstance(value, (str, bytes, bool, int, float)):
         return value
     if isinstance(value, dict):
         return {str(k): to_plain(v) for k, v in value.items()}
-    if hasattr(value, "items") and callable(value.items):          # MapComposite & dict-jaise
+    if hasattr(value, "items") and callable(value.items):
         return {str(k): to_plain(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [to_plain(v) for v in value]
-    if hasattr(value, "__iter__"):                                  # RepeatedComposite & list-jaise
+    if hasattr(value, "__iter__"):
         return [to_plain(v) for v in value]
     return value
 
@@ -454,12 +392,6 @@ def to_plain(value):
 # Lenient number coercion (LLMs often send 500.0 or "500" instead of 500)
 # ---------------------------------------------------------
 def _coerce_number(value, label, *, integer=False):
-    """
-    Hinglish: Chhote LLMs `500` ki jagah `500.0` ya `"500"` bhej dete hain.
-    Pehle ye poore task ko fail kar deta tha. Ab hum safe conversions karte hain:
-    numeric string -> number, integral float -> int (jab integer chahiye).
-    Bool aur jo cheez number nahi ban sakti, wo abhi bhi ValueError hai.
-    """
     if isinstance(value, bool):
         raise ValueError(f"{label} must be a number, not a boolean")
     if isinstance(value, str):
@@ -493,7 +425,6 @@ def _coerce_list(value, label):
     """[1,2,3] ya "1, 2, 3" ya "[1,2,3]" -> list of floats."""
     value = to_plain(value)
     if isinstance(value, dict):
-        # Hinglish: {"x": 0, "y": 0, "z": 3} (case-insensitive) -> [0, 0, 3]
         lowered = {str(k).lower(): v for k, v in value.items()}
         if all(axis in lowered for axis in ("x", "y", "z")):
             value = [lowered["x"], lowered["y"], lowered["z"]]
@@ -506,7 +437,6 @@ def _coerce_list(value, label):
     if not isinstance(value, (list, tuple)):
         raise ValueError(f"{label} must be a list of numbers like [x, y, z]")
     return [_coerce_number(v, label) for v in value]
-
 
 
 _NAMED_COLORS = {
@@ -522,12 +452,10 @@ _NUMBER_PATTERN = r"-?\d+(?:\.\d+)?(?:e-?\d+)?|-?\.\d+"
 
 
 def _parse_color(value, label):
-    """Hinglish: Ek colour ko [r, g, b(, a)] numbers mein badalta hai — andar ka kaam, errors upar wrap hote hain."""
     import re
 
     value = to_plain(value)
 
-    # [[1, 0.5, 0]] ya ["orange"] jaisa ek-element wala wrapper
     if isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], (list, tuple, dict, str)):
         return _parse_color(value[0], label)
 
@@ -562,7 +490,6 @@ def _parse_color(value, label):
         if len(numbers) in (3, 4):
             return [float(n) for n in numbers]
 
-        # "bright orange", "glowing orange light" (sirf tab jab koi number nahi)
         if not numbers:
             for word in re.findall(r"[a-z]+", text):
                 if word in _NAMED_COLORS:
@@ -576,12 +503,6 @@ def _parse_color(value, label):
 
 
 def _coerce_color(value, label):
-    """
-    Hinglish: LLM colour kai tarah se bhejte hain — [1,0.5,0], "1 0.5 0", {"r":1,"g":0.5,"b":0},
-    "#FF8000", "rgb(255,128,0)", "orange", "bright orange", [255,128,0]... sab ko [r, g, b(, a)]
-    (0-1 scale) mein badalta hai. Na samajh aaye to error mein asli value dikhata hai, taaki
-    pata chale LLM ne kya bheja.
-    """
     try:
         channels = _parse_color(value, label)
     except ValueError:
@@ -608,7 +529,6 @@ RETOPO_METHODS = ("QUADRIFLOW", "VOXEL", "DECIMATE")
 
 @dataclass
 class AnalyzeTopologyInput:
-    """retopology.analyze tool ke liye input contract."""
     object_name: str
 
     def __post_init__(self):
@@ -618,14 +538,6 @@ class AnalyzeTopologyInput:
 
 @dataclass
 class RetopologyInput:
-    """
-    retopology.remesh tool ke liye input contract.
-
-    method:
-      QUADRIFLOW - clean quad-dominant topology (target_faces use karta hai)
-      VOXEL      - uniform even topology (voxel_size use karta hai)
-      DECIMATE   - sirf poly count kam karta hai (decimate_ratio use karta hai)
-    """
     object_name: str
     method: str = "QUADRIFLOW"
     target_faces: int = 2000
@@ -681,11 +593,7 @@ def _validate_rgb(value, label):
 
 @dataclass
 class CreateLightInput:
-    """
-    light.create tool ke liye input contract.
-
-    energy units: POINT/SPOT/AREA = Watts (e.g. 500-1000), SUN = strength (e.g. 1-5).
-    """
+    """energy units: POINT/SPOT/AREA = Watts (e.g. 500-1000), SUN = strength (e.g. 1-5)."""
     name: str
     light_type: str = "POINT"
     location: List[float] = field(default_factory=lambda: [0.0, 0.0, 3.0])
@@ -728,7 +636,6 @@ class CreateLightInput:
 
 @dataclass
 class SetWorldInput:
-    """world.set tool ke liye input contract (background colour + ambient strength)."""
     color: Optional[List[float]] = None
     strength: Optional[float] = None
 
@@ -753,7 +660,6 @@ CURVE_PRESETS = ("line", "circle", "arc", "spiral", "wave")
 
 
 def _preset_points(preset, radius, length, height, turns, amplitude, waves, angle_degrees, segments):
-    """Hinglish: LLM ko coordinates guess na karne pade — common shapes ke points yahin ban jaate hain."""
     import math
 
     if preset == "line":
@@ -765,7 +671,7 @@ def _preset_points(preset, radius, length, height, turns, amplitude, waves, angl
         end = math.radians(angle_degrees)
         return [[radius * math.cos(end * i / segments), radius * math.sin(end * i / segments), 0.0]
                 for i in range(segments + 1)]
-    if preset == "spiral":  # helix: upar chadhti hui gol curve
+    if preset == "spiral":
         n = max(8, int(turns * segments) + 1)
         return [[radius * math.cos(2 * math.pi * turns * i / (n - 1)),
                  radius * math.sin(2 * math.pi * turns * i / (n - 1)),
@@ -779,14 +685,7 @@ def _preset_points(preset, radius, length, height, turns, amplitude, waves, angl
 
 @dataclass
 class CreateCurveInput:
-    """
-    curve.create tool ke liye input contract.
-
-    Ya to `points` do ([[x,y,z], ...] ya [[x,y,z,radius], ...]), ya `preset`
-    (line/circle/arc/spiral/wave). `radius` har point par thickness ko ghata-badha sakta hai
-    (tapered flame/branch/horn banane ke liye).
-    """
-    name: str
+    name: str = ""
     points: Optional[List[List[float]]] = None
     preset: Optional[str] = None
     curve_type: str = "BEZIER"
@@ -806,10 +705,45 @@ class CreateCurveInput:
     waves: float = 3.0
     angle_degrees: float = 180.0
     segments: int = 8
+    # flat ribbons (paths, roads) and several separate strokes in one object
+    profile: Optional[str] = None
+    width: float = 0.0
+    strokes: Optional[List[List[List[float]]]] = None
 
     def __post_init__(self):
-        if not self.name or not isinstance(self.name, str):
-            raise ValueError("CreateCurveInput.name must be a non-empty string")
+        if not isinstance(self.name, str):
+            raise ValueError("CreateCurveInput.name must be a string")
+        if not self.name.strip():
+            self.name = f"{self.preset}_line" if self.preset else "curve"     # a missing name is not worth a failed call
+
+        self.width = _coerce_number(self.width, "CreateCurveInput.width")
+        if not (0.0 <= self.width <= 60.0):
+            raise ValueError("CreateCurveInput.width must be between 0 and 60 metres")
+        if self.profile is not None:
+            self.profile = str(self.profile).strip().lower() or None
+            if self.profile not in (None, "round", "flat"):
+                raise ValueError("CreateCurveInput.profile must be 'round' (a tube) or 'flat' (a path / road strip)")
+
+        if self.strokes is not None:
+            raw_strokes = to_plain(self.strokes)
+            if not isinstance(raw_strokes, list) or not raw_strokes:
+                raise ValueError("CreateCurveInput.strokes must be a list of point lists [[[x,y,z], ...], ...]")
+            cleaned_strokes = []
+            for stroke in raw_strokes:
+                if not isinstance(stroke, list) or len(stroke) < 2:
+                    raise ValueError("each stroke in CreateCurveInput.strokes needs at least 2 points")
+                pts = []
+                for point in stroke:
+                    coords = _coerce_list(point, "CreateCurveInput.strokes")
+                    if len(coords) == 2:
+                        coords = coords + [0.0]
+                    if len(coords) not in (3, 4):
+                        raise ValueError("each point in a stroke must be [x, y, z] or [x, y, z, radius]")
+                    pts.append(coords)
+                cleaned_strokes.append(pts)
+            self.strokes = cleaned_strokes
+            if self.points is None:
+                self.points = [p for stroke in cleaned_strokes for p in stroke]
 
         self.curve_type = str(self.curve_type).upper()
         if self.curve_type not in CURVE_TYPES:
@@ -863,7 +797,6 @@ class CreateCurveInput:
 
 @dataclass
 class ListLibraryInput:
-    """library.list tool ke liye input contract."""
     category: Optional[str] = None
 
     def __post_init__(self):
@@ -873,20 +806,27 @@ class ListLibraryInput:
 
 @dataclass
 class PlaceModelInput:
-    """
-    library.place tool ke liye input contract — library ke ek ready-made model
-    (campfire, pine_tree, tent...) ko scene mein ek hi call se banata hai.
-    """
     model: str
     location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     scale: float = 1.0
     yaw_degrees: float = 0.0
     prefix: str = ""
     colors: Optional[dict] = None
+    height: Optional[float] = None
+    face_towards: Optional[List[float]] = None
 
     def __post_init__(self):
         if not self.model or not isinstance(self.model, str):
             raise ValueError("PlaceModelInput.model must be a non-empty string")
+        if self.face_towards is not None:
+            target = _coerce_list(self.face_towards, "PlaceModelInput.face_towards")
+            if len(target) not in (2, 3):
+                raise ValueError("PlaceModelInput.face_towards must be [x, y] (or [x, y, z])")
+            self.face_towards = target[:2]
+        if self.height is not None:
+            self.height = _coerce_number(self.height, "PlaceModelInput.height")
+            if not (0.02 <= self.height <= 200.0):
+                raise ValueError("PlaceModelInput.height must be between 0.02 and 200 metres")
         self.model = self.model.strip().lower().replace(" ", "_").replace("-", "_")
 
         self.location = _coerce_list(self.location, "PlaceModelInput.location")
@@ -900,6 +840,9 @@ class PlaceModelInput:
 
         if not isinstance(self.prefix, str):
             raise ValueError("PlaceModelInput.prefix must be a string")
+        self.prefix = self.prefix.strip()
+        if self.prefix and not self.prefix.endswith(("_", "-", ".")):
+            self.prefix += "_"                    # 'park_lamp1' -> 'park_lamp1_pole', not 'park_lamp1pole'
 
         if self.colors is not None:
             plain = to_plain(self.colors)
@@ -913,7 +856,6 @@ class PlaceModelInput:
 # ---------------------------------------------------------
 @dataclass
 class SearchLocalAssetsInput:
-    """asset.search_local ke liye input contract."""
     query: str
     limit: int = 8
     project: Optional[str] = None
@@ -931,7 +873,6 @@ class SearchLocalAssetsInput:
 
 @dataclass
 class PlaceLocalAssetInput:
-    """asset.place_local ke liye input contract — `asset_id` YA `query` do."""
     asset_id: Optional[str] = None
     query: Optional[str] = None
     location: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
@@ -952,11 +893,7 @@ class PlaceLocalAssetInput:
         self.yaw_degrees = _coerce_number(self.yaw_degrees, "PlaceLocalAssetInput.yaw_degrees")
 
 
-# ---------------------------------------------------------
-# Vectors + image paths (existing tools ko bhi lenient banane ke liye)
-# ---------------------------------------------------------
 def _vec3(value, label):
-    """[x, y, z] chahiye. "1, 2, 3", {"x","y","z"}, proto list, ints/floats sab chalte hain."""
     plain = to_plain(value)
     try:
         coords = _coerce_list(plain, label)
@@ -975,13 +912,6 @@ def _vec3(value, label):
 # ---------------------------------------------------------
 @dataclass
 class CreateMeshInput:
-    """
-    mesh.create tool ke liye input contract — apna khud ka shape (triangle, wedge, roof, ramp...)
-    vertices + faces se banao. Primitives (cube/cone...) jo nahi bana sakte, wo yahan se.
-
-    vertices : [[x,y,z], ...]       (kam se kam 3)
-    faces    : [[i,j,k,...], ...]   har face vertices ke index (0 se shuru), kam se kam 3 alag index
-    """
     name: str
     vertices: List[List[float]]
     faces: List[List[int]]
@@ -1047,15 +977,6 @@ _STYLE_SYNONYMS = {
 
 @dataclass
 class DamageMeshInput:
-    """
-    mesh.damage tool ke liye input contract — kisi bhi mesh ka ek hissa toota/chipped/pichka/khurdura banata hai.
-
-    region   : top | bottom | left | right | front | back | all   ("neck", "lid", "rim" -> top; "base" -> bottom)
-    style    : broken | chipped | dented | rough                  ("cracked", "shattered" -> broken)
-    portion  : region object ki kitni lambai ko cover kare (0.02-1.0, default 0.25 = upar ka chautha hissa)
-    strength : kitna kharab (0.01-0.6, default 0.15 = halka sa)
-    detail   : extra mesh-cuts (0-2) taaki low-poly model mein toot ka asar saaf dikhe
-    """
     object_name: str
     region: str = "top"
     style: str = "broken"

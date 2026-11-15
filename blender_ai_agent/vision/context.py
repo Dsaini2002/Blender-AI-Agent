@@ -1,12 +1,4 @@
-"""
-VisionContextManager — Step 5.4
-====================================
-Hinglish: Scene state (structured, ContextManager se) + Visual
-Observation (vision se) — dono ko combine karta hai. Agent ko sirf
-IMAGE nahi milta, aur sirf SCENE DATA bhi nahi — dono ek saath,
-taaki Agent reason kar sake: "scene kehti hai cube exist karta hai,
-vision kehti hai cube badly framed hai."
-"""
+"""VisionContextManager"""
 
 from dataclasses import dataclass, field
 from typing import Any, Dict
@@ -16,7 +8,6 @@ from .models import VisualObservation
 
 @dataclass
 class SceneVisionContext:
-    """Hinglish: Ek combined snapshot — structured state + visual understanding."""
     scene_context: Dict[str, Any] = field(default_factory=dict)
     visual_observation: VisualObservation = None
 
@@ -27,7 +18,6 @@ class SceneVisionContext:
 class VisionContextManager:
 
     def __init__(self, context_manager, vision_analyzer):
-        # Dependency Injection — Phase 3 ka ContextManager + Phase 5 ka VisionAnalyzer
         self._context_manager = context_manager
         self._vision_analyzer = vision_analyzer
 

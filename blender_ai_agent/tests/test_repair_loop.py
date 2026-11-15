@@ -76,7 +76,6 @@ class TestSuccessfulTaskCommits(unittest.TestCase):
 
 
 class TestSelfRepair(unittest.TestCase):
-    """Exactly spec ka example: wrong object name, auto-corrected, retried, succeeds."""
 
     def test_wrong_object_name_gets_repaired_and_succeeds(self):
         loop, bridge, logger = build_repair_loop(
@@ -85,7 +84,7 @@ class TestSelfRepair(unittest.TestCase):
                 ModelResponse(
                     tool_calls=[ToolCall(
                         tool_name="object.transform",
-                        arguments={"name": "RedCube", "location": [5, 0, 0]},  # galat naam
+                        arguments={"name": "RedCube", "location": [5, 0, 0]},
                     )],
                     finish_reason="tool_calls",
                 ),
@@ -124,20 +123,13 @@ class TestRollbackOnUnrecoverableFailure(unittest.TestCase):
 
         self.assertEqual(result.stopped_reason, "rollback")
         self.assertTrue(result.rolled_back)
-        # Rollback ke baad Sphere bhi wapas nahi hona chahiye (transaction ke andar tha)
         self.assertIsNone(bridge.get_object("Sphere"))
-        self.assertIsNotNone(bridge.get_object("Cube"))  # original object bacha hai
+        self.assertIsNotNone(bridge.get_object("Cube"))
 
 
 class TestMaxIterationsDoesNotDiscardProgress(unittest.TestCase):
-    """Hinglish: max_iterations hit hone par PEHLE poora kaam rollback
-    ho jaata tha aur user ko khaali reply_text milta tha. Ab jo bhi
-    successfully ban chuka hai wo scene mein rehta hai, aur user ko
-    ek clear, informative message milta hai."""
 
     def test_progress_is_kept_and_message_explains_the_limit(self):
-        # Har turn ek naya object banata hai, kabhi bhi final text
-        # response nahi deta — isse max_iterations guaranteed hit hoga.
         infinite_responses = [
             ModelResponse(
                 tool_calls=[ToolCall(tool_name="object.create", arguments={"name": f"Cube{i}"})],
@@ -153,7 +145,6 @@ class TestMaxIterationsDoesNotDiscardProgress(unittest.TestCase):
         self.assertFalse(result.rolled_back)
         self.assertIsNotNone(result.reply_text)
         self.assertIn("3-step limit", result.reply_text)
-        # Sabse important: objects scene mein bache rehne chahiye, delete nahi hone chahiye
         self.assertIsNotNone(bridge.get_object("Cube0"))
         self.assertIsNotNone(bridge.get_object("Cube1"))
         self.assertIsNotNone(bridge.get_object("Cube2"))

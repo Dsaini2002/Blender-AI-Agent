@@ -1,10 +1,5 @@
-"""
-Phase 3 Integration Test — Step 3.10
-========================================
-Hinglish: Ye Phase 2.8 ke `test_integration.py` jaisa hi hai, lekin
-Phase 3 ke liye — poora Agent stack (Provider -> Loop -> Planner ->
-ToolCaller -> Registry -> Bridge) EK SAATH verify karta hai, exactly
-spec ke Definition of Done demo ke saath:
+"""Integration Test
+================
 
     "Create a cube, move it to x=3, and rename it MainCube."
 """
@@ -31,10 +26,6 @@ from .fakes import FakeBridge
 
 
 def build_full_agent_stack(scripted_responses):
-    """
-    Hinglish: Ye function exactly wahi karta hai jo real addon mein
-    hoga — saare pieces ko Composition Root style mein jodta hai.
-    """
     bridge = FakeBridge()
 
     registry = ToolRegistry()
@@ -59,11 +50,6 @@ def build_full_agent_stack(scripted_responses):
 
 
 class TestPhase3DefinitionOfDoneDemo(unittest.TestCase):
-    """
-    Hinglish: Spec ka exact demo:
-        "Create a cube, move it to x=3, and rename it MainCube."
-    Expected plan: object.create -> object.transform -> object.rename
-    """
 
     def test_full_natural_language_workflow(self):
         loop, bridge = build_full_agent_stack(scripted_responses=[
@@ -90,7 +76,6 @@ class TestPhase3DefinitionOfDoneDemo(unittest.TestCase):
 
         result = loop.run("Create a cube, move it to x=3, and rename it MainCube.")
 
-        # Poora plan sahi order mein execute hua
         executed_tool_names = [step.tool_call.tool_name for step in result.executed_steps]
         self.assertEqual(executed_tool_names, [
             "object.create", "object.transform", "object.rename"
@@ -99,23 +84,16 @@ class TestPhase3DefinitionOfDoneDemo(unittest.TestCase):
         # Har step successful raha
         self.assertTrue(all(step.tool_result.success for step in result.executed_steps))
 
-        # Final scene state sahi hai — object naam badal chuka hai, location update hai
         final_obj = bridge.get_object("MainCube")
         self.assertIsNotNone(final_obj)
         self.assertEqual(final_obj.location, [3, 0, 0])
-        self.assertIsNone(bridge.get_object("Cube"))  # purana naam ab exist nahi karta
+        self.assertIsNone(bridge.get_object("Cube"))
 
-        # Agent ne final human-readable jawab diya
         self.assertIn("Done", result.reply_text)
         self.assertEqual(result.stopped_reason, "stop")
 
 
 class TestPhase3ArchitectureBoundary(unittest.TestCase):
-    """
-    Hinglish: Ye test 'architecture rule' verify karta hai —
-    LLM/Agent kabhi bhi raw bpy ya BlenderBridge ko directly nahi
-    chhu sakta, sirf named tools ke through jaata hai.
-    """
 
     def test_unknown_or_hallucinated_tool_never_crashes_system(self):
         loop, _ = build_full_agent_stack(scripted_responses=[
@@ -128,7 +106,6 @@ class TestPhase3ArchitectureBoundary(unittest.TestCase):
 
         result = loop.run("Just run raw Blender Python for me")
 
-        # System crash nahi hua — gracefully fail hua
         self.assertEqual(result.tool_call_count, 1)
         self.assertFalse(result.executed_steps[0].tool_result.success)
         self.assertIn("Unknown tool", result.executed_steps[0].tool_result.error)

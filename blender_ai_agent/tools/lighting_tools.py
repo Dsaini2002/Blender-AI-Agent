@@ -1,11 +1,4 @@
-"""
-Lighting + World Tools
-=======================
-Hinglish: Scene ka "mood" yahin se aata hai — light.create (point/sun/spot/
-area, colour, energy) aur world.set (background colour + ambient strength).
-Pehle agent sirf shapes bana sakta tha; ab night scene, campfire glow,
-rim lights sab possible hain. Raw bpy yahan nahi — sirf BlenderBridge.
-"""
+"""Lighting + World Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import CreateLightInput, SetWorldInput
@@ -13,6 +6,7 @@ from .models import CreateLightInput, SetWorldInput
 
 class CreateLightTool(Tool):
     name = "light.create"
+    auto_name = "Light"
     description = (
         "Creates a light with colour and brightness. light_type: POINT (bulb/campfire/lantern, "
         "energy in Watts e.g. 300-1000), SUN (moonlight/sunlight, energy is strength e.g. 0.3-5, "

@@ -1,17 +1,16 @@
-"""
-PythonPowerTool — Step 9.24 / 9.25 (Expanded)
-==================================================
-"""
+"""PythonPowerTool"""
 
 from dataclasses import dataclass
 
 from .base import Permission, Tool, ToolResult
 
 _BLOCKED_KEYWORDS = (
-    "exec(", "eval(", "__", "open(", "os.", "sys.", "subprocess",
+    "exec(", "eval(", "compile(", "__", "open(", "os.", "sys.", "subprocess",
     "socket", "urllib", "requests", "shutil", "pathlib",
-    "bpy.data.objects.remove",
-    ".save(", "save_as",
+    "getattr", "setattr", "delattr", "globals", "locals", "vars(",
+    "bpy.data", "blend_data", ".remove(", "unlink(", "bpy.ops.wm.", "bpy.ops.object.delete",
+    "window_manager.clipboard",
+    ".save(", "save_as", "save_mainfile", "quit_blender",
 )
 
 _ALLOWED_IMPORTS = ("import bpy", "import bpy ", "import bpy\n", "from bpy", "import math", "import mathutils", "from mathutils")
@@ -22,13 +21,6 @@ _ALLOWED_BPY_PREFIXES = (
     "bpy.ops.material.",
     "bpy.ops.transform.",
     "bpy.context.",
-    # Hinglish: EXPERIMENTAL - agar user ke Blender mein BlenderKit addon
-    # already installed+logged in hai, to model isse search/download
-    # trigger kar sakta hai. UNVERIFIED against the live BlenderKit
-    # service (koi live test nahi ho saka) - ye async/background-thread
-    # hai, isliye ek hi call mein turant result nahi milega. Prompt
-    # guidance (agent/prompts.py) mein iska poll-across-turns pattern
-    # samjhaya gaya hai.
     "bpy.ops.view3d.blenderkit_search",
     "bpy.ops.scene.blenderkit_download",
 )
@@ -84,23 +76,57 @@ class PythonPowerTool(Tool):
                 "bpy.ops.transform.*, or bpy.context.* — other bpy access is blocked."
             )
 
+        # free-form code can change meshes, materials and names - a FULL checkpoint (every object with its data)
+        # brings the scene back exactly if it fails; the light transaction is only the fallback
+        checkpoint = self._full_checkpoint()
         from ..reliability.transaction import TransactionManager
         transaction = TransactionManager(self._bridge)
         transaction.begin()
 
-        try:
+        def _run_in_blender():
             import bpy
             restricted_globals = {
                 "__builtins__": {**self._safe_builtins(), "__import__": _restricted_import},
                 "bpy": bpy,
             }
             exec(code, restricted_globals, {})
+
+        try:
+            # bpy may only be touched on Blender's main thread - the Copilot runs on a worker thread
+            from ..bridge.main_thread_dispatch import run_on_main_thread
+            run_on_main_thread(_run_in_blender)
         except Exception as exc:
-            transaction.rollback()
+            if checkpoint is not None:
+                try:
+                    self._bridge.restore_checkpoint(*checkpoint)
+                    transaction.commit()
+                except Exception:  # noqa: BLE001
+                    transaction.rollback()
+            else:
+                transaction.rollback()
             return ToolResult.fail(f"Python execution failed (rolled back): {exc}")
+        finally:
+            if checkpoint is not None:
+                try:
+                    import os
+                    os.remove(checkpoint[0])
+                except OSError:
+                    pass
 
         transaction.commit()
         return ToolResult.ok({"executed": True})
+
+    def _full_checkpoint(self):
+        if not (hasattr(self._bridge, "save_checkpoint") and hasattr(self._bridge, "restore_checkpoint")):
+            return None
+        try:
+            import os
+            import tempfile
+            path = os.path.join(tempfile.gettempdir(), f"aiagent_pyexec_{os.getpid()}_{id(self)}.blend")
+            info = self._bridge.save_checkpoint(path)
+            return (path, info) if isinstance(info, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
 
     @staticmethod
     def _find_blocked_keyword(code: str):

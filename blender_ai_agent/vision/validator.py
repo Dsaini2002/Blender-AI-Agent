@@ -1,11 +1,4 @@
-"""
-VisualValidator — Step 5.11
-================================
-Hinglish: Jaisa Phase 4 ka Validator scene state check karta hai
-("object exists?"), ye class VISUAL observation check karti hai
-("object centered dikh raha hai?"). Same ValidationResult shape
-reuse karte hain — consistency.
-"""
+"""VisualValidator"""
 
 from ..reliability.validator import ValidationResult
 from .models import VisualObservation
@@ -14,12 +7,6 @@ from .models import VisualObservation
 class VisualValidator:
 
     def validate(self, observation: VisualObservation, expected: dict) -> ValidationResult:
-        """
-        Hinglish: `expected` mein keys ho sakti hain:
-          - "min_confidence": float
-          - "required_objects": list[str] — ye sab objects dikhne chahiye
-          - "no_issues": bool — True matlab observation.issues khaali hona chahiye
-        """
         reasons = []
 
         min_confidence = expected.get("min_confidence")

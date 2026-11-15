@@ -1,11 +1,4 @@
-"""
-ConfirmationManager — Step 6.9
-==================================
-Hinglish: Destructive actions ke liye "Allow/Cancel" flow. Vision ke
-HumanInTheLoopGate (Phase 5) jaisa hi concept hai, lekin ye Copilot
-UI ke general confirmation flow ke liye hai — kisi bhi source se
-aane wale (Agent-proposed, vision-proposed) confirmable action ke liye.
-"""
+"""ConfirmationManager"""
 
 import uuid
 from dataclasses import dataclass, field
@@ -38,7 +31,6 @@ class ConfirmationManager:
         self._pending: Dict[str, PendingConfirmation] = {}
 
     def request_confirmation(self, tool_call: ToolCall, reason: str = "") -> PendingConfirmation:
-        """Hinglish: Ek naya confirmation request banata hai, tracking ke liye store karta hai."""
         tool = self._tool_registry.get(tool_call.tool_name)
         action_id = str(uuid.uuid4())[:8]
 

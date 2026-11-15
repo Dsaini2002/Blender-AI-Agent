@@ -8,9 +8,6 @@ from blender_ai_agent.vision.tool import VisionObserveInput
 
 
 class TestVisionObserveDefaultPath(unittest.TestCase):
-    """Hinglish: Pehle default filepath hardcoded '/tmp/...' tha jo Windows
-    par crash karta tha ([Errno 2] No such file or directory). Ab OS ke
-    apne temp folder se banta hai."""
 
     def test_default_filepath_uses_system_temp_dir_not_hardcoded_unix_tmp(self):
         inp = VisionObserveInput()

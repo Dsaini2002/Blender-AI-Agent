@@ -32,7 +32,6 @@ class TestContextManagerSummary(unittest.TestCase):
         self.assertEqual(context["object_count"], 1)
         summary_obj = context["objects_summary"][0]
         self.assertEqual(summary_obj, {"name": "Cube", "type": "MESH"})
-        # location/rotation/scale summary mein NAHI hone chahiye
         self.assertNotIn("location", summary_obj)
 
     def test_multiple_objects_counted(self):
@@ -53,7 +52,7 @@ class TestContextManagerFocused(unittest.TestCase):
         self.assertEqual(len(context["focused_objects"]), 1)
         focused = context["focused_objects"][0]
         self.assertEqual(focused["location"], [1, 2, 3])
-        self.assertIn("rotation", focused)  # full detail milna chahiye
+        self.assertIn("rotation", focused)
 
     def test_focused_missing_object_reported(self):
         cm = build_context_manager(objects=[])

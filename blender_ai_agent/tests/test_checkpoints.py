@@ -31,7 +31,7 @@ class TestCheckpointManager(unittest.TestCase):
         manager = CheckpointManager(bridge)
         manager.create_checkpoint("model_complete")
 
-        bridge.create_object(name="BrokenMaterial")  # checkpoint ke baad kuch galat hua
+        bridge.create_object(name="BrokenMaterial")
 
         manager.rollback_to("model_complete")
 
@@ -46,12 +46,12 @@ class TestCheckpointManager(unittest.TestCase):
         bridge.create_object(name="Material1")
         manager.create_checkpoint("step2")
 
-        bridge.create_object(name="BrokenCamera")  # step2 ke baad kuch galat hua
+        bridge.create_object(name="BrokenCamera")
 
         manager.rollback_to_latest()
 
-        self.assertIsNotNone(bridge.get_object("Material1"))  # step2 tak ka kaam bacha
-        self.assertIsNone(bridge.get_object("BrokenCamera"))  # broken part hata
+        self.assertIsNotNone(bridge.get_object("Material1"))
+        self.assertIsNone(bridge.get_object("BrokenCamera"))
 
     def test_rollback_to_missing_checkpoint_raises(self):
         bridge = FakeBridge()

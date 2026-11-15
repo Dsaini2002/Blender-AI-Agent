@@ -1,20 +1,4 @@
-"""
-GeometryInspector — Step 12.3
-=================================
-Hinglish: Phase 12 ka MVP scope — sirf GEOMETRY checks (topology,
-normals, intersecting objects). UV/Materials/Animation inspectors
-baad mein isi Inspector pattern follow karke add honge.
-
-Checks:
-  1. Non-manifold geometry  -> HIGH severity, not auto-fixable (MVP mein)
-  2. Flipped normals        -> MEDIUM severity, auto-fixable
-  3. Intersecting objects   -> MEDIUM severity, auto-fixable (bounding-box heuristic)
-
-MVP mein bounding-box overlap ek HEURISTIC hai (asli mesh-level
-intersection check nahi) — false positives possible hain do objects
-ke bounding boxes touch karne par bhi jab actual geometry overlap na
-ho. Yeh limitation README/CHANGELOG mein documented honi chahiye.
-"""
+"""GeometryInspector"""
 
 from typing import List
 
@@ -100,5 +84,5 @@ class GeometryInspector(Inspector):
 
         for axis in range(3):
             if max_a[axis] < min_b[axis] or max_b[axis] < min_a[axis]:
-                return False  # kisi bhi axis par gap hai -> overlap nahi
+                return False
         return True

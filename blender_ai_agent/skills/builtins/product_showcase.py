@@ -1,7 +1,5 @@
-"""
-ProductShowcaseSkill — Step 7.13
-====================================
-Hinglish: Ek concrete, working example — spec ka exact demo:
+"""ProductShowcaseSkill
+====================
 
     1. object.create
     2. object.transform
@@ -9,9 +7,6 @@ Hinglish: Ek concrete, working example — spec ka exact demo:
     4. material.assign
     5. camera.create
     6. render.preview
-
-Skill parameters leti hai (Step 7.14) — object_type, material_color —
-taaki same skill, alag results de sake.
 """
 
 from dataclasses import dataclass
@@ -46,7 +41,7 @@ class ProductShowcaseSkill(Skill):
 
         steps_completed = []
 
-        # Step 1: object.create
+        # object.create
         result = self._tool_caller.call(self._make_call("object.create", {
             "name": params.object_name, "primitive": params.primitive,
         }))
@@ -54,7 +49,7 @@ class ProductShowcaseSkill(Skill):
             return SkillResult.fail(f"Failed at object.create: {result.error}", steps_completed)
         steps_completed.append("object.create")
 
-        # Step 2: material.create
+        # material.create
         material_name = f"{params.object_name}_Material"
         result = self._tool_caller.call(self._make_call("material.create", {
             "name": material_name, "color": params.material_color,
@@ -63,7 +58,7 @@ class ProductShowcaseSkill(Skill):
             return SkillResult.fail(f"Failed at material.create: {result.error}", steps_completed)
         steps_completed.append("material.create")
 
-        # Step 3: material.assign
+        # material.assign
         result = self._tool_caller.call(self._make_call("material.assign", {
             "object_name": params.object_name, "material_name": material_name,
         }))
@@ -71,7 +66,7 @@ class ProductShowcaseSkill(Skill):
             return SkillResult.fail(f"Failed at material.assign: {result.error}", steps_completed)
         steps_completed.append("material.assign")
 
-        # Step 4: camera.create
+        # camera.create
         result = self._tool_caller.call(self._make_call("camera.create", {
             "name": f"{params.object_name}_Camera", "location": [0, -5, 2],
         }))

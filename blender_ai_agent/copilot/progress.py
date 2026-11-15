@@ -1,14 +1,10 @@
-"""
-ProgressState — Step 6.7
-============================
-Hinglish: Multi-step task chalte waqt UI ko live status dikhana hai:
+"""ProgressState
+=============
 
     ✓ object.create
     ✓ material.create
     → material.assign   (currently running)
     ○ modifier.add       (pending)
-
-Isse Phase 4 ke ExecutionRecord (executed_steps) se build hota hai.
 """
 
 from dataclasses import dataclass, field
@@ -30,7 +26,6 @@ class ProgressStep:
 
     @property
     def icon(self) -> str:
-        """Hinglish: Spec ke example jaisa hi symbol — ✓ / → / ○ / ✗"""
         return {
             StepStatus.PENDING: "○",
             StepStatus.RUNNING: "→",
@@ -46,7 +41,6 @@ class ProgressState:
         self.current_step_index: Optional[int] = None
 
     def set_plan(self, tool_names: List[str]) -> None:
-        """Hinglish: Planner se plan milne ke baad, saare steps PENDING state mein set karo."""
         self.steps = [ProgressStep(tool_name=name) for name in tool_names]
         self.current_step_index = None
 
@@ -72,5 +66,4 @@ class ProgressState:
         )
 
     def render_text(self) -> str:
-        """Hinglish: Spec ke example jaisa plain-text progress view."""
         return "\n".join(f"{step.icon} {step.tool_name}" for step in self.steps)

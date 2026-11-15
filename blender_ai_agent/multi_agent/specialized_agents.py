@@ -1,11 +1,4 @@
-"""
-Specialized agents — Step 11.11
-====================================
-Hinglish: Concrete implementations — har ek apne domain ke keywords
-pehchanta hai, aur uske relevant tools call karta hai. Simple
-keyword-based hai (real LLM-driven decision baad mein isi interface
-ke peeche plug hoga).
-"""
+"""Specialized agents"""
 
 from typing import Any, Dict
 

@@ -2,7 +2,7 @@
 
 ## Core principles
 
-- **API keys are never stored, logged, or committed.** `ProviderConfig` only stores the *name* of an environment variable; the key itself is read at runtime via `os.environ`.
+- **API keys are never logged, committed, or written to memory or run logs.** `ProviderConfig` only stores the *name* of an environment variable; the key itself is read at runtime via `os.environ`. A key typed in the Copilot panel is kept only in Blender's own add-on preferences (a password field, saved in `userpref.blend` on your computer) and copied into the environment of the running Blender.
 - **`.blend` files, logs, and benchmark artifacts must never contain secrets.**
 - **Raw Python execution is a last resort**, not a primary interface. `PythonPowerTool` (`python.execute`) requires the `PYTHON_EXECUTION` permission level, blocks dangerous keywords (`import`, `exec`, `eval`, `__`, `open(`, `os.`, `sys.`, `subprocess`), and only exposes a restricted `bridge` object — never raw `bpy` or the filesystem.
 - **Destructive operations require confirmation** by default (`PermissionConfig.destructive_write_requires_confirmation = True`).

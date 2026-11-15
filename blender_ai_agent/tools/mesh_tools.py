@@ -1,9 +1,4 @@
-"""
-Mesh Tools
-===========
-Hinglish: Primitives (cube, cone, sphere...) se jo shape nahi banta — jaise tent ka triangle, wedge, chhat, ramp —
-wo ab vertices + faces dekar seedha bana sakte hain.
-"""
+"""Mesh Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import CreateMeshInput, DamageMeshInput
@@ -11,6 +6,7 @@ from .models import CreateMeshInput, DamageMeshInput
 
 class CreateMeshTool(Tool):
     name = "mesh.create"
+    auto_name = "mesh_object"
     description = (
         "Creates a custom mesh from vertices and faces - use it for shapes the primitives cannot make: a "
         "triangle, wedge, gable end, roof, ramp, pyramid, a flat panel. vertices = [[x,y,z], ...]; faces = "

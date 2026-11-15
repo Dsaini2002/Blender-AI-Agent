@@ -1,20 +1,3 @@
-"""
-Task splitter — bade request ko chhote steps mein todna
-=========================================================
-Hinglish: "jyada task hone par tod do, ek ek karke chalao". Ye bina LLM ke (zero quota) request ko steps mein
-baantta hai. Sirf SAAF separators par todta hai, taaki "red and blue cube" jaise ek hi kaam ke do hisse na ho jayein:
-
-  - alag-alag lines / bullets / numbering   ("1) ...", "2. ...", "- ...")
-  - ";" aur sentence ke ant ( . ! ? )
-  - "then", "and then", "after that", "afterwards", "phir", "uske baad", "aur phir"
-    ("fir" jaanbujhkar nahi: "fir tree" ek model ka naam hai)
-  - ek hi line mein comma / "and" se jude KAAM: sirf tab todta hai jab uske baad koi saaf action-verb aaye
-    ("make a campfire, add a tent, add a lantern" -> 3 steps). "a red cube and a blue sphere" nahi tootta,
-    kyunki "and" ke baad verb nahi hai.
-
-Kam se kam `min_parts` hisse hon tabhi todta hai (warna request ko jaise ka taisa lautata hai).
-`max_parts` se zyada hon to padosi hisse jodkar utne hi rakhta hai.
-"""
 
 import re
 from typing import List
@@ -26,7 +9,6 @@ _CONNECTORS = re.compile(
     re.IGNORECASE,
 )
 _SENTENCES = re.compile(r"(?<=[.!?])\s+(?=\S)|;\s*")
-# Sirf saaf action-verbs (naam jaisa dikhne wale "light", "model", "color", "position" jaanbujhkar nahi).
 _ACTION_VERBS = (
     r"(?:create|make|add|build|place|put|set|move|rotate|scale|delete|remove|render|apply|import|rename|"
     r"duplicate|bevel|animate|paint|attach|connect|fix|change|generate|design|spawn|retopologize|analyze|"
@@ -66,7 +48,6 @@ def _cap(parts: List[str], max_parts: int) -> List[str]:
 
 
 def split_task(text: str, min_parts: int = 3, max_parts: int = 10) -> List[str]:
-    """Request ko steps mein todta hai; kam hisse bane to [text] (ya khaali text par [])."""
     original = (text or "").strip()
     if not original:
         return []

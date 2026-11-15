@@ -1,15 +1,5 @@
-"""
-mesh_damage.py
-===============
-Hinglish: "bottle ka upar wala hissa thoda toota hua dikhe" jaise changes ka ASLI algorithm. Ye pure Python hai
-(bpy nahi) — isse bridge ke bina bhi test hota hai. Bridge sirf mesh ke vertices yahan bhejta hai, aur wapas aaye
-`moves` / `remove_faces` ko apply karta hai (isse UV aur materials bache rehte hain, kyunki mesh dobara nahi banta).
-
-Styles:
-  broken  — kinara tedha-medha, kaante jaise tukde (V-notch), kuch faces gayab: toota hua bottle/glass/pot
-  chipped — chhote-chhote chip: kuch vertices andar, kuch faces gayab
-  dented  — andar ki taraf pichka hua (dent)
-  rough   — khurdura / ghisa hua (random noise)
+"""mesh_damage.py
+==============
 
 Regions: top, bottom, left, right, front, back (world axes) ya all.
 """
@@ -22,7 +12,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 REGIONS = ("top", "bottom", "left", "right", "front", "back", "all")
 STYLES = ("broken", "chipped", "dented", "rough")
 
-# region -> (axis index, sign): top = +Z ka sabse upar wala hissa
 _REGION_AXIS = {
     "top": (2, +1), "bottom": (2, -1),
     "right": (0, +1), "left": (0, -1),
@@ -34,9 +23,9 @@ Vec = Tuple[float, float, float]
 
 @dataclass
 class DamagePlan:
-    moves: Dict[int, Vec] = field(default_factory=dict)      # vertex index -> naya position
-    remove_faces: List[int] = field(default_factory=list)    # hatane wale face ke index
-    affected: int = 0                                        # region ke kitne vertices the
+    moves: Dict[int, Vec] = field(default_factory=dict)
+    remove_faces: List[int] = field(default_factory=list)
+    affected: int = 0
 
 
 def _bounds(vertices: Sequence[Vec]):
@@ -46,10 +35,6 @@ def _bounds(vertices: Sequence[Vec]):
 
 
 def region_vertex_indices(vertices: Sequence[Vec], region: str = "top", portion: float = 0.25) -> Dict[int, float]:
-    """
-    Region ke vertices -> "depth" (0.0 = andar ki seema, 1.0 = bilkul kinare). Bridge isse subdivide ke liye bhi
-    use karta hai. `all` mein har vertex ka depth 1.0 hota hai.
-    """
     if not vertices:
         return {}
     if region == "all" or region not in _REGION_AXIS:
@@ -58,13 +43,13 @@ def region_vertex_indices(vertices: Sequence[Vec], region: str = "top", portion:
     axis, sign = _REGION_AXIS[region]
     mins, maxs = _bounds(vertices)
     span = maxs[axis] - mins[axis]
-    if span <= 1e-9:                      # bilkul chapta mesh — poora hi region maan lo
+    if span <= 1e-9:
         return {i: 1.0 for i in range(len(vertices))}
 
     portion = max(0.02, min(1.0, portion))
     result = {}
     for index, vertex in enumerate(vertices):
-        t = (vertex[axis] - mins[axis]) / span          # 0..1 axis ke saath
+        t = (vertex[axis] - mins[axis]) / span
         if sign > 0 and t >= 1.0 - portion:
             result[index] = (t - (1.0 - portion)) / portion
         elif sign < 0 and t <= portion:
@@ -79,7 +64,6 @@ def _normalize(x: float, y: float):
 
 def plan_damage(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], region: str = "top", portion: float = 0.25,
                 strength: float = 0.15, style: str = "broken", seed: int = 1) -> DamagePlan:
-    """Mesh ko "kharab" karne ka plan (kaun sa vertex kahan jaye, kaun se face hatein). Same seed = same result."""
     plan = DamagePlan()
     if not vertices:
         return plan
@@ -93,10 +77,10 @@ def plan_damage(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], region:
 
     mins, maxs = _bounds(vertices)
     extent = [maxs[i] - mins[i] for i in range(3)]
-    size = max(max(extent), 1e-6)                       # object ka sabse bada naap
-    axis, sign = _REGION_AXIS.get(region, (2, +1))      # `all` ke liye Z ko "upar" maanta hai
+    size = max(max(extent), 1e-6)
+    axis, sign = _REGION_AXIS.get(region, (2, +1))
     height = max(extent[axis], size * 0.05)
-    t1, t2 = [i for i in range(3) if i != axis]         # axis ke perpendicular do axes
+    t1, t2 = [i for i in range(3) if i != axis]
 
     ring = list(depths)
     centre1 = sum(vertices[i][t1] for i in ring) / len(ring)
@@ -104,7 +88,7 @@ def plan_damage(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], region:
 
     def inward_axis(vertex: Vec, amount: float) -> List[float]:
         moved = list(vertex)
-        moved[axis] -= sign * amount                    # region ke andar ki taraf (bottle ka upar = neeche ki taraf)
+        moved[axis] -= sign * amount
         return moved
 
     if style == "broken":
@@ -115,7 +99,7 @@ def plan_damage(vertices: Sequence[Vec], faces: Sequence[Sequence[int]], region:
             theta = math.atan2(vertex[t2] - centre2, vertex[t1] - centre1)
             position = ((theta + math.pi) / (2 * math.pi)) * teeth
             tooth, fraction = int(position) % teeth, position - int(position)
-            triangle = 1.0 - abs(2.0 * fraction - 1.0)            # 0 kinare par (notch), 1 beech mein (nok)
+            triangle = 1.0 - abs(2.0 * fraction - 1.0)
             drop = strength * height * (0.2 + 0.8 * tooth_depth[tooth] * (1.0 - 0.85 * triangle)) * depth ** 1.2
             moved = inward_axis(vertex, drop)
             jitter = 0.02 * size * depth

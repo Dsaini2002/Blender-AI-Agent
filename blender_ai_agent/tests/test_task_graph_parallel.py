@@ -21,7 +21,7 @@ class TestParallelGroups(unittest.TestCase):
         level_ids = [[t.id for t in level] for level in levels]
 
         self.assertEqual(level_ids[0], ["body"])
-        self.assertEqual(set(level_ids[1]), {"arms", "head"})  # ye dono ek saath ho sakte hain
+        self.assertEqual(set(level_ids[1]), {"arms", "head"})
         self.assertEqual(level_ids[2], ["materials"])
 
     def test_fully_independent_tasks_all_in_one_level(self):

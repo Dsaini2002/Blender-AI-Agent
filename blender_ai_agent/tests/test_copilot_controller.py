@@ -10,14 +10,12 @@ from blender_ai_agent.copilot.messages import MessageRole
 
 @dataclass
 class FakeAgentResult:
-    """Hinglish: RepairRunResult/AgentRunResult jaisa fake — Controller ko sirf ye shape chahiye."""
     reply_text: Optional[str]
     task_id: str = "fake_task"
     rolled_back: bool = False
 
 
 class FakeAgent:
-    """Hinglish: Controller ka test-double — duck typing verify karta hai."""
 
     def __init__(self, results):
         self._results = list(results)
@@ -87,8 +85,6 @@ class TestCopilotController(unittest.TestCase):
 
 
 class TestCopilotControllerSkillFastPath(unittest.TestCase):
-    """Hinglish: 'house' jaisa request LLM ko chhue bina, seedha
-    HouseBuilderSkill se handle ho jana chahiye."""
 
     def _build_controller(self):
         from blender_ai_agent.skills.builtins.house_builder import HouseBuilderSkill
@@ -110,10 +106,6 @@ class TestCopilotControllerSkillFastPath(unittest.TestCase):
         skill_registry = SkillRegistry()
         skill_registry.register(HouseBuilderSkill(tool_caller))
 
-        # Agent jaan-boojhkar KHAALI results deta hai — agar skill
-        # fast-path kaam nahi karti, Agent.run() IndexError se crash
-        # ho jayega, aur test fail hoga. Isse proof milta hai ki LLM
-        # ko call hi nahi kiya gaya.
         agent = FakeAgent(results=[])
         controller = CopilotController(
             agent, skill_registry=skill_registry, tool_caller=tool_caller,

@@ -23,7 +23,7 @@ class TestVisionToolConfidenceWarning(unittest.TestCase):
 
         result = tool.execute({"filepath": "/tmp/test.png"})
 
-        self.assertTrue(result.success)  # tool fail nahi hota
+        self.assertTrue(result.success)
         self.assertTrue(result.data.get("low_confidence_warning"))
 
     def test_high_confidence_no_warning(self):

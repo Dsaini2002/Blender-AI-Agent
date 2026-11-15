@@ -13,7 +13,7 @@ class TestRollbackManager(unittest.TestCase):
         bridge = FakeBridge(objects=[FakeObject(name="Cube")])
         snapshot = SnapshotManager(bridge).capture()
 
-        bridge.create_object(name="Sphere")  # snapshot ke baad bana
+        bridge.create_object(name="Sphere")
 
         report = RollbackManager(bridge).rollback_to(snapshot)
 
@@ -36,7 +36,7 @@ class TestRollbackManager(unittest.TestCase):
         bridge = FakeBridge(objects=[FakeObject(name="Cube")])
         snapshot = SnapshotManager(bridge).capture()
 
-        bridge.delete_object("Cube")  # snapshot ke baad delete ho gaya
+        bridge.delete_object("Cube")
 
         report = RollbackManager(bridge).rollback_to(snapshot)
 

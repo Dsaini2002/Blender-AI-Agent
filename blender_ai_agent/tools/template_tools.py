@@ -1,13 +1,4 @@
-"""
-Template Tools
-=============
-Hinglish: Ye tool LLM se coordinate-guessing hatata hai. Har baar
-"create a spiderman/human" prompt se model 26 parts ke coordinates
-khud generate karta tha - kabhi galat scale, kabhi missing joint,
-kabhi gap. Ab ek FIXED spec file (templates/<name>.json) se exact
-wahi structure deterministically banta hai - model sirf prefix aur
-color choose karta hai, geometry hardcoded hai.
-"""
+"""Template Tools"""
 
 import json
 import os
@@ -91,10 +82,6 @@ class BuildTemplateTool(Tool):
                 self._bridge.add_modifier(part_name, "Bevel", "BEVEL")
                 self._bridge.configure_modifier(part_name, "Bevel", bevel)
 
-            # Hinglish: Kuch parts (dimples, eye-socket recess) khud
-            # dikhna nahi chahte - sirf ek TARGET part se unka shape
-            # BOOLEAN-DIFFERENCE se "kaat" diya jaata hai (real indentation,
-            # sirf color se fake nahi), phir cutter chhupa diya jaata hai.
             cut_target = part.get("boolean_cut_target")
             if cut_target:
                 target_name = cut_target.replace("{p}", prefix)

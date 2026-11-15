@@ -1,12 +1,4 @@
-"""
-CriticAgent — Step 11.12
-=============================
-Hinglish: Creator agent(s) ne scene banayi — Critic INDEPENDENTLY
-scene evaluate karta hai (Phase 4 Validators use karke), feedback
-deta hai. Ye SupervisorAgent se alag class hai — Single Responsibility:
-Supervisor "kaun karega" decide karta hai, Critic "kitna achha hua"
-evaluate karta hai.
-"""
+"""CriticAgent"""
 
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -40,10 +32,6 @@ class CriticReport:
 class CriticAgent:
 
     def __init__(self, checks: Dict[str, Validator]):
-        """
-        Hinglish: `checks` = {"geometry": SomeValidator(), "material": AnotherValidator()}
-        — named checks, taaki feedback mein "kaunsa aspect fail hua" clear ho.
-        """
         self._checks = checks
 
     def evaluate(self, expected: dict, bridge) -> CriticReport:

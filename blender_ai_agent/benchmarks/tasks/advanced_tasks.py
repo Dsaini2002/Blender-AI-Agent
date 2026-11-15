@@ -1,9 +1,4 @@
-"""
-Advanced benchmark tasks — Step 9.29
-=========================================
-Hinglish: Geometry Nodes aur Animation ke liye benchmark tasks —
-Phase 8 ke pattern ko follow karte hue.
-"""
+"""Advanced benchmark tasks"""
 
 from ..models import BenchmarkTask, Difficulty
 from ..validation_rules import ValidationRule, ValidationResult

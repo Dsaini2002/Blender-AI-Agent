@@ -1,29 +1,4 @@
-"""
-CampsiteSkill
-==============
-Hinglish: HouseBuilderSkill jaisa hi pattern (Skill = multiple Tools ka
-composition), lekin ye ek POORA scene banata hai — user "campsite" /
-"campfire" / "tent" bole to ek low-poly night camping scene ban jaata hai:
-
-    campsite
-        1. Ground              (PLANE)
-        2. Tent                (2 slanted CUBE panels = A-frame)
-        3. Campfire            (stone ring + 2 logs + 2 emissive flame CONEs)
-        4. Pine trees          (trunk + 3 stacked CONEs, back arc mein)
-        5. Log, stool, rocks, mushrooms
-        6. Moon + clouds       (emissive)
-        7. Lighting            (fire point light, moonlight sun, coloured rim lights)
-        8. World background    (dark night colour)
-        9. Camera              (scene ki taraf aim kiya hua)
-
-Design notes:
-  - Shared materials: ek colour ka material ek baar banta hai aur bahut se
-    objects par assign hota hai (har tree ke liye alag material nahi) — tool
-    calls kam, aur scene mein colour-consistency.
-  - Har step ka asli naam (Blender .001 suffix laga sakta hai) tool result se
-    liya jaata hai, isliye dobara run karne par bhi galat object edit nahi hota.
-  - Placement `seed` se deterministic hai — same seed = same scene.
-"""
+"""CampsiteSkill"""
 
 import math
 import random
@@ -35,7 +10,6 @@ from ..base import Skill, SkillResult
 
 
 class CampsiteBuildError(Exception):
-    """Hinglish: Beech mein koi step fail ho jaye to poora build rokne ke liye."""
 
     def __init__(self, message: str, steps_completed: List[str]):
         super().__init__(message)
@@ -70,14 +44,12 @@ class CampsiteParams:
             raise ValueError("clear_defaults must be true or false")
 
 
-# Hinglish: Layout (campfire = origin). Har tuple = (x, y) ground position.
 _TENT_POS = (-3.2, 1.8)
 _TENT_YAW = math.radians(20)
 _LOG_POS = (3.8, 1.2)
 _STOOL_POS = (-2.2, -2.2)
 _MUSHROOM_POS = [(2.6, -1.6), (3.05, -1.3)]
 
-# (x, y, clearance radius) — rocks/trees in zones se door rakhe jaate hain
 _OCCUPIED = [
     (0.0, 0.0, 1.4),
     (_TENT_POS[0], _TENT_POS[1], 2.0),
@@ -101,8 +73,6 @@ class CampsiteSkill(Skill):
         return 1.0 if self._TRIGGER.search(task.lower()) else 0.0
 
     def execute(self, context: Dict[str, Any]) -> SkillResult:
-        """Hinglish: Public entrypoint — kisi bhi build/validation error ko
-        SkillResult.fail() mein badalta hai (Skill contract: raw exception nahi)."""
         try:
             return self._build(context)
         except CampsiteBuildError as exc:
@@ -132,10 +102,6 @@ class CampsiteSkill(Skill):
         self._rng = random.Random(params.seed)
         self._occupied: List[Tuple[float, float, float]] = list(_OCCUPIED)
 
-        # Hinglish: Build SE PEHLE scene dekho — Blender ke startup "Cube"/"Light"
-        # campfire ke upar baithe hote hain. Chupchaap delete nahi karte (destructive),
-        # lekin ignore bhi nahi karte: ya to user ke kehne par hataate hain,
-        # ya result mein note karke poochte hain.
         leftovers = self._find_default_leftovers()
         notes: List[str] = []
         if leftovers and params.clear_defaults:
@@ -194,11 +160,8 @@ class CampsiteSkill(Skill):
                 material=mat,
             )
 
-        # Hinglish: Dono sirey (triangle) — ek patla CUBE jo 45 degree ghuma hua hai ek "diamond"
-        # banata hai; uska neeche wala aadha zameen ke andar chhup jaata hai, bacha hua upar ka
-        # aadha triangle ban jaata hai. Isse tent side se sirf ek tirchi plate nahi lagta.
         end_mat = self._mat("TentEnd", [0.22, 0.4, 0.3, 1.0])
-        cap_half = w / math.sqrt(2)  # diamond ka half-diagonal = w
+        cap_half = w / math.sqrt(2)
         for suffix, sign in (("EndFront", 1), ("EndBack", -1)):
             x, y = self._rot_xy(sign * half_len, 0.0, _TENT_YAW)
             self._obj(
@@ -222,8 +185,6 @@ class CampsiteSkill(Skill):
             self._obj("campfire", f"FireLog{i + 1}", "CYLINDER", (0.0, 0.0, 0.12),
                       scale=(0.08, 0.08, 0.45), rotation=(0.0, math.pi / 2, yaw), material=wood_mat)
 
-        # Hinglish: Emission 10-15 par tone-mapping flame ko safed/peach bana deta tha.
-        # Kam strength + gehra colour = asli orange/peela flame.
         flame_outer = self._mat("FlameOuter", [1.0, 0.25, 0.02, 1.0],
                                 emission=([1.0, 0.25, 0.02], 4.0))
         flame_inner = self._mat("FlameInner", [1.0, 0.7, 0.1, 1.0],
@@ -365,11 +326,6 @@ class CampsiteSkill(Skill):
     _DEFAULT_NAME = re.compile(r"^(Cube|Light)(\.\d{3})?$")
 
     def _find_default_leftovers(self) -> List[Dict[str, Any]]:
-        """
-        Hinglish: scene.inspect se Blender ke factory-default Cube/Light dhoondhta hai.
-        scene.inspect available na ho (ya fail ho) to chupchaap [] — ye sirf ek
-        suggestion feature hai, isse build kabhi fail nahi hona chahiye.
-        """
         from ...agent.models import ToolCall
 
         result = self._tool_caller.call(ToolCall(tool_name="scene.inspect", arguments={}))
@@ -451,7 +407,6 @@ class CampsiteSkill(Skill):
         return name
 
     def _mat(self, key: str, color: List[float], emission: Optional[Tuple[List[float], float]] = None) -> str:
-        """Shared material: ek baar banta hai, baar-baar assign hota hai."""
         if key in self._mats:
             return self._mats[key]
 
@@ -487,7 +442,6 @@ class CampsiteSkill(Skill):
 
     @staticmethod
     def _rot_xy(x: float, y: float, yaw: float) -> Tuple[float, float]:
-        """2D rotation about Z (tent ki local position ko world mein yaw dene ke liye)."""
         return (x * math.cos(yaw) - y * math.sin(yaw), x * math.sin(yaw) + y * math.cos(yaw))
 
     def _is_blocked(self, x: float, y: float, margin: float) -> bool:
@@ -500,5 +454,5 @@ class CampsiteSkill(Skill):
             "light.create", "world.set",
             "camera.create", "camera.set",
             "scene.inspect",
-            "object.delete",  # only when clear_defaults=True (user asked to remove the startup Cube/Light)
+            "object.delete",
         ]

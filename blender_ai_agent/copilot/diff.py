@@ -1,8 +1,5 @@
-"""
-SceneDiff — Step 6.20
-=========================
-Hinglish: Phase 4 ke SceneSnapshot ka reuse — before/after compare
-karke batata hai kya CREATE hua, kya DELETE hua, aur kya MODIFY hua.
+"""SceneDiff
+=========
 
     Snapshot Before -> Tool Execution -> Snapshot After -> SceneDiff
 """
@@ -32,10 +29,6 @@ class SceneDiff:
 
 
 def compute_diff(before: SceneSnapshot, after: SceneSnapshot) -> SceneDiff:
-    """
-    Hinglish: Do snapshots leke, ek SceneDiff banata hai. Pure
-    function hai — koi state nahi rakhta, sirf compute karta hai.
-    """
     before_names = set(before.object_names())
     after_names = set(after.object_names())
 

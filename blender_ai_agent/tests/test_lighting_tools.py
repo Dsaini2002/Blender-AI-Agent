@@ -10,7 +10,6 @@ from .fakes import FakeBridge
 
 
 class FakeRepeatedComposite:
-    """Gemini SDK ka proto list: len/iter/index karta hai, lekin `list` NAHI hai."""
 
     def __init__(self, items):
         self._items = list(items)
@@ -29,7 +28,6 @@ class FakeRepeatedComposite:
 
 
 class FakeMapComposite:
-    """Gemini SDK ka proto dict: items()/getitem karta hai, lekin `dict` NAHI hai."""
 
     def __init__(self, data):
         self._data = dict(data)
@@ -103,7 +101,6 @@ class TestGeminiProtoContainers(unittest.TestCase):
         arguments = parsed.tool_calls[0].arguments
         self.assertIsInstance(arguments["emission_color"], list)
         self.assertEqual(arguments["emission_color"], [1.0, 0.4, 0.0])
-        # and the tool input validates cleanly end to end
         self.assertEqual(ModifyMaterialInput(**arguments).emission_strength, 5.0)
 
 

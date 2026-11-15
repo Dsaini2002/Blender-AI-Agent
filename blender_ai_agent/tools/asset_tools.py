@@ -1,12 +1,4 @@
-"""
-Asset Tools
-=============
-Hinglish: Ye tool ek LOCAL mesh file (.obj/.fbx/.glb/.gltf) ko scene mein
-import karta hai. Ye koi internet download nahi karta - user ko file
-pehle se khud disk par rakhni hoti hai (kisi bhi free/CC0 asset site se,
-jaise Poly Haven, Sketchfab (CC0 filter), BlenderKit free tier), phir
-is tool se uska path diya jaata hai.
-"""
+"""Asset Tools"""
 
 from .base import Permission, Tool, ToolResult
 from .models import ImportBlendInput, ImportModelInput, ListBlendObjectsInput

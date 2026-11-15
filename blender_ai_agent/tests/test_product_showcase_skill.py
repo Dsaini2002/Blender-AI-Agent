@@ -55,7 +55,6 @@ class TestProductShowcaseSkill(unittest.TestCase):
         self.assertEqual(material.color, [1, 0, 0, 1.0])
 
     def test_stops_and_reports_partial_progress_on_failure(self):
-        """Hinglish: Agar camera.create registered hi na ho, skill wahi tak steps report kare."""
         bridge = FakeBridge()
         registry = ToolRegistry()
         registry.register(CreateObjectTool(bridge))

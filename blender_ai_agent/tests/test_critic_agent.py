@@ -26,7 +26,7 @@ class TestCriticAgent(unittest.TestCase):
         self.assertEqual(report.overall_score, 1.0)
 
     def test_partial_failure_gives_partial_score_and_feedback(self):
-        obj = FakeObject(name="Hero")  # material_name None hai
+        obj = FakeObject(name="Hero")
         bridge = FakeBridge(objects=[obj])
 
         critic = CriticAgent(checks={

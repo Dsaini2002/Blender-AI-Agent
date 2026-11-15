@@ -1,10 +1,4 @@
-"""
-TaskHistory — Step 6.21
-============================
-Hinglish: Simple, IN-MEMORY task history — spec explicitly kehta hai
-"Phase 6 mein permanent memory system mat banana" (wo Phase 7 hai).
-Isliye ye sirf session ke andar recent tasks track karta hai.
-"""
+"""TaskHistory"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -32,7 +26,6 @@ class TaskHistory:
         self._entries.append(TaskHistoryEntry(task_id=task_id, description=description, success=success))
 
     def list_recent(self, limit: int = 10) -> List[TaskHistoryEntry]:
-        """Hinglish: Sabse naye task pehle (reverse-chronological)."""
         return list(reversed(self._entries))[:limit]
 
     def find_by_task_id(self, task_id: str) -> Optional[TaskHistoryEntry]:

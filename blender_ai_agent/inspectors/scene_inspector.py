@@ -1,28 +1,18 @@
-"""
-SceneInspector
-==============
-Hinglish: Ye class Blender scene ko "samajhti" hai aur ek clean,
-structured (JSON-serializable) representation banati hai.
-"""
+"""SceneInspector"""
 
 from typing import Any, Dict, List
 
 
 class SceneInspector:
     def __init__(self, bridge):
-        # Dependency Injection: bridge bahar se pass ki gayi hai, khud nahi banayi.
         self._bridge = bridge
 
     def inspect(self) -> Dict[str, Any]:
-        """Poori scene ki structured state return karta hai."""
         return {
             "scene": self._inspect_scene(),
             "objects": self._inspect_objects(),
         }
 
-    # ---------------------------------------------------------
-    # Private helpers (implementation details, bahar se hide)
-    # ---------------------------------------------------------
     def _inspect_scene(self) -> Dict[str, Any]:
         return {
             "name": self._bridge.get_scene_name(),
@@ -35,20 +25,16 @@ class SceneInspector:
         return result
 
     def _describe_object(self, obj) -> Dict[str, Any]:
-        """Ek single Blender object ko dict mein convert karta hai."""
         data = {
             "name": obj.name,
             "type": obj.type,
             "location": list(obj.location),
         }
 
-        # Sirf MESH type objects ke liye extra detail
         if obj.type == "MESH":
             data["rotation"] = list(obj.rotation_euler)
             data["scale"] = list(obj.scale)
 
-            # Hinglish: Material naam bhi bhejo, taaki LLM ko dikhe ki
-            # material already assign hai (repeat-assign loop rukta hai).
             try:
                 mats = getattr(getattr(obj, "data", None), "materials", None)
                 names = [m.name for m in mats if m is not None] if mats is not None else []

@@ -49,7 +49,6 @@ class TestAdvancedOrchestrator(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.final_state, AgentState.ROLLED_BACK)
-        # Pehle 2 subtasks successful the, 3rd fail hua — record mein sab dikhna chahiye
         self.assertEqual(len(result.completed_subtasks), 3)
         self.assertTrue(result.completed_subtasks[0].success)
         self.assertTrue(result.completed_subtasks[1].success)

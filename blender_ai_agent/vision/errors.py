@@ -1,7 +1,4 @@
-"""
-Vision Error Classification — Step 5.15
-============================================
-"""
+"""Vision Error Classification"""
 
 from dataclasses import dataclass, field
 from enum import Enum

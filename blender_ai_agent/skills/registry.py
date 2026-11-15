@@ -1,9 +1,4 @@
-"""
-SkillRegistry — Step 7.11
-=============================
-Hinglish: EXACT same pattern jo ToolRegistry (Phase 2) follow karta
-hai — naam se register/lookup.
-"""
+"""SkillRegistry"""
 
 from typing import Dict, List
 
@@ -31,11 +26,6 @@ class SkillRegistry:
         return list(self._skills.keys())
 
     def find_best_match(self, task: str, min_score: float = 0.3) -> Skill:
-        """
-        Hinglish: Step 7.12 — Skill Selection. Har registered skill
-        ka can_handle() score compute karta hai, sabse best wala
-        return karta hai (agar threshold se upar hai), warna None.
-        """
         best_skill = None
         best_score = 0.0
 

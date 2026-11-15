@@ -75,8 +75,6 @@ class TestHouseBuilderSkill(unittest.TestCase):
         self.assertEqual(skill.can_handle("create a spinning cube"), 0.0)
 
     def test_stops_and_reports_partial_progress_on_failure(self):
-        """Hinglish: Agar material.assign registered hi na ho, skill
-        wahi tak ke steps report kare, poora crash na ho."""
         bridge = FakeBridge()
         registry = ToolRegistry()
         registry.register(CreateObjectTool(bridge))

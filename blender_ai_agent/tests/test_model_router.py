@@ -1,10 +1,4 @@
-"""
-TaskManager — Step 11.17 / 11.18
-=====================================
-Hinglish: Long-running tasks ke liye state machine + pause/resume.
-CheckpointManager (Phase 9) ka reuse — pause ka matlab hai "current
-checkpoint save karo", resume ka matlab "wahin se aage badho".
-"""
+"""TaskManager"""
 
 from dataclasses import dataclass, field
 from enum import Enum
@@ -62,7 +56,6 @@ class TaskManager:
         self._transition(task_id, TaskState.RUNNING)
 
     def pause(self, task_id: str) -> None:
-        """Hinglish: Step 11.18 — pause ke waqt checkpoint save hota hai."""
         task = self.get_task(task_id)
         self._transition(task_id, TaskState.PAUSED)
 
@@ -70,8 +63,6 @@ class TaskManager:
         task.pause_checkpoint_name = checkpoint.name
 
     def resume(self, task_id: str) -> None:
-        """Hinglish: Resume ke liye sirf state RUNNING mein wapas jaata hai — scene
-        already checkpoint ki state mein hai (pause ke baad koi change nahi hua toh)."""
         self._transition(task_id, TaskState.RUNNING)
 
     def complete(self, task_id: str) -> None:

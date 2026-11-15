@@ -42,7 +42,7 @@ class TestEvaluator(unittest.TestCase):
         bridge = FakeBridge(objects=[FakeObject(name="Hero", type_="MESH")])
         rules_with_weights = [
             (ObjectExistsRule("Hero"), 70),
-            (ObjectTypeRule("Hero", "CAMERA"), 30),  # ye fail hoga
+            (ObjectTypeRule("Hero", "CAMERA"), 30),
         ]
 
         result = Evaluator().evaluate_weighted(rules_with_weights, bridge)

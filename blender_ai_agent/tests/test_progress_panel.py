@@ -18,7 +18,6 @@ class FakeClock:
 
 
 class FakeLayout:
-    """bpy ka layout nahi — bas jo draw hua use record karta hai."""
 
     def __init__(self):
         self.calls = []
@@ -40,7 +39,6 @@ class FakeLayout:
 
 
 class FakeLayoutWithoutProgressBar(FakeLayout):
-    """Purane Blender jaisa layout jisme layout.progress() hota hi nahi."""
 
     def __getattribute__(self, name):
         if name == "progress":
@@ -137,7 +135,7 @@ class TestProgressPanel(unittest.TestCase):
         self.assertEqual(progress_panel._redraw_tick(), 1.0)
         make_panel(self.tracker)
         self.tracker.begin("x")
-        self.assertEqual(progress_panel._redraw_tick(), 1.0)       # bpy.context na ho tab bhi crash nahi
+        self.assertEqual(progress_panel._redraw_tick(), 1.0)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,6 @@ class Reply:
 
 
 class Recorder:
-    """call_tool jaisa: har call record karta hai; naam deta hai."""
 
     def __init__(self, fail_on=None):
         self.calls = []
@@ -119,7 +118,7 @@ class TestErrorsAreReportedNotRaised(unittest.TestCase):
         self.assertEqual(result.error_line, 2)
         self.assertIn("mesh.sdf failed: shapes must not be empty", result.error)
         self.assertTrue(result.error.startswith("line 2:"))
-        self.assertEqual(len(rec.calls), 2)                       # C kabhi nahi chala
+        self.assertEqual(len(rec.calls), 2)
         self.assertFalse(result.calls[1]["ok"])
 
     def test_runtime_python_errors_have_a_line_number(self):
@@ -157,7 +156,7 @@ class TestSandbox(unittest.TestCase):
     def assertBlocked(self, source, fragment=None):
         result, rec = run(source)
         self.assertFalse(result.ok, source)
-        self.assertEqual(rec.calls, [], source)                    # kuch bhi chala nahi
+        self.assertEqual(rec.calls, [], source)
         if fragment:
             self.assertIn(fragment, result.error, source)
 
@@ -179,7 +178,6 @@ class TestSandbox(unittest.TestCase):
     def test_tool_names_are_protected_but_ordinary_variable_names_are_free(self):
         for source in ("mesh_sdf = 1", "def mesh_sdf(): pass", "for object_create in [1]: pass", "def f(object_create): pass"):
             self.assertBlocked(source, "tool function name")
-        # LLM aksar `log`, `max`, `list`, `pi`... ko variable bana deta hai: chalna chahiye
         source = """
 log = object_create(name="Log", primitive="CYLINDER")
 max = 3
@@ -232,7 +230,6 @@ object_create(name=str(f(1) + list[0] + pi), primitive="CUBE")
             self.assertFalse(result.ok, source)
 
     def test_parser_errors_of_every_python_version_are_handled(self):
-        """Python 3.10 ast.parse null byte par ValueError deta hai (3.12 SyntaxError); gehra nesting RecursionError/MemoryError."""
         import ast
         from unittest import mock
         for error, fragment in ((ValueError("source code string cannot contain null bytes"), "invalid characters"),

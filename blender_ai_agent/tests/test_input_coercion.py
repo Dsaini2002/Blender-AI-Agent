@@ -29,13 +29,13 @@ class TestCoerceValue(unittest.TestCase):
         self.assertEqual(coerce_value("640.0", int), 640)
         self.assertEqual(coerce_value("0.5", float), 0.5)
         self.assertEqual(coerce_value(3, float), 3)
-        self.assertIs(coerce_value(True, int), True)                    # bool ko number nahi banate
+        self.assertIs(coerce_value(True, int), True)
 
     def test_bools(self):
         for text, expected in (("true", True), ("False", False), ("yes", True), ("no", False), ("1", True), ("0", False)):
             self.assertIs(coerce_value(text, bool), expected, text)
         self.assertIs(coerce_value(1, bool), True)
-        self.assertEqual(coerce_value("maybe", bool), "maybe")           # samajh na aaye -> jaisa hai
+        self.assertEqual(coerce_value("maybe", bool), "maybe")
 
     def test_str_field_gets_number_as_text(self):
         self.assertEqual(coerce_value(5, str), "5")

@@ -1,15 +1,4 @@
-"""
-CopilotSession — Step 6.4
-=============================
-Hinglish: User ke chat context ko track karta hai — UI sirf isse
-padh kar display karti hai, khud koi logic nahi rakhti.
-
-Dhyan do: Phase 3 ka ConversationState LLM ke liye messages rakhta
-hai (Message role: user/assistant/system/tool). Ye CopilotSession
-UI-DISPLAY ke liye hai (CopilotMessage — extra roles jaise ERROR,
-aur metadata). Dono alag concerns hain — UI ko LLM ke internal
-message format se coupled nahi hona chahiye.
-"""
+"""CopilotSession"""
 
 from typing import List, Optional
 

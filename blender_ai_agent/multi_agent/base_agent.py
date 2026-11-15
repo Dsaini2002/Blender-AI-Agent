@@ -1,10 +1,4 @@
-"""
-SpecializedAgent (base) — Step 11.11
-=========================================
-Hinglish: Har specialized agent ek "domain" ka expert hai — modeling,
-material, camera, etc. Sab same interface follow karte hain
-(Polymorphism), taaki Supervisor unhe uniform tarike se call kare.
-"""
+"""SpecializedAgent (base)"""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -23,12 +17,10 @@ class SpecializedAgent(ABC):
     domain: str = ""
 
     def __init__(self, tool_caller):
-        # Dependency Injection — jaisa hamesha
         self._tool_caller = tool_caller
 
     @abstractmethod
     def can_handle(self, subtask_description: str) -> bool:
-        """Hinglish: Ye subtask is agent ke domain mein aata hai?"""
         raise NotImplementedError
 
     @abstractmethod

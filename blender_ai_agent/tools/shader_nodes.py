@@ -1,20 +1,4 @@
-"""
-shader_nodes.py
-================
-Hinglish: Node-based (procedural) materials ka SAFE builder-spec + recipes. Pure Python (bpy nahi) — spec ki jaanch yahan, node banana bridge mein.
-
-Kyun: sirf rang/metallic/roughness se kaam ki cheezein (aag, dhuan, lakdi ke daane, patthar, sheesha, car paint) asli nahi lagti. Achhe artists
-Noise -> ColorRamp -> Mix(Emission, Transparent) jaise node graphs banate hain. Ab agent bhi bana sakta hai:
-
-    material_nodes(name="Flame", nodes=[...], links=[["noise.Fac", "ramp.Fac"], ...])      # kuch bhi
-    material_recipe(name="Flame", recipe="fire_flame", params={"color": [1, .1, 0, 1]})    # tayyar nuskhe
-
-Spec:
-  nodes  : [{"id": "n1", "type": "TexNoise", "inputs": {"Scale": 2.4}, "props": {"noise_dimensions": "3D"}, "ramp": [[pos, [r,g,b,a]], ...],
-             "image": "C:/x.png", "colorspace": "Non-Color", "location": [x, y]}]
-  links  : [["from_id.OutputSocket", "to_id.InputSocket"]]   (socket naam ya number; Mix/Add shader aur Math mein number use karo: "mix.1", "mix.2")
-  settings: {"surface_render_method": "DITHERED" | "BLENDED", "use_backface_culling": false, "displacement_method": "BUMP"}
-"""
+"""shader_nodes.py"""
 
 import re
 from dataclasses import dataclass, field
@@ -40,7 +24,6 @@ NODE_TYPES: Dict[str, str] = {
 }
 _IDNAMES = set(NODE_TYPES.values())
 
-# Node par set ho sakne wale properties (aur unki allowed values ya None = koi bhi simple value)
 ALLOWED_PROPS = {"operation", "blend_type", "noise_dimensions", "noise_type", "normalize", "distribution", "subsurface_method", "interpolation",
                  "data_type", "wave_type", "wave_profile", "bands_direction", "rings_direction", "voronoi_dimensions", "feature", "distance",
                  "use_clamp", "clamp", "gradient_type", "projection", "extension", "invert", "space", "vector_type", "mapping_type",
@@ -48,7 +31,6 @@ ALLOWED_PROPS = {"operation", "blend_type", "noise_dimensions", "noise_type", "n
 ALLOWED_SETTINGS = {"surface_render_method": ("DITHERED", "BLENDED"), "use_backface_culling": (True, False),
                     "displacement_method": ("BUMP", "DISPLACEMENT", "BOTH"), "use_transparent_shadow": (True, False)}
 
-# Static socket table (typos pakadne ke liye; list mein na ho to sirf Blender ke andar jaanch). Numbers (indices) hamesha allowed.
 SOCKETS: Dict[str, Tuple[List[str], List[str]]] = {
     "OutputMaterial": (["Surface", "Volume", "Displacement"], []),
     "Principled": (["Base Color", "Metallic", "Roughness", "IOR", "Alpha", "Normal", "Subsurface Weight", "Subsurface Radius", "Subsurface Scale",
@@ -85,7 +67,7 @@ SOCKETS: Dict[str, Tuple[List[str], List[str]]] = {
 @dataclass
 class NodeSpec:
     id: str
-    type: str                                   # NODE_TYPES ka short naam
+    type: str
     idname: str
     inputs: Dict[str, Any] = field(default_factory=dict)
     props: Dict[str, Any] = field(default_factory=dict)
@@ -98,7 +80,7 @@ class NodeSpec:
 @dataclass
 class MaterialSpec:
     nodes: List[NodeSpec]
-    links: List[Tuple[str, str, str, str]]       # from_id, from_socket, to_id, to_socket
+    links: List[Tuple[str, str, str, str]]
     settings: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -211,16 +193,16 @@ def parse_material_spec(nodes: Any, links: Any, settings: Optional[Dict[str, Any
                 raise ValueError(f"{where}: unknown node id '{node_id}'")
             table = SOCKETS.get(seen[node_id].type)
             known = table[0 if is_input else 1] if table else None
-            if known is not None and not socket.isdigit() and socket not in known:
+            if known is not None and not socket.isdigit() and not resolve_socket_name(socket, known):
                 kind = "input" if is_input else "output"
                 raise ValueError(f"{where}: {seen[node_id].type} '{node_id}' has no {kind} socket '{socket}'. {kind.capitalize()}s: {', '.join(known) or '(none)'}")
         parsed_links.append((from_id, from_socket, to_id, to_socket))
 
-    for node in parsed:                                   # inputs ke naam bhi jaanch lo (jahan table maujood hai)
+    for node in parsed:
         table = SOCKETS.get(node.type)
         if table:
             for name in node.inputs:
-                if not name.isdigit() and name not in table[0]:
+                if not name.isdigit() and not resolve_socket_name(name, table[0]):
                     raise ValueError(f"{node.type} '{node.id}' has no input '{name}'. Inputs: {', '.join(table[0])}")
 
     clean_settings: Dict[str, Any] = {}
@@ -248,7 +230,6 @@ def _p(params: Dict[str, Any], key: str, default: Any) -> Any:
 
 
 def recipe_fire_flame(p):
-    """Aag: noise se toota hua emission, neeche se upar fade (Generated Z)."""
     return {"nodes": [
         _n("out", "OutputMaterial"), _n("tc", "TexCoord"),
         _n("map", "Mapping", inputs={"Scale": [1.0, 1.0, float(_p(p, "stretch", 0.6))]}),
@@ -267,7 +248,6 @@ def recipe_fire_flame(p):
 
 
 def recipe_ember(p):
-    """Damakte angaare: kala base + noise se badalti emission."""
     return {"nodes": [
         _n("out", "OutputMaterial"), _n("tc", "TexCoord"),
         _n("noise", "TexNoise", props={"noise_dimensions": "3D"}, inputs={"Scale": float(_p(p, "scale", 9.0)), "Detail": 3.0, "Roughness": 0.6}),
@@ -329,6 +309,48 @@ def recipe_dirt_ground(p):
     return _bumped_principled(p, [[0.2, dark], [0.8, base]], float(_p(p, "scale", 3.0)), 0.9, 0.95, noise_detail=10.0)
 
 
+def _ground_like(default_color, scale, bump, roughness, dark_factor=0.45, detail=8.0):
+    def _recipe(p):
+        base = _p(p, "color", default_color)
+        dark = [c * dark_factor for c in base[:3]] + [1.0]
+        return _bumped_principled(p, [[0.25, dark], [0.75, base]], float(_p(p, "scale", scale)), bump,
+                                  float(_p(p, "roughness", roughness)), noise_detail=detail)
+    return _recipe
+
+
+recipe_grass = _ground_like([0.09, 0.24, 0.045, 1.0], 9.0, 0.45, 0.92, dark_factor=0.4, detail=10.0)
+recipe_gravel = _ground_like([0.46, 0.41, 0.34, 1.0], 28.0, 0.7, 0.9, dark_factor=0.55)
+recipe_concrete = _ground_like([0.47, 0.46, 0.44, 1.0], 14.0, 0.18, 0.8, dark_factor=0.8)
+recipe_asphalt = _ground_like([0.055, 0.055, 0.06, 1.0], 45.0, 0.25, 0.88, dark_factor=0.6)
+recipe_sand = _ground_like([0.76, 0.63, 0.43, 1.0], 32.0, 0.15, 0.95, dark_factor=0.8)
+def recipe_paint(p):
+    return {"nodes": [_n("out", "OutputMaterial"), _n("bsdf", "Principled", inputs={
+        "Base Color": _p(p, "color", [0.9, 0.9, 0.9, 1.0]), "Roughness": float(_p(p, "roughness", 0.55))})],
+        "links": [["bsdf.BSDF", "out.Surface"]]}
+
+
+recipe_foliage = _ground_like([0.07, 0.21, 0.045, 1.0], 6.0, 0.35, 0.75, dark_factor=0.45)
+
+
+def recipe_brick(p):
+    """Red brick wall in real size (23 x 7.5 cm bricks, grey mortar) on walls facing any horizontal direction:
+    the brick texture reads (x + y, z) in object space, so walls along X and along Y both get courses."""
+    base = _p(p, "color", [0.42, 0.13, 0.07, 1.0])
+    dark = [c * 0.7 for c in base[:3]] + [1.0]
+    return {"nodes": [
+        _n("out", "OutputMaterial"), _n("tc", "TexCoord"), _n("sep", "SeparateXYZ"),
+        _n("add", "Math", props={"operation": "ADD"}), _n("comb", "CombineXYZ"),
+        _n("brick", "TexBrick", props={"offset": 0.5, "squash": 1.0},
+           inputs={"Color1": base, "Color2": dark, "Mortar": _p(p, "mortar", [0.55, 0.53, 0.5, 1.0]),
+                   "Scale": float(_p(p, "scale", 1.0)), "Mortar Size": 0.01, "Bias": 0.0,
+                   "Brick Width": float(_p(p, "brick_width", 0.24)), "Row Height": float(_p(p, "row_height", 0.085))}),
+        _n("bump", "Bump", inputs={"Strength": 0.35, "Distance": 0.01}),
+        _n("bsdf", "Principled", inputs={"Roughness": float(_p(p, "roughness", 0.85))})],
+        "links": [["tc.Object", "sep.Vector"], ["sep.X", "add.0"], ["sep.Y", "add.1"], ["add.Value", "comb.X"],
+                  ["sep.Z", "comb.Y"], ["comb.Vector", "brick.Vector"], ["brick.Color", "bsdf.Base Color"],
+                  ["brick.Fac", "bump.Height"], ["bump.Normal", "bsdf.Normal"], ["bsdf.BSDF", "out.Surface"]]}
+
+
 def recipe_glass(p):
     return {"nodes": [_n("out", "OutputMaterial"), _n("bsdf", "Principled", inputs={
         "Base Color": _p(p, "color", [1.0, 1.0, 1.0, 1.0]), "Roughness": float(_p(p, "roughness", 0.02)), "IOR": float(_p(p, "ior", 1.45)),
@@ -370,7 +392,6 @@ def recipe_water(p):
 
 
 def recipe_glow(p):
-    """Lantern/lamp/screen jaisa seedha chamakta saaf material."""
     return {"nodes": [_n("out", "OutputMaterial"), _n("em", "Emission", inputs={
         "Color": _p(p, "color", [1.0, 0.65, 0.25, 1.0]), "Strength": float(_p(p, "strength", 12.0))})], "links": [["em.Emission", "out.Surface"]]}
 
@@ -384,19 +405,45 @@ def recipe_fabric(p):
 
 
 RECIPES: Dict[str, Tuple[Callable[[Dict[str, Any]], Dict[str, Any]], str]] = {
-    "fire_flame": (recipe_fire_flame, "aag/mashaal ki lau (color, strength, scale, detail, stretch, distortion). Flame mesh par lagao; kuch bhi 'Transparent' ke saath"),
-    "ember": (recipe_ember, "damakte angaare/coal (color, strength, scale)"), "smoke_volume": (recipe_smoke_volume, "dhuan/dhundh VOLUME (density, color, scale) - cube par"),
-    "charred_wood": (recipe_charred_wood, "jali lakdi (color)"), "wood_grain": (recipe_wood_grain, "lakdi ke daane (dark, light, scale, roughness)"),
-    "rough_stone": (recipe_rough_stone, "khurdura patthar (color, scale)"), "dirt_ground": (recipe_dirt_ground, "mitti/zameen (color, scale)"),
-    "glass": (recipe_glass, "sheesha (color, roughness, ior)"), "car_paint": (recipe_car_paint, "gaadi ka paint clearcoat ke saath (color, metallic, roughness)"),
-    "metal_brushed": (recipe_metal_brushed, "brushed dhaatu (color, roughness)"), "rubber": (recipe_rubber, "rabar/tyre (color)"),
-    "water": (recipe_water, "paani (color)"), "glow": (recipe_glow, "seedha chamakta: lantern, lamp, screen (color, strength)"),
-    "fabric": (recipe_fabric, "kapda (color)"),
+    "fire_flame": (recipe_fire_flame, "fire / torch flame (color, strength, scale, detail, stretch, distortion). Put on a flame mesh; uses 'Transparent'"),
+    "ember": (recipe_ember, "glowing embers / coal (color, strength, scale)"), "smoke_volume": (recipe_smoke_volume, "smoke / fog VOLUME (density, color, scale) - on a cube"),
+    "charred_wood": (recipe_charred_wood, "burnt wood (color)"), "wood_grain": (recipe_wood_grain, "wood grain (dark, light, scale, roughness)"),
+    "rough_stone": (recipe_rough_stone, "rough stone (color, scale)"), "dirt_ground": (recipe_dirt_ground, "dirt / ground (color, scale)"),
+    "glass": (recipe_glass, "glass (color, roughness, ior)"), "car_paint": (recipe_car_paint, "car paint with clearcoat (color, metallic, roughness)"),
+    "metal_brushed": (recipe_metal_brushed, "brushed metal (color, roughness)"), "rubber": (recipe_rubber, "rubber / tyre (color)"),
+    "water": (recipe_water, "water (color)"), "glow": (recipe_glow, "plain glow: lantern, lamp, screen (color, strength)"),
+    "fabric": (recipe_fabric, "fabric (color)"),
+    "grass": (recipe_grass, "green grass / lawn ground (color, scale)"),
+    "gravel": (recipe_gravel, "gravel / tan path (color, scale)"),
+    "concrete": (recipe_concrete, "concrete / paving / pool deck / plaza (color, scale)"),
+    "asphalt": (recipe_asphalt, "asphalt road (color, scale)"),
+    "sand": (recipe_sand, "sand / beach (color, scale)"),
+    "foliage": (recipe_foliage, "leaves / hedge / bush (color, scale)"),
+    "paint": (recipe_paint, "plain matte paint: field lines, goal posts, walls (color, roughness)"),
+    "brick": (recipe_brick, "red brick wall with mortar, real brick size (color, mortar, scale)"),
+}
+
+# Words models naturally use for a recipe that has another name.
+RECIPE_ALIASES = {
+    "lawn": "grass", "turf": "grass", "grass_ground": "grass", "green_grass": "grass", "meadow": "grass",
+    "pebbles": "gravel", "gravel_path": "gravel", "path": "gravel",
+    "paving": "concrete", "pavement": "concrete", "sidewalk": "concrete", "cement": "concrete", "tiles": "concrete",
+    "road": "asphalt", "tarmac": "asphalt",
+    "beach": "sand",
+    "leaves": "foliage", "leaf": "foliage", "hedge": "foliage", "bush": "foliage",
+    "stone": "rough_stone", "rock": "rough_stone", "granite": "rough_stone",
+    "dirt": "dirt_ground", "soil": "dirt_ground", "mud": "dirt_ground", "ground": "dirt_ground",
+    "wood": "wood_grain", "metal": "metal_brushed", "steel": "metal_brushed", "iron": "metal_brushed",
+    "emission": "glow", "light": "glow", "fire": "fire_flame", "flame": "fire_flame", "smoke": "smoke_volume",
+    "cloth": "fabric", "pool_water": "water",
+    "bricks": "brick", "brickwork": "brick", "red_brick": "brick", "brick_wall": "brick",
+    "white_paint": "paint", "white_wall": "paint", "plaster": "paint", "wall_paint": "paint", "matte_paint": "paint", "line_paint": "paint", "plastic": "paint",
 }
 
 
 def build_recipe(name: str, params: Optional[Dict[str, Any]] = None) -> MaterialSpec:
     key = str(name).strip().lower().replace(" ", "_").replace("-", "_")
+    key = RECIPE_ALIASES.get(key, key)
     if key not in RECIPES:
         raise ValueError(f"unknown recipe '{name}'. Recipes: {', '.join(sorted(RECIPES))}")
     raw = RECIPES[key][0](dict(params or {}))
@@ -408,7 +455,6 @@ def recipe_help() -> str:
 
 
 def layout(spec: MaterialSpec) -> Dict[str, Tuple[float, float]]:
-    """Node editor mein sahi dikhne ke liye positions: output sabse daayein, upstream baayein, ek column mein upar-neeche."""
     depth = {n.id: 0 for n in spec.nodes}
     for _ in range(len(spec.nodes)):
         changed = False
@@ -433,7 +479,6 @@ def layout(spec: MaterialSpec) -> Dict[str, Tuple[float, float]]:
 
 
 def viewport_color(spec: MaterialSpec) -> Optional[List[float]]:
-    """Solid viewport mein node material ka rang andaaze se dikhane ke liye: pehle Emission/Principled ka rang."""
     for key in ("Emission", "Principled"):
         for node in spec.nodes:
             if node.type == key:
@@ -442,3 +487,34 @@ def viewport_color(spec: MaterialSpec) -> Optional[List[float]]:
                     if isinstance(value, list) and len(value) in (3, 4):
                         return (list(value) + [1.0])[:4]
     return None
+
+
+# Blender renamed some node sockets between versions (5.x: Noise/Voronoi/Wave "Fac" -> "Factor"). Recipes and
+# model-written graphs may use either name, so both are accepted.
+SOCKET_ALIASES = {
+    "fac": ["factor"], "factor": ["fac"],
+    "color": ["col", "base color"], "col": ["color"],
+    "distance": ["dist"], "dist": ["distance"],
+    "base color": ["color"], "subsurface": ["subsurface weight"], "subsurface weight": ["subsurface"],
+    "specular": ["specular ior level"], "specular ior level": ["specular"],
+    "transmission": ["transmission weight"], "transmission weight": ["transmission"],
+    "emission": ["emission color"], "emission color": ["emission"],
+    "clearcoat": ["coat weight"], "coat weight": ["clearcoat"],
+    "sheen": ["sheen weight"], "sheen weight": ["sheen"],
+}
+
+
+def resolve_socket_name(ref: str, available) -> str:
+    """Pick the socket name to use for `ref` from `available` names: exact, case-insensitive, then known renames.
+    Returns '' when nothing fits."""
+    names = list(available)
+    if ref in names:
+        return ref
+    lowered = {n.lower(): n for n in names}
+    key = str(ref).lower()
+    if key in lowered:
+        return lowered[key]
+    for alias in SOCKET_ALIASES.get(key, []):
+        if alias in lowered:
+            return lowered[alias]
+    return ""

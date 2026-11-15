@@ -51,7 +51,6 @@ class TestResolveOnWindows(unittest.TestCase):
         self.assertEqual(self.resolve("a.EXR"), temp_file("a.EXR"))
 
     def test_same_input_gives_the_same_path_for_render_and_vision(self):
-        """The whole point: both tools resolve one string to the SAME file."""
         given = "/tmp/room_preview.png"
         self.assertEqual(self.resolve(given, "preview.png"), self.resolve(given, "vision_observe.png"))
 

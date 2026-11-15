@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# download_models.py repo ke root mein hai (package ke bahar) — isliye root ko path mein jodte hain.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 import download_models as dm  # noqa: E402

@@ -1,12 +1,7 @@
-"""
-StrategySelector — Step 11.6
-=================================
-Hinglish: Ek hi goal ko multiple tareekon se achieve kiya ja sakta
-hai (spec ka example: rounded object -> mesh modeling vs bevel
-modifier vs geometry nodes). Ye class un strategies ko score karke
-best choose karti hai.
+"""StrategySelector
+================
 
-Score = reliability + quality - cost (Step 11.6 ka formula, simplified)
+Score = reliability + quality - cost
 """
 
 from dataclasses import dataclass
@@ -16,10 +11,10 @@ from typing import Callable, List
 @dataclass
 class Strategy:
     name: str
-    reliability: float   # 0.0-1.0 — kitni baar successfully kaam karta hai (historical/estimated)
+    reliability: float
     expected_quality: float  # 0.0-1.0
-    execution_cost: float    # 0.0-1.0 (zyada = zyada mehnga/dheema)
-    action: Callable = None  # actual execution callable — agent isse call karega
+    execution_cost: float
+    action: Callable = None
 
     def __post_init__(self):
         for field_name, value in (
@@ -32,7 +27,6 @@ class Strategy:
 
     @property
     def score(self) -> float:
-        """Hinglish: Higher reliability/quality achha, higher cost bura."""
         return self.reliability + self.expected_quality - self.execution_cost
 
 
@@ -44,5 +38,4 @@ class StrategySelector:
         return max(strategies, key=lambda s: s.score)
 
     def rank(self, strategies: List[Strategy]) -> List[Strategy]:
-        """Hinglish: Sabse best se sabse worst tak sorted list — fallback options ke liye useful."""
         return sorted(strategies, key=lambda s: s.score, reverse=True)

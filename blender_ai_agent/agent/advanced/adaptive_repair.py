@@ -1,10 +1,4 @@
-"""
-AdaptiveRepairPlanner — Step 11.8
-======================================
-Hinglish: Phase 4 ka repair sirf EK strategy try karta tha. Ye class
-MULTIPLE candidate repairs generate karti hai aur unhe rank karke
-best choose karti hai — spec ke example jaisa.
-"""
+"""AdaptiveRepairPlanner"""
 
 from dataclasses import dataclass
 from typing import Callable, List

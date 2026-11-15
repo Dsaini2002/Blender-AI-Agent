@@ -1,16 +1,4 @@
-"""
-Integration Test — Step 2.8
-==============================
-Hinglish: Ab tak humne har tool ko ALAG-ALAG (isolated) test kiya.
-Ye test poore system ko EK SAATH assemble karke check karta hai —
-jaisa asli addon mein `_register_tools()` karta hai.
-
-Isse confirm hota hai:
-  - Saare 14 tools bina naam-clash ke register ho sakte hain
-  - Har tool ka permission/description sahi set hai
-  - End-to-end flow kaam karta hai: create object -> add material ->
-    add modifier -> sab ek hi bridge/registry ke through
-"""
+"""Integration Test"""
 
 from . import _bpy_stub  # noqa: F401
 
@@ -45,11 +33,6 @@ from .fakes import FakeBridge
 
 
 def build_registry(bridge):
-    """
-    Hinglish: Ye function exactly wahi kaam karta hai jo root
-    __init__.py ka `_register_tools()` karta hai — Composition Root
-    ka test-friendly version.
-    """
     registry = ToolRegistry()
     inspector = SceneInspector(bridge)
 
@@ -98,7 +81,6 @@ class TestFullToolRegistration(unittest.TestCase):
         self.assertEqual(tool_names, expected)
 
     def test_every_tool_has_name_and_description(self):
-        """Har tool ka metadata complete hona chahiye — Agent (Phase 3) isi pe depend karega."""
         registry = build_registry(FakeBridge())
 
         for tool_name in registry.list_tools():
@@ -108,33 +90,25 @@ class TestFullToolRegistration(unittest.TestCase):
 
 
 class TestEndToEndWorkflow(unittest.TestCase):
-    """
-    Hinglish: Ek realistic sequence test — jaisa future mein Agent
-    multiple tools chain karega.
-    """
 
     def test_create_object_then_add_material_then_modifier(self):
         bridge = FakeBridge()
         registry = build_registry(bridge)
 
-        # Step 1: Cube banao
         create_result = registry.get("object.create").execute({"name": "Cube"})
         self.assertTrue(create_result.success)
 
-        # Step 2: Red material banao aur assign karo
         registry.get("material.create").execute({"name": "Red", "color": [1, 0, 0]})
         assign_result = registry.get("material.assign").execute({
             "object_name": "Cube", "material_name": "Red"
         })
         self.assertTrue(assign_result.success)
 
-        # Step 3: Bevel modifier add karo
         modifier_result = registry.get("modifier.add").execute({
             "object_name": "Cube", "modifier_name": "Bevel1", "modifier_type": "BEVEL"
         })
         self.assertTrue(modifier_result.success)
 
-        # Step 4: Verify — scene.inspect se poori state dekho
         inspect_result = registry.get("scene.inspect").execute({})
         self.assertTrue(inspect_result.success)
         object_names = [obj["name"] for obj in inspect_result.data["objects"]]
