@@ -97,20 +97,27 @@ Or open the file `blender_ai_agent.zip` at the top of this repository and click 
 3. Select the downloaded **`blender_ai_agent.zip`** and click **Install from Disk**.
 4. Make sure the tick box next to **Blender AI Agent** is on.
 
-### 3. Add your API key (in the panel, only once)
+### 3. Paste your API key here (right after installing, only once)
 
-1. Close Preferences. In the 3D viewport press **N** and open the **AI Agent** tab on the right.
-2. Pick a provider in the drop-down at the top: **Google Gemini**, **Anthropic Claude** or **OpenAI**
+You add the key in the **same Preferences window**, directly below the add-on:
+
+1. In **Edit → Preferences → Add-ons**, click the small arrow next to **Blender AI Agent** to open it.
+2. Under **Preferences** you see three boxes: **Gemini API key**, **OpenAI API key** and **Claude API key**.
+3. Click **Get key** next to the provider you want - its key page opens in your browser
    (see [Choosing an AI provider](#choosing-an-ai-provider)).
-3. The panel shows **No API key** and a key box. Click **Get key** - the provider's key page opens in your browser.
-4. Create a key, copy it, paste it into the box and press **Submit Key**.
+4. Create a key there, copy it, **paste it into that box** and press **Enter**.
+5. Under the box you see a tick and **"… key saved - ready to use"**. You only need **one** key.
 
-The status changes to **Ready**. You do not need to open Preferences for the key, and you are asked for it **only
-once**: it stays saved, also when you install a newer version.
+The key is saved on this computer and asked for **only once** - it stays, also when you install a newer version.
+
+> You can also paste the key later in the add-on's panel: if the provider you pick has no key, the panel shows
+> **No API key** with a key box and a **Submit Key** button.
 
 ### 4. Make something
 
-Type a request in the **AI Prompt** box and press **Generate with AI**:
+1. Close Preferences. In the 3D viewport press **N** and open the **AI Agent** tab on the right.
+2. At the top, pick the provider whose key you pasted (and a model). The status shows **Ready**.
+3. Type a request in the **AI Prompt** box and press **Generate with AI**:
 
 ```
 create a table with two books and a laptop on it, and a lamp, save it as desk_test
@@ -132,7 +139,7 @@ undoes the whole run.
 | Nothing appears after installing | Make sure the add-on's tick box is on, then press **N** in the 3D viewport and look for the **AI Agent** tab. |
 | An error while installing, or *Blender AI Agent* is not in the list | You installed the wrong zip. Use `blender_ai_agent.zip` from the link above (not unzipped), not *Code → Download ZIP*. |
 | The panel says *Add-on files are out of date* | Remove the add-on, install the new zip again, and restart Blender. |
-| Generate is greyed out or says *No API key* | Paste the key for the provider shown at the top and press **Submit Key**. |
+| Generate says *No API key* | The provider picked at the top has no key. Paste its key in *Preferences → Add-ons → Blender AI Agent* (or in the panel's key box and press **Submit Key**), or pick the provider you have a key for. |
 
 ---
 
