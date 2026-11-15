@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run the test suite (no Blender needed)
+        run: python run_tests.py
+
+  real-blender:
+    # the same tools inside real Blender 5.2.1 (the bpy module from PyPI): catches what the fake bpy cannot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Blender as a Python module
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libxkbcommon0 libsm6
+          pip install bpy==5.2.1
+      - name: Build a campus in real Blender and check it
+        run: python scripts/real_blender_check.py

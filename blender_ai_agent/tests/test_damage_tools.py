@@ -53,8 +53,10 @@ class TestDamageMeshTool(unittest.TestCase):
 
     def test_aliases_from_the_base_class_still_work(self):
         bridge = FakeBridge(objects=[FakeObject(name="Vase")])
-        result = DamageMeshTool(bridge).execute({"name": "Vase"})          # 'name' is not a field -> dropped -> missing
+        result = DamageMeshTool(bridge).execute({"thing": "Vase"})         # unknown key -> dropped -> missing
         self.assertFalse(result.success)
+        named = DamageMeshTool(bridge).execute({"name": "Vase"})           # 'name' is understood as object_name
+        self.assertTrue(named.success, named.error)
         ok = DamageMeshTool(bridge).execute({"object_name": "Vase"})
         self.assertTrue(ok.success, ok.error)
 

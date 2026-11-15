@@ -3,7 +3,7 @@
 bl_info = {
     "name": "Blender AI Agent",
     "author": "Dinesh Saini",
-    "version": (0, 16, 3),
+    "version": (0, 16, 5),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar (N) > AI Agent",
     "description": "Deterministic tool system + reliable, vision-aware, autonomous AI Copilot for Blender.",

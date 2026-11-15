@@ -184,6 +184,10 @@ class CopilotController:
                 self.session.add_assistant_message(
                     f"Continuing the unfinished request with {getattr(self, 'current_provider_name', 'the AI')} "
                     f"(it was {info.get('why', 'stopped')}); the plan is reused:\n{self.plan_text}")
+            elif self._skill_handles(user_input):
+                # a ready-made model / skill does it: no planning request (the rules write the checklist)
+                from ..agent.understand import rules_understanding
+                self._understanding = rules_understanding(user_input)
             else:
                 self._understanding = self._understand(user_input, on_progress)
         self._learn_preferences(user_input)
@@ -352,7 +356,16 @@ class CopilotController:
             session.abort()
             return result
         place_text = self._arrange(user_input, session)
-        check_text = self._verify_and_improve(session, user_input, on_progress)
+        skill_only = getattr(self, "_skill_built", False)
+        if skill_only and self._verifier is not None and not getattr(getattr(self._verifier, "cfg", None),
+                                                                   "always_vision", False):
+            # a ready-made model / skill result: console + measured geometry check, no picture review - no AI request
+            self._verifier.vision_off = True
+        try:
+            check_text = self._verify_and_improve(session, user_input, on_progress)
+        finally:
+            if self._verifier is not None:
+                self._verifier.vision_off = False
         save_text = self._final_save(user_input)
         extra = "\n\n".join(t for t in (place_text, check_text, save_text) if t)
         if extra:
@@ -362,6 +375,7 @@ class CopilotController:
         return result
 
     def _run_core(self, user_input: str, on_progress=None, allow_skills: bool = True) -> SubmitResult:
+        self._skill_built = False
         skill_result = self._try_skill_fast_path(user_input) if allow_skills else None
         if skill_result is not None:
             return skill_result
@@ -693,6 +707,17 @@ class CopilotController:
             return SubmitResult(reply_text="fix could not run", success=False)
         return SubmitResult(reply_text=last.reply_text, success=ok_any or last.success, task_id=last.task_id)
 
+    def _skill_handles(self, user_input: str) -> bool:
+        """A ready skill (campfire, tent, house ...) will build this request by itself - no AI needed."""
+        from .resume import MARK
+        if self._skill_registry is None or self._tool_caller is None or user_input.startswith(MARK) \
+                or self._is_spec(user_input):
+            return False
+        try:
+            return self._skill_registry.find_best_match(user_input) is not None
+        except Exception:  # noqa: BLE001
+            return False
+
     def _try_skill_fast_path(self, user_input: str) -> Optional[SubmitResult]:
         if self._skill_registry is None or self._tool_caller is None:
             return None
@@ -720,6 +745,7 @@ class CopilotController:
             reply_text += f"\n{note}"
         self.session.add_assistant_message(reply_text)
         rest = self._skill_leftover(user_input)
+        self._skill_built = not rest            # built by trusted code alone: checked without pictures
         if rest:
             # the skill built its part; the rest of the request (save the file, colours, extra things) is the
             # agent's job - a short 'house + save' request used to lose the save

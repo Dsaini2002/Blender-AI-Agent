@@ -142,13 +142,13 @@ def human(num_bytes: int) -> str:
 
 def run(argv=None, fetch_json_fn=fetch_json, fetch_bytes_fn=fetch_bytes, input_fn=input, out=print) -> int:
     parser = argparse.ArgumentParser(description="Download CC0 GLB models from GitHub for Blender AI Agent.")
-    parser.add_argument("--dest", default=None, help="folder jahan models rakhne hain (default ~/BlenderAIAgent/models)")
-    parser.add_argument("--only", default="", help="comma-separated collection naam/id, jaise momuspark,christmas")
-    parser.add_argument("--list", action="store_true", help="sirf collections aur size dikhao")
-    parser.add_argument("--yes", "-y", action="store_true", help="size poochhe bina download shuru karo")
-    parser.add_argument("--max-mb", type=float, default=None, help="isse badi files skip karo")
+    parser.add_argument("--dest", default=None, help="folder for the models (default ~/BlenderAIAgent/models)")
+    parser.add_argument("--only", default="", help="comma-separated collection names/ids, e.g. momuspark,christmas")
+    parser.add_argument("--list", action="store_true", help="only list the collections and their sizes")
+    parser.add_argument("--yes", "-y", action="store_true", help="start downloading without asking about the size")
+    parser.add_argument("--max-mb", type=float, default=None, help="skip files larger than this")
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--force", action="store_true", help="pehle se maujood files dobara download karo")
+    parser.add_argument("--force", action="store_true", help="download files again even if they already exist")
     args = parser.parse_args(argv)
 
     dest = Path(args.dest).expanduser() if args.dest else default_dest()
@@ -165,14 +165,14 @@ def run(argv=None, fetch_json_fn=fetch_json, fetch_bytes_fn=fetch_bytes, input_f
 
     chosen = select_projects(projects, only)
     if only and not chosen:
-        out(f"Koi collection nahi mila: {only}. `--list` se naam dekho.")
+        out(f"No collection found: {only}. Use `--list` to see the names.")
         return 2
 
     entries = build_entries(projects, assets, only=only, max_mb=args.max_mb)
     total = sum(e["size"] for e in entries)
     todo = [e for e in entries if args.force or not (dest / e["file"]).is_file()]
     out(f"{len(entries)} models, {human(total)} total (CC0). Destination: {dest}")
-    out(f"Abhi download hona baaki: {len(todo)} files.")
+    out(f"Still to download: {len(todo)} files.")
 
     if todo and not args.yes:
         answer = input_fn("Download shuru karun? [y/N] ").strip().lower()
@@ -192,16 +192,16 @@ def run(argv=None, fetch_json_fn=fetch_json, fetch_bytes_fn=fetch_bytes, input_f
                 if key == "failed":
                     failures.append((futures[future]["name"], result))
                 if done % 25 == 0 or done == len(entries):
-                    out(f"  {done}/{len(entries)}  (naye {stats['downloaded']}, pehle se {stats['skipped']}, fail {stats['failed']})")
+                    out(f"  {done}/{len(entries)}  (new {stats['downloaded']}, already there {stats['skipped']}, failed {stats['failed']})")
     except KeyboardInterrupt:
-        out("Roka gaya — jo download ho chuka hai uska index bana raha hoon (dobara chalane par aage badhega).")
+        out("Stopped — writing the index for what is already downloaded (run again to continue).")
     finally:
         count = write_index(dest, entries)
 
-    out(f"Index ban gaya: {dest / 'index.json'}  ({count} models ready)")
+    out(f"Index written: {dest / 'index.json'}  ({count} models ready)")
     for name, why in failures[:10]:
         out(f"  FAIL {name}: {why}")
-    out("Ab Blender AI Agent mein likho:  find a bench model   /   place a torch from the downloaded models")
+    out("Now type in Blender AI Agent:  find a bench model   /   place a torch from the downloaded models")
     return 0 if not failures else 3
 
 

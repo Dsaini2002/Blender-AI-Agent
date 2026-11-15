@@ -43,10 +43,10 @@ class TestFriendlyMessage(unittest.TestCase):
 
     def test_daily_quota_message_says_it_is_finished(self):
         message = friendly_error_message(GEMINI_DAILY_429)
-        self.assertIn("Gemini ka quota khatam ho gaya hai", message)
+        self.assertIn("Gemini quota is used up", message)
         self.assertIn("gemini-3.6-flash", message)
-        self.assertIn("20 requests/din", message)
-        self.assertIn("dusra model", message)
+        self.assertIn("20 requests/day", message)
+        self.assertIn("another model", message)
 
     def test_screenshot_noise_is_gone(self):
         message = friendly_error_message(GEMINI_DAILY_429)
@@ -58,10 +58,10 @@ class TestFriendlyMessage(unittest.TestCase):
         message = friendly_error_message(GEMINI_PER_MINUTE_429)
         self.assertIn("requests/minute", message)
         self.assertIn("32 second", message)
-        self.assertNotIn("khatam", message)
+        self.assertNotIn("used up", message)
 
     def test_vision_step_gets_a_clarifying_suffix(self):
-        self.assertIn("visual check skip", friendly_error_message(GEMINI_DAILY_429, tool_name="vision.observe"))
+        self.assertIn("visual check was skipped", friendly_error_message(GEMINI_DAILY_429, tool_name="vision.observe"))
         self.assertNotIn("visual check", friendly_error_message(GEMINI_DAILY_429, tool_name="object.create"))
 
     def test_other_providers_are_named(self):
@@ -112,7 +112,7 @@ class TestVisionQuotaDoesNotDestroyTheBuild(unittest.TestCase):
         self.assertEqual(result.stopped_reason, "stop")
         self.assertIsNotNone(bridge.get_object("Cube2"))  # NOT rolled back
         self.assertIn("Built a cube.", result.reply_text)
-        self.assertIn("Gemini ka quota khatam ho gaya hai", result.reply_text)
+        self.assertIn("Gemini quota is used up", result.reply_text)
         self.assertNotIn("violations", result.reply_text)
 
     def test_vision_is_not_retried_after_quota(self):
@@ -141,7 +141,7 @@ class TestControllerQuotaError(unittest.TestCase):
         result = controller.submit("make a cube")
 
         self.assertFalse(result.success)
-        self.assertIn("Gemini ka quota khatam ho gaya hai", result.reply_text)
+        self.assertIn("Gemini quota is used up", result.reply_text)
         self.assertNotIn("violations", result.reply_text)
 
     def test_other_exceptions_still_propagate(self):

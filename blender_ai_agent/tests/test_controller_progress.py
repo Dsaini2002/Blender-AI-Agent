@@ -232,7 +232,7 @@ class TestFailuresDoNotLoseProgress(unittest.TestCase):
         self.assertFalse(result.success)
         lines = result.reply_text.splitlines()
         self.assertIn("✓ 1. make a campfire", lines)
-        self.assertTrue(lines[2].startswith("✗ 2. add a tent — Gemini ka quota khatam"), lines[2])
+        self.assertTrue(lines[2].startswith("✗ 2. add a tent — Gemini quota is used up"), lines[2])
         self.assertIn("- 3. add a lantern (skipped: quota khatam)", lines)
         self.assertIn("- 4. draw a fancy dragon (skipped: quota khatam)", lines)
         statuses = [s["status"] for s in tracker.snapshot().steps]

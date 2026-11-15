@@ -62,10 +62,10 @@ class TestAutomaticDownloadedFallback(unittest.TestCase):
 
     def test_simple_unknown_objects_found_in_the_downloads_are_picked_up(self):
         skill, _ = self.skill()
-        for text, phrase in (("add a bottle", "bottle"), ("make a bench", "bench"), ("place the torch", None),
+        for text, phrase in (("add a bottle", "bottle"), ("make a bench", None), ("place the torch", None),
                              ("create a bottle please", "bottle"), ("bottle banao", "bottle")):
             if phrase is None:
-                continue                                    # 'torch' is a built-in -> handled by the 0.9 path
+                continue                                    # 'torch' / 'bench' are built-ins -> handled by the 0.9 path
             self.assertEqual(skill._match_fallback(text), phrase, text)
             self.assertEqual(skill.can_handle(text), 0.85, text)
 
@@ -122,6 +122,15 @@ class TestAutomaticDownloadedFallback(unittest.TestCase):
         self.write_index(ENTRIES[:2])
         os.utime(os.path.join(self.tmp.name, "index.json"), (1, 1))                  # force a new mtime
         self.assertEqual(len(load_index()), 2)
+
+    def test_building_request_is_left_to_the_agent(self):
+        self.write_index(ENTRIES + [entry("ly-base", "BuildingBase", "lunar-year", ["building", "base"]),
+                                    entry("cw-wheel", "Car_Wheel", "garage", ["car", "wheel"]),
+                                    entry("ft-leg", "Table_Leg", "furniture", ["table", "leg"])])
+        skill = self.skill()[0]
+        self.assertIsNone(skill._match_fallback("make a building"))       # broad subject
+        self.assertIsNone(skill._match_fallback("add a table"))           # only a table *leg* exists
+        self.assertEqual(skill._match_fallback("add a bottle"), "bottle") # wine bottle is still a bottle
 
 
 if __name__ == "__main__":

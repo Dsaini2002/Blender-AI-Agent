@@ -376,7 +376,7 @@ class PostRunVerifier:
             report.geometry = []
         report.folder = os.path.join(cfg.output_dir or os.path.join(os.path.expanduser("~"), "BlenderAIAgent", "checks"),
                                      time.strftime("%Y%m%d_%H%M%S") + f"_r{round_no}")
-        if cfg.mode == "full":
+        if cfg.mode == "full" and not getattr(self, "vision_off", False):
             builder_cfg = self._fallback_vision(self._builder_loader())
             targets = [n for n in facts.created + facts.changed if facts.types.get(n, "") in RENDERABLE]
             reason = self._vision_skip_reason(request, facts, targets, builder_cfg.api_key) or \

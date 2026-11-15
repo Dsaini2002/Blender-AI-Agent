@@ -147,11 +147,18 @@ class AIAgentPreferences(_PreferencesBase):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Paste at least one key. It is saved in Blender's preferences on this computer.", icon='INFO')
+        layout.label(text="Paste one API key (Gemini, OpenAI or Claude) and press Enter. It is saved on this computer.",
+                     icon='INFO')
+        remembered = _read_key_file()
         for prop, env, label, url in KEYS:
             row = layout.row(align=True)
             row.prop(self, prop)
             op = row.operator("wm.url_open", text="Get key", icon='URL')
             op.url = url
-            if not getattr(self, prop) and os.environ.get(env):
+            if getattr(self, prop):
+                layout.label(text=f"{label} key saved - ready to use.", icon='CHECKMARK')
+            elif remembered.get(env):
+                layout.label(text=f"{label} key saved from before - ready to use (paste a new one to change it).",
+                             icon='CHECKMARK')
+            elif os.environ.get(env):
                 layout.label(text=f"{label}: using {env} from the environment.", icon='CHECKMARK')

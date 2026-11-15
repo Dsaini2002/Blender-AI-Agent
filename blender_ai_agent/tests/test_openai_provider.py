@@ -25,12 +25,11 @@ class TestOpenAIProviderDefaults(unittest.TestCase):
 
     def test_default_model_is_gpt6_astra(self):
         provider = OpenAIProvider(api_key="sk-test")
-        self.assertEqual(provider._model_name, "gpt-6-astra")
+        self.assertEqual(provider._model_name, "gpt-6-sol")
 
-    def test_endpoint_is_openai_chat_completions(self):
-        self.assertEqual(
-            OpenAIProvider.API_URL, "https://api.openai.com/v1/chat/completions"
-        )
+    def test_endpoint_is_the_responses_api(self):
+        # GPT-6 Astra calls function tools only on the Responses API
+        self.assertEqual(OpenAIProvider.API_URL, "https://api.openai.com/v1/responses")
 
     def test_custom_model_name_honored(self):
         provider = OpenAIProvider(api_key="sk-test", model_name="gpt-6-astra-pro")
@@ -42,8 +41,9 @@ class TestOpenAIProviderRequestResponse(unittest.TestCase):
     @patch("blender_ai_agent.providers.openai_provider.urllib.request.urlopen")
     def test_generate_parses_text_response(self, mock_urlopen):
         mock_urlopen.return_value = _FakeHTTPResponse({
-            "choices": [{"message": {"content": "Done.", "tool_calls": []}}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            "status": "completed",
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": "Done."}]}],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
         })
         provider = OpenAIProvider(api_key="sk-test")
         req = MagicMock(messages=[], tools=[])
@@ -54,13 +54,9 @@ class TestOpenAIProviderRequestResponse(unittest.TestCase):
     @patch("blender_ai_agent.providers.openai_provider.urllib.request.urlopen")
     def test_generate_parses_tool_calls(self, mock_urlopen):
         mock_urlopen.return_value = _FakeHTTPResponse({
-            "choices": [{"message": {
-                "content": None,
-                "tool_calls": [{"function": {
-                    "name": "object.create",
-                    "arguments": json.dumps({"name": "car_body", "primitive": "CUBE"}),
-                }}],
-            }}],
+            "status": "completed",
+            "output": [{"type": "function_call", "name": "object__create", "call_id": "c1",
+                        "arguments": json.dumps({"name": "car_body", "primitive": "CUBE"})}],
             "usage": {},
         })
         provider = OpenAIProvider(api_key="sk-test")
@@ -75,7 +71,7 @@ class TestOpenAIProviderRequestResponse(unittest.TestCase):
         with patch("blender_ai_agent.providers.openai_provider.urllib.request.Request") as mock_req:
             mock_req.return_value = MagicMock()
             with patch("blender_ai_agent.providers.openai_provider.urllib.request.urlopen",
-                       return_value=_FakeHTTPResponse({"choices": [{"message": {"content": "ok"}}]})):
+                       return_value=_FakeHTTPResponse({"status": "completed", "output": []})):
                 provider.generate(MagicMock(messages=[], tools=[]))
             _, kwargs = mock_req.call_args
             self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-secret123")

@@ -17,7 +17,7 @@ class FakeBridge(_BaseFakeBridge):
         return obj
 
     def create_curve(self, name, points, curve_type="BEZIER", thickness=0.05, closed=False,
-                     location=None, rotation=None, scale=None, fill_caps=True, resolution=12):
+                     location=None, rotation=None, scale=None, fill_caps=True, resolution=12, strokes=None):
         existing = {o.name for o in self._objects}
         final_name, suffix = name, 0
         while final_name in existing:

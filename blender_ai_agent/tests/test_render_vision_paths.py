@@ -67,17 +67,34 @@ class TestRenderPreviewInput(unittest.TestCase):
 
 class TestRenderPreviewTool(unittest.TestCase):
 
-    def test_plain_call_is_unchanged_for_old_bridges(self):
+    def test_plain_call_asks_for_a_fast_render(self):
         bridge = RecordingBridge()
         result = RenderPreviewTool(bridge).execute({"filepath": "room_preview.png"})
         self.assertTrue(result.success, result.error)
-        self.assertEqual(bridge.calls, [("room_preview.png", {})])          # no new kwargs sent
+        self.assertEqual(bridge.calls, [("room_preview.png", {"fast": True})])   # quick EEVEE, no freeze
         self.assertEqual(result.data, {"filepath": "room_preview.png"})     # file not on disk -> output unchanged
+
+    def test_final_render_uses_the_scene_settings(self):
+        bridge = RecordingBridge()
+        RenderPreviewTool(bridge).execute({"filepath": "a.png", "final": True})
+        self.assertEqual(bridge.calls, [("a.png", {})])
+
+    def test_old_bridge_without_fast_still_works(self):
+        class OldBridge:
+            def __init__(self):
+                self.calls = []
+
+            def render_preview(self, filepath, resolution=None):
+                self.calls.append(filepath)
+                return filepath
+        bridge = OldBridge()
+        self.assertTrue(RenderPreviewTool(bridge).execute({"filepath": "a.png"}).success)
+        self.assertEqual(bridge.calls, ["a.png"])
 
     def test_draft_asks_for_a_small_render(self):
         bridge = RecordingBridge()
         RenderPreviewTool(bridge).execute({"filepath": "a.png", "draft": True})
-        self.assertEqual(bridge.calls, [("a.png", {"resolution": (640, 360)})])
+        self.assertEqual(bridge.calls, [("a.png", {"resolution": (640, 360), "fast": True})])
 
     def test_result_carries_proof_when_the_file_really_exists(self):
         with tempfile.TemporaryDirectory() as tmp:

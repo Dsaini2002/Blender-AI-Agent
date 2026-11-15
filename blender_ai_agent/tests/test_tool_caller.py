@@ -72,7 +72,7 @@ class TestToolCall(unittest.TestCase):
         registry, _ = build_registry()
         caller = ToolCaller(registry)
 
-        result = caller.call(ToolCall(tool_name="object.create", arguments={}))  # 'name' missing
+        result = caller.call(ToolCall(tool_name="object.delete", arguments={}))  # nothing to delete named
 
         self.assertFalse(result.success)
 

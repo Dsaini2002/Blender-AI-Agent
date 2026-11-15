@@ -176,6 +176,21 @@ class FakeBridge:
 
         return obj
 
+    def bake_scale(self, name):
+        obj = self.get_object(name)
+        if obj is None:
+            return False
+        s = [float(v) for v in obj.scale]
+        if all(abs(v - 1.0) < 1e-6 for v in s) or any(v <= 1e-9 for v in s):
+            return False
+        box = getattr(obj, "fake_bbox", None)
+        if box:
+            obj.fake_bbox = {"min": [box["min"][k] * s[k] for k in range(3)],
+                             "max": [box["max"][k] * s[k] for k in range(3)]}
+        obj.scale = [1.0, 1.0, 1.0]
+        self.baked = getattr(self, "baked", []) + [name]
+        return True
+
     # ---------------------------------------------------------
     # Materials —
     # ---------------------------------------------------------
@@ -260,6 +275,13 @@ class FakeBridge:
     # Camera / Render —
     # ---------------------------------------------------------
     def create_camera(self, name, location=None, rotation=None):
+        existing = self.get_object(name)
+        if existing is not None and existing.type == "CAMERA":
+            if location is not None:
+                existing.location = list(location)
+            if rotation is not None:
+                existing.rotation_euler = list(rotation)
+            return existing
         camera_obj = FakeObject(
             name=name,
             type_="CAMERA",
@@ -276,8 +298,9 @@ class FakeBridge:
         self._active_camera = obj
         return True
 
-    def render_preview(self, filepath):
+    def render_preview(self, filepath, resolution=None, fast=False):
         self._last_render_path = filepath
+        self._last_render_fast = fast
         return filepath
 
     # ---------------------------------------------------------

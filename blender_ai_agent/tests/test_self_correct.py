@@ -250,7 +250,7 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(sc.parse_critique('{"score": 99}').score, 10.0)
         self.assertEqual(sc.parse_critique('{"score": "x"}').score, 0.0)
         many = sc.parse_critique(json.dumps({"score": 5, "problems": [f"p{i}" for i in range(20)]}))
-        self.assertEqual(len(many.problems), 6)
+        self.assertEqual(len(many.problems), 10)
         self.assertEqual(many.problems[0]["severity"], "medium")
 
     def test_config_from_file_and_env(self):
@@ -508,7 +508,7 @@ class TestTheLoop(LoopCase):
         def flaky(*a, **k):
             calls["n"] += 1
             if calls["n"] == 2:
-                raise sc.BuilderError("quota", "Gemini ka quota khatam ho gaya (429).")
+                raise sc.BuilderError("quota", "Gemini quota is used up ho gaya (429).")
             return original(*a, **k)
         builder._critique = flaky
         report = builder.build("make a thing", out_dir=os.path.join(self.tmp.name, "out2"))
@@ -689,7 +689,7 @@ class TestToolAndSkill(LoopCase):
         self.assertTrue(result.success, result.error)
         data = result.data
         self.assertEqual((data["best_score"], data["reached_target"]), (6.5, False))
-        self.assertIn("nahi hai", data["note"])
+        self.assertIn("not perfect", data["note"])
         self.assertEqual(data["iterations"][0]["problems"], ["wheels look flat"])
         self.assertTrue(os.path.isfile(data["script_file"]))
         self.assertEqual(len(data["view_images"]), 4)
@@ -700,13 +700,13 @@ class TestToolAndSkill(LoopCase):
         self.assertEqual(BuildIterateInput(request="x", max_iterations="2", target_score="7.5", location="1, 2, 0").location, [1, 2, 0])
         no_key = BuildIterateTool(self.bridge, lambda: self.caller, lambda: self.registry, config_loader=lambda: sc.BuilderConfig(api_key=""))
         self.assertIn("GEMINI_API_KEY", no_key.execute({"request": "x"}).error)
-        self.assertIn("nahi mili", self.tool().execute({"request": "x", "reference_image": "C:/nope/missing.png"}).error)
+        self.assertIn("not found", self.tool().execute({"request": "x", "reference_image": "C:/nope/missing.png"}).error)
 
     def test_total_failure_is_a_failure_with_the_reason(self):
         self.writer(BAD_TOOL_SCRIPT)
         result = self.tool(max_iterations=1).execute({"request": "make a thing"})
         self.assertFalse(result.success)
-        self.assertIn("aakhri galti", result.error)
+        self.assertIn("last error", result.error)
 
     def test_metadata_tells_the_llm_when_and_how(self):
         description = self.tool().description

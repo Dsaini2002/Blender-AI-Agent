@@ -107,7 +107,8 @@ class TestPlace(WithIndex):
         self.assertEqual(result.data["license"], "CC0")
         obj = bridge.get_object("Bench_01_Art")
         self.assertEqual([round(v, 6) for v in obj.location], [4.0, 5.0, 0.0])
-        self.assertEqual(list(obj.scale), [2, 2, 2])
+        self.assertEqual(list(obj.scale), [1.0, 1.0, 1.0])       # the 2x is baked into the mesh
+        self.assertIn("Bench_01_Art", bridge.baked)
         self.assertAlmostEqual(obj.rotation_euler[2], 3.141592653589793 / 2)
 
     def test_places_by_query(self):

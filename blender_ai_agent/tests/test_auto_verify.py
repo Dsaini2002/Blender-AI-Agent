@@ -57,7 +57,7 @@ class WorldAgent:
         for name in step.get("delete", []):
             self.bridge._objects = [o for o in self.bridge._objects if o.name != name]
         for name in step.get("move", []):
-            self.bridge.get_object(name).location = [9.0, 9.0, 9.0]
+            self.bridge.get_object(name).location = [9.0, 9.0, 0.0]     # moved, still on the ground
         if step.get("console"):
             sys.stderr.write(step["console"] + "\n")
         if step.get("cancel"):
@@ -76,7 +76,7 @@ class Case(unittest.TestCase):
         registry.register(SceneInspectTool(SceneInspector(self.bridge)))
         self.caller = ToolCaller(registry)
         self.cfg = pv.VerifyConfig(mode="full", max_rounds=2, pass_score=7.0, fd_capture=False, output_dir=os.path.join(self.tmp.name, "checks"),
-                                   min_objects_for_vision=3)
+                                   min_objects_for_vision=3, strict_review=False, stall_rounds=2)
         self.llm = StubLLM()
         self.key = "k"
         sc.REVIEW_LOG.clear()
@@ -126,7 +126,7 @@ class TestConfig(unittest.TestCase):
                 with open(path, "w") as handle:
                     json.dump({"mode": "console", "max_rounds": 99, "pass_score": "6.5", "views": ["front", "top"], "junk": 1}, handle)
                 cfg = pv.load_verify_config(path)
-                self.assertEqual((cfg.mode, cfg.max_rounds, cfg.pass_score, cfg.views), ("console", 4, 6.5, ("front", "top")))
+                self.assertEqual((cfg.mode, cfg.max_rounds, cfg.pass_score, cfg.views), ("console", 30, 6.5, ("front", "top")))
                 os.environ["BLENDER_AI_AUTOVERIFY"] = "off"
                 self.assertEqual(pv.load_verify_config(path).mode, "off")
                 os.environ["BLENDER_AI_AUTOVERIFY"] = "nonsense"
@@ -176,7 +176,7 @@ class TestSessionAndAssess(Case):
         facts = pv.RunFacts(created=THREE, types={n: "MESH" for n in THREE}, started=time.time())
         good = self.verifier(llm=StubLLM(critique(8.5, summary="a car"))).assess("make a car", facts)
         self.assertEqual((good.score, good.needs_fix), (8.5, False))
-        self.assertEqual(len(good.images), 3)                                          # front, right, three_quarter
+        self.assertEqual(len(good.images), 9)                    # front, back, left, right, top, 3/4 x2, low, wide
         self.assertEqual(self.bridge.render_requests[-1]["names"], THREE)
         bad = self.verifier(llm=StubLLM(critique(4, ["wheel floats"]))).assess("make a car", facts)
         self.assertTrue(bad.needs_fix)
@@ -204,7 +204,7 @@ class TestSessionAndAssess(Case):
 
     def test_vision_failures_never_break_the_check(self):
         facts = pv.RunFacts(created=THREE, types={n: "MESH" for n in THREE}, started=time.time())
-        for answer, fragment in ((sc.BuilderError("quota", "Gemini ka quota khatam ho gaya (429)."), "429"),
+        for answer, fragment in ((sc.BuilderError("quota", "Gemini quota is used up ho gaya (429)."), "429"),
                                  ("I think it looks nice!", "could not be read"), (RuntimeError("boom"), "RuntimeError")):
             report = self.verifier(llm=StubLLM(answer)).assess("make a car", facts)
             self.assertFalse(report.needs_fix)
@@ -273,7 +273,7 @@ class TestControllerFlow(Case):
         self.assertIn("score 4/10", agent.received[1])
         self.assertIn("fixed after 1 round(s)", result.reply_text)
         self.assertEqual(len(self.llm.calls), 2)
-        self.assertEqual(self.llm.calls[1]["images"], 3)
+        self.assertEqual(self.llm.calls[1]["images"], 9)              # every angle + zoomed out
 
     def test_rounds_are_limited_and_the_remaining_problems_are_shown(self):
         self.llm.answers = [critique(3, ["still wrong"])] * 3
@@ -284,9 +284,17 @@ class TestControllerFlow(Case):
         self.assertIn("still wrong", result.reply_text)
         self.assertTrue(result.success)
 
-    def test_a_fix_that_makes_it_worse_stops_the_loop(self):
+    def test_fixes_that_bring_no_improvement_stop_the_loop(self):
+        self.llm.answers = [critique(6, ["meh"]), critique(3, ["much worse"]), critique(4, ["still worse"])]
+        controller, agent = self.controller([{"create": THREE}, {}, {}, {}], self.verifier(max_rounds=8))
+        result = controller.submit("make a car")
+        self.assertEqual(len(agent.received), 3)                                       # 1 + 2 rounds without progress
+        self.assertIn("problems remain", result.reply_text)
+        self.assertIn("no improvement in the last 2 rounds", result.reply_text)
+
+    def test_old_mode_still_stops_on_a_worse_fix(self):
         self.llm.answers = [critique(6, ["meh"]), critique(3, ["much worse"])]
-        controller, agent = self.controller([{"create": THREE}, {}, {}], self.verifier(max_rounds=3))
+        controller, agent = self.controller([{"create": THREE}, {}, {}], self.verifier(max_rounds=3, until_fixed=False))
         result = controller.submit("make a car")
         self.assertEqual(len(agent.received), 2)
         self.assertIn("problems remain", result.reply_text)
@@ -346,7 +354,7 @@ class TestControllerFlow(Case):
         self.assertTrue(result.success)
         self.assertEqual(len(agent.received), 2)
         self.assertIn("problems remain", result.reply_text)
-        self.assertIn("auto-fix nahi ho paya", result.reply_text)
+        self.assertIn("auto-fix could not run", result.reply_text)
         self.assertNotIn("fixed after", result.reply_text)
         self.assertEqual(len(self.llm.calls), 1)
 
@@ -355,7 +363,7 @@ class TestControllerFlow(Case):
         controller, agent = self.controller([{"create": THREE}, {"raise": ValueError("weird")}], self.verifier())
         result = controller.submit("make a car")
         self.assertTrue(result.success)
-        self.assertIn("auto-fix ruk gaya", result.reply_text)
+        self.assertIn("further auto-fix stopped", result.reply_text)
         self.assertIn("ValueError", result.reply_text)
 
     def test_a_broken_verifier_never_breaks_the_task(self):
@@ -364,7 +372,7 @@ class TestControllerFlow(Case):
         controller, agent = self.controller([{"create": THREE}], verifier)
         result = controller.submit("make a car")
         self.assertTrue(result.success)
-        self.assertIn("Auto-check chal nahi paya", result.reply_text)
+        self.assertIn("Auto-check could not run", result.reply_text)
         self.assertIn("built 1", result.reply_text)
         broken_begin = self.verifier()
         broken_begin.begin = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no snapshot"))

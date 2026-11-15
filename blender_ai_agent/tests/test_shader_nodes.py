@@ -184,7 +184,7 @@ class TestRecipes(unittest.TestCase):
             spec = sn.build_recipe(name)
             self.assertEqual(sum(1 for n in spec.nodes if n.type == "OutputMaterial"), 1, name)
             self.assertTrue(spec.links, name)
-        self.assertEqual(len(sn.RECIPES), 14)
+        self.assertEqual(len(sn.RECIPES), 22)
 
     def test_params_change_the_result(self):
         flame = sn.build_recipe("fire_flame", {"color": [0.1, 0.2, 1.0, 1.0], "strength": 3, "scale": 6})
@@ -354,7 +354,11 @@ class TestTools(unittest.TestCase):
     def test_recipe_tool_input_is_lenient_and_strict_where_it_matters(self):
         ok = MaterialRecipeInput(name="x", recipe="Rough Stone", params=None, assign_to="A, B")
         self.assertEqual(ok.assign_to, ["A", "B"])
-        for bad in ({"name": "", "recipe": "glass"}, {"name": "x", "recipe": "nope"}, {"name": "x", "recipe": "glass", "params": "text"}):
+        # a missing name is filled in (the hostel run failed twice on it); a bad recipe or params still fail
+        named = MaterialRecipeTool(self.bridge).execute({"recipe": "grass", "assign_to": ["campus_ground"]})
+        self.assertTrue(named.success, named.error)
+        self.assertEqual(named.data["name"], "campus_ground_grass")
+        for bad in ({"name": "x", "recipe": "nope"}, {"name": "x", "recipe": "glass", "params": "text"}):
             self.assertFalse(MaterialRecipeTool(self.bridge).execute(bad).success, str(bad))
         result = MaterialRecipeTool(self.bridge).execute({"name": "x", "recipe": "nope"})
         self.assertIn("Recipes:", result.error)
@@ -428,9 +432,26 @@ class FakeRender(Enum):
 
 
 class FakeViewSettings(Enum):
+    ALLOWED = ("AgX", "Standard", "None", "AgX - Medium High Contrast", "AgX - Punchy")
+
     def __init__(self):
-        super().__init__("AgX", "Standard", "None", "AgX - Medium High Contrast", "AgX - Punchy")
+        super().__init__(*self.ALLOWED)
         self.view_transform, self.look, self.exposure = "Standard", "None", 0.0
+
+    def __setattr__(self, name, value):
+        if name in ("view_transform", "look") and value not in self.ALLOWED:   # like real Blender enums
+            raise TypeError(f"enum '{value}' not found")
+        super().__setattr__(name, value)
+
+
+class TestDynamicEnumAndSocketRenames(unittest.TestCase):
+
+    def test_socket_renames_between_blender_versions(self):
+        from blender_ai_agent.tools.shader_nodes import resolve_socket_name
+        self.assertEqual(resolve_socket_name("Fac", ["Factor", "Color"]), "Factor")      # Blender 5.x noise texture
+        self.assertEqual(resolve_socket_name("Factor", ["Fac", "Color"]), "Fac")         # older Blender
+        self.assertEqual(resolve_socket_name("color", ["Color"]), "Color")
+        self.assertEqual(resolve_socket_name("Nope", ["Factor"]), "")
 
 
 class TestBridgeSetupRender(BridgeCase):
@@ -473,6 +494,16 @@ class TestBridgeSetupRender(BridgeCase):
         scene, _ = self.make_scene()
         notes2 = self.bridge.setup_render(dof=True, focus_object="Nothing")["notes"]
         self.assertIn("focus object 'Nothing' not found", " | ".join(notes2))
+
+    def test_placeholder_enum_identifier_is_not_fatal(self):
+        """Blender 5.2: bl_rna lists a placeholder 'NONE' for look, but the real enum only accepts 'None'."""
+        scene, _ = self.make_scene()
+        scene.view_settings.bl_rna.properties["look"] = SimpleNamespace(enum_items=[SimpleNamespace(identifier="NONE")])
+        scene.view_settings.look = "AgX - Punchy"
+        result = self.bridge.setup_render(**PRESETS["outdoor"])
+        self.assertEqual(scene.view_settings.look, "None")
+        self.assertEqual(result["changed"]["look"], "None")
+        self.assertEqual(scene.view_settings.view_transform, "AgX")
 
     def test_cycles_samples_and_denoise(self):
         scene, _ = self.make_scene()

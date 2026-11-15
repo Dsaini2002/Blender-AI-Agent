@@ -35,13 +35,14 @@ class TestCreateObjectTool(unittest.TestCase):
 
         self.assertIsNotNone(bridge.get_object("Sphere"))
 
-    def test_missing_name_fails_gracefully(self):
+    def test_missing_name_gets_a_default_name(self):
         bridge = FakeBridge()
         tool = CreateObjectTool(bridge)
 
         result = tool.execute({})
 
-        self.assertFalse(result.success)
+        self.assertTrue(result.success, result.error)
+        self.assertIsNotNone(bridge.get_object(result.data["name"]))
 
     def test_permission_is_safe_write(self):
         tool = CreateObjectTool(FakeBridge())

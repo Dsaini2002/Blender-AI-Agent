@@ -5,7 +5,17 @@ import types
 import unittest
 
 
+def _quiet_test_folders():
+    """Tests must not write run logs into the real ~/BlenderAIAgent folder."""
+    import os
+    import tempfile
+    os.environ.setdefault("BLENDER_AI_LOG_DIR", tempfile.mkdtemp(prefix="aiagent_test_logs_"))
+    os.environ.setdefault("BLENDER_AI_RECENT_FILE", os.path.join(tempfile.mkdtemp(prefix="aiagent_test_recent_"),
+                                                                 "recent_tasks.json"))
+
+
 def install_fake_bpy():
+    _quiet_test_folders()
     if "bpy" in sys.modules:
         return
 

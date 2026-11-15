@@ -1,0 +1,32 @@
+name: release
+
+# Push a tag like v0.13.0 -> GitHub builds blender_ai_agent.zip and attaches it to the release.
+# New users download THAT zip (not GitHub's "Download ZIP", which wraps everything in an extra folder)
+# and install it with Blender > Edit > Preferences > Add-ons > Install from Disk.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test
+        run: python run_tests.py
+      - name: Build the add-on zip
+        run: |
+          zip -qr blender_ai_agent.zip blender_ai_agent -x "*/__pycache__/*" "*.pyc" "blender_ai_agent/tests/*"
+          unzip -l blender_ai_agent.zip | tail -1
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: blender_ai_agent.zip
+          generate_release_notes: true
