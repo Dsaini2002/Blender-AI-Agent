@@ -1,755 +1,399 @@
-**# Blender AI Agent**
+# Blender AI Agent
 
-A deterministic, strongly typed tool system for programmatically controlling Blender, designed as the foundation for a reliable LLM-driven Blender agent.
+**Tell Blender what you want. It plans it, builds it, checks it from every side, and fixes it.**
 
-**## Engineering Philosophy**
+Blender AI Agent is an add-on that puts an AI assistant inside Blender. You write a request in plain words, such as
+*"create a table with two books and a laptop on it, and a lamp"*. The agent writes a plan, builds the scene with real
+Blender tools, puts every object in a sensible place, looks at the result from many angles, and fixes what is wrong.
 
-\> Build the deterministic Blender foundation first. Introduce AI only after the execution layer is reliable.
+It is not a chat window that pastes random code. It is an engineered system: typed tools, a safe sandbox, undo on
+failure, measured checks, picture reviews, and more than 1,600 automated tests.
 
-\> Establish a strong Scene → Tools → Validation foundation before introducing the Agent and LLM layers.
+---
 
-The foundation is intentionally deterministic: every tool is manually callable, strongly typed, independently testable, and decoupled from Blender runtime execution.
+## Contents
 
-**## Architecture**
+- [Highlights](#highlights)
+- [How a request works](#how-a-request-works)
+- [Quick start](#quick-start)
+- [Choosing an AI provider](#choosing-an-ai-provider)
+- [The panel](#the-panel)
+- [Example prompts](#example-prompts)
+- [What it can build](#what-it-can-build)
+- [AI usage and quota](#ai-usage-and-quota)
+- [When something goes wrong](#when-something-goes-wrong)
+- [Settings](#settings)
+- [Safety](#safety)
+- [For developers](#for-developers)
+- [Contributing](#contributing) · [Author](#author) · [License](#license)
 
-\`\`\`
+---
 
-                    ToolRegistry
+## Highlights
 
-                        │
+| | |
+|---|---|
+| **Plan first** | Before anything is built, the AI writes a checklist: every object, how many, and where it goes. You see it in the panel. |
+| **57 typed tools** | Objects, meshes, materials, lights, cameras, curves, buildings, sports fields, stands, text, saving and more. |
+| **51 ready-made models** | Furniture, lamps, trees, sports equipment, vehicles and props, placed in one call at real size. |
+| **22 procedural materials** | Wood, glass, concrete, grass, brick, water, fire, smoke and more. |
+| **Smart placement** | After building, the AI decides the best spot for each object from real measurements. Your positions always win. |
+| **Deep check** | The scene is rendered from 9 angles plus a close-up of every checklist item, and reviewed object by object. |
+| **Error finder** | A measured list of every problem: overlaps, floating objects, furniture through walls, missing items and more. |
+| **One provider, your choice** | Gemini, Claude or OpenAI. The provider you pick does all the work. |
+| **Never lost** | Stop at any time, switch provider, and **Continue** from where it stopped. **Revert** undoes a run. |
+| **Honest results** | Every run ends as *completed*, *partly done* or *failed*, with the AI requests and tokens it used. |
 
-     ┌──────────────────┼───────────────────┬────────────────┐
+---
 
-     ▼                  ▼                    ▼                ▼
+## How a request works
 
- ObjectTools      MaterialTools       ModifierTools      CameraTools
+**Plan → Build → Place → Check → Fix → Save**
 
-     │                  │                    │                │
+1. **Plan.** The AI reads your request (English, Hindi or Hinglish) and writes a checklist, for example
+   *table ×1, book ×2 on the table, laptop ×1 on the table, lamp ×1*. It also picks the tools the job needs and notes
+   whether you want a `.blend` file.
+2. **Build.** The AI calls the add-on's tools step by step. Each call is checked before it runs, and only the tools
+   from the plan are sent, which keeps every request small. If no tool fits a part, the AI makes it itself (with
+   a mesh formula, raw geometry or a reviewed build script).
+3. **Place.** The agent measures everything that was built. The AI then decides where each item fits best
+   (books *on* the table, a lamp *beside* it). If a move would make the scene worse, it is undone.
+4. **Check.** The scene is rendered from the front, back, left, right, top, a low angle, two corner views and a
+   zoomed-out view, plus a zoomed-in close-up of every item. The AI reviews these pictures together with the
+   checklist and a list of measured problems, and counts every item ("book: 1 of 2 seen").
+5. **Fix.** Anything wrong goes back to the AI as a clear fix list. Check and fix repeat until the result is right,
+   or until three rounds in a row bring no improvement.
+6. **Save.** If you asked for a file, the final scene is saved and the file is checked on disk.
 
-     └──────────────────┴────────────────────┴────────────────┘
+Big requests (a whole room, a campus, a stadium) are first split by a planner into steps for specialists: layout,
+modeling, materials and lighting.
 
-                                 │
+Requests that a ready-made skill can build by itself (a campfire, a tent, a house, a cartoon character and other
+library models) skip the AI completely: no plan request and no picture review - they are built at once and checked
+by measurement only.
 
-                          BlenderBridge
+---
 
-                                 │
+## Quick start
 
-                               bpy
+You need **Blender 5.2**, an internet connection and **one API key**. Nothing else: no Python, no pip, no Git.
 
-                                 │
+### 1. Download the add-on
 
-                             Blender
+**[⬇ Download blender_ai_agent.zip](https://github.com/Dsaini2002/Blender-AI-Agent/raw/main/blender_ai_agent.zip)**
 
-\`\`\`
+Or open the file `blender_ai_agent.zip` at the top of this repository and click the **Download raw file** button
+(the arrow at the top right of the file view).
 
-\- **\*\*\`BlenderBridge\`\*\*** — the only place that touches raw \`bpy\`. Everything else depends on this abstraction, not on Blender directly.
+> **Do not unzip it.** Blender installs the zip as it is.
+>
+> **Do not use the green *Code → Download ZIP* button.** That zip holds the whole project inside an extra folder,
+> and Blender cannot install it.
 
-\- **\*\*\`Tool\` (ABC)\*\*** — every tool follows the same contract: \`execute(input\_dict) -> ToolResult\`, using the Template Method pattern (\`validate() -> run() -> error handling\`).
+### 2. Install it in Blender
 
-\- **\*\*\`ToolRegistry\`\*\*** — tools are looked up by name (e.g. \`"object.create"\`), so a future Agent never needs to know Python class names.
+1. Open Blender and go to **Edit → Preferences → Add-ons**.
+2. Click the small **drop-down arrow** at the top right and choose **Install from Disk…**
+3. Select the downloaded **`blender_ai_agent.zip`** and click **Install from Disk**.
+4. Make sure the tick box next to **Blender AI Agent** is on.
 
-\- **\*\*Typed input models\*\*** (\`tools/models.py\`) — every tool has a dataclass-based input contract with validation, instead of raw dicts.
+### 3. Add your API key (in the panel, only once)
 
-\---
+1. Close Preferences. In the 3D viewport press **N** and open the **AI Agent** tab on the right.
+2. Pick a provider in the drop-down at the top: **Google Gemini**, **Anthropic Claude** or **OpenAI**
+   (see [Choosing an AI provider](#choosing-an-ai-provider)).
+3. The panel shows **No API key** and a key box. Click **Get key** - the provider's key page opens in your browser.
+4. Create a key, copy it, paste it into the box and press **Submit Key**.
+
+The status changes to **Ready**. You do not need to open Preferences for the key, and you are asked for it **only
+once**: it stays saved, also when you install a newer version.
 
-**## Implementation Status**
+### 4. Make something
 
-**### Phase 1 — Blender Foundation**
+Type a request in the **AI Prompt** box and press **Generate with AI**:
 
-Addon skeleton, \`BlenderBridge\`, \`SceneInspector\`, base \`Tool\`/\`ToolRegistry\`, first working tool, UI panel, unit tests.
+```
+create a table with two books and a laptop on it, and a lamp, save it as desk_test
+```
 
-**### Phase 2 — Tool System**
+You will see the plan first, then each step, then the check rounds. **Stop** stops at once; **Revert AI Changes**
+undoes the whole run.
 
-\| Category | Tools |
+### Updating to a new version
 
-\|---|---|
+1. **Edit → Preferences → Add-ons**, find **Blender AI Agent**, open it and click **Remove**.
+2. Download the new `blender_ai_agent.zip` and install it as in step 2.
+3. **Restart Blender.** Your API key is still there.
 
-\| Scene | \`scene.inspect\` |
+### Install problems
 
-\| Object | \`object.create\`, \`object.delete\`, \`object.duplicate\`, \`object.rename\`, \`object.transform\` |
+| Problem | Fix |
+|---|---|
+| Nothing appears after installing | Make sure the add-on's tick box is on, then press **N** in the 3D viewport and look for the **AI Agent** tab. |
+| An error while installing, or *Blender AI Agent* is not in the list | You installed the wrong zip. Use `blender_ai_agent.zip` from the link above (not unzipped), not *Code → Download ZIP*. |
+| The panel says *Add-on files are out of date* | Remove the add-on, install the new zip again, and restart Blender. |
+| Generate is greyed out or says *No API key* | Paste the key for the provider shown at the top and press **Submit Key**. |
 
-\| Material | \`material.create\`, \`material.assign\`, \`material.modify\` |
-\| Lighting & World | \`light.create\`, \`world.set\`  (+ emission via \`material.modify\`) |
-\| Retopology | \`retopology.analyze\`, \`retopology.remesh\` |
+---
 
-\| Modifier | \`modifier.add\`, \`modifier.remove\`, \`modifier.configure\` |
+## Choosing an AI provider
 
-\| Camera/Render | \`camera.create\`, \`camera.set\`, \`render.preview\` |
+Pick the provider and model in the drop-down at the top of the panel. You can switch at any time.
 
-Every tool has: a \`Permission\` level (\`READ\_ONLY\` / \`SAFE\_WRITE\` / \`DESTRUCTIVE\`), a typed input model, and unit + integration tests.
+| Provider | Models | Good to know | Get a key |
+|---|---|---|---|
+| **Google Gemini** | Gemini 3.6 Flash, Flash (Latest), 3.1 Pro (Preview), 3.5 Flash Lite | Has a free tier with a small **daily** request limit. Flash Lite allows many more requests per day. | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Anthropic Claude** | Sonnet 5.5, Opus 5.5, Haiku 5.5 | Paid. Very strong at big, detailed scenes. | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| **OpenAI** | GPT-6 Luna (cheapest), GPT-6 Sol (balanced), GPT-6 Astra (strongest), Astra Pro | Paid. Runs on the Responses API with low reasoning effort to save tokens. Small edits go to Luna automatically. | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 
-**### Phase 3 — Agent Core**
+- The provider you pick does **everything**: planning, building, placing and looking at the pictures.
+- It never switches to another provider on its own.
+- If its quota or rate limit runs out, the run **waits** (a countdown is shown) and then goes on by itself.
+  Press **Stop** to cancel the wait.
 
-Natural language requests now translate into ordered, multi-step tool calls — without the LLM ever touching raw \`bpy\`.
+---
 
-\`\`\`
+## The panel
 
-                     USER
+| Part | What it does |
+|---|---|
+| **Status line** | *Ready*, *Working* or *No API key*, with the provider and model drop-downs. Below it: today's AI requests and tokens. |
+| **Scene Context** | *Auto* sends the selected objects with your request, so "make it red" knows what *it* is. |
+| **AI Prompt** | Type your request. The box grows with the text and scrolls after 12 lines. **Ctrl+V** and **Paste** keep every line. |
+| **Generate with AI** | Starts the run. While it works you see the plan, each step, the check rounds and any quota countdown. |
+| **Stop** | Stops **at once**, even while the AI is thinking or pictures are rendering. Nothing more is changed after Stop. |
+| **Continue with …** | After a stopped or failed run: pick any provider and continue. The plan is reused and only the missing parts are built. |
+| **Recent Tasks** | Past runs with time taken, **View Report**, **Check Images**, **Find Errors** and **Retry**. |
+| **Revert AI Changes** | Puts the scene back exactly as it was before the last run. |
+| **Find Errors** | Writes a full list of scene problems to a text file and opens it. It changes nothing. |
+| **Modeling / Material / Lighting** | One-click improvements for the selected objects. |
 
-                       │
+---
 
-                       ▼
+## Example prompts
 
-                ┌─────────────┐
+| You write | What happens | AI requests |
+|---|---|---|
+| `make a campfire` | A ready-made model is placed at once and checked by measurement. | **None** |
+| `make a cute girl with long blonde hair, blue eyes and glasses, laughing` | The character skill builds face, hair, clothes and glasses in one go. | **None** |
+| `make a house` | The house skill builds walls, roof, door and windows. | **None** |
+| `create a table with two books and a laptop on it, and a lamp` | Plan → build → the AI places the books and laptop on the table → deep check. | Several |
+| `make the sofa dark green and move the rug 0.5 m back` | A small edit: only those objects change. | A few |
+| `change the roof design to gable` | The building is rebuilt in place with the new roof. | A few |
+| `Create a G+5 U-shaped student hostel with 180 rooms, a basketball court and a boundary wall with a gate` | The planner splits it into specialist steps; the hostel itself is built in one tool call. | Many |
+| `make a realistic sports car` | The build loop writes a script, renders it, scores it and improves it. | Many |
 
-                │ExecutionLoop│
+Tips for good results:
 
-                └──────┬──────┘
+- Name the objects, counts and sizes you care about ("3 chairs", "a 2 m wide desk").
+- Say where things go ("on the table", "against the back wall", "at (2, 3, 0)"). Otherwise the AI picks the spot.
+- Ask for a file in the same request ("save it as my_room").
 
-                       │
+---
 
-          ┌────────────┼────────────┐
+## What it can build
 
-          ▼            ▼             ▼
+| Area | Tools and features |
+|---|---|
+| **Objects** | Create, move, turn, scale, duplicate, rename and delete. Exact placement: `place_on`, `place_next_to`, `snap_to_ground`, `move_by`, `measure`. |
+| **Ready-made models** | 51 models: beds, sofas, tables, chairs, wardrobes, bookshelves, lamps, chandeliers, rugs, curtains, plants, trees, benches, street lamps, floodlights, goals, nets, hoops, bicycles, tents and more. |
+| **Buildings** | `mesh.building`: hostels, hotels, colleges and offices in one call (rect, L, U or courtyard; any number of floors; rooms with furniture; halls; stairs; lifts; balconies; roofs). |
+| **Sites and sports** | Boundary walls with gates, regulation lines for football, cricket, tennis, badminton, volleyball and basketball, and stepped stands with seats and roofs. |
+| **Shapes** | Lathe (round objects), SDF (organic shapes), prisms, terrain, curves and flat paths, raw meshes, per-vertex formulas, and 26 edit presets (melted, twisted, cracked …). |
+| **Materials** | 22 procedural materials and custom node graphs; recolour existing objects by name. |
+| **Characters** | Cartoon characters with 8 expressions, 7 hair styles, clothes, shoes, glasses and hats. |
+| **Look** | Lights, world, cameras and render presets (cinematic, product, outdoor, night, clean). |
+| **Files** | Collections, saving `.blend` files (checked on disk), importing OBJ/FBX/GLB and 991 searchable free CC0 models. |
 
-  ModelProvider   ToolCaller   ContextManager
+---
 
-          │            │
+## AI usage and quota
 
-          ▼            ▼
+Every AI request costs tokens or counts against a daily limit, so the add-on shows you what each run used.
 
-  (OpenAI/Mock)   ToolRegistry
+- **After each run:** *"AI use: 12 request(s), 210,500 tokens - plan 1, build 8, place 1, check 2.
+  Wasted: 26,400 tokens (13%)"*
+- **In the panel:** today's total for the selected model, failed requests, and when the quota ran out.
+- **In the run report:** an *AI USE* section per phase, with the reason for every wasted request.
+- **On disk:** `~/BlenderAIAgent/usage.json` keeps the daily totals for two weeks.
+
+A request counts as **wasted** when the AI only repeated finished work, answered with text instead of acting, a fix
+round brought no improvement, or a placement had to be undone.
+
+Ways to use fewer requests:
 
-                       │
+- Use Gemini 3.5 Flash Lite or GPT-6 Luna for simple scenes.
+- Set `"deep": false` or fewer `"closeups"` in `autoverify.json` (see [Settings](#settings)).
+- Set `"max_rounds"` lower to allow fewer fix rounds.
 
-                       ▼
+The official limits of your account are shown by your provider (for Gemini: Google AI Studio).
 
-                     Tools
+---
 
-                       │
+## When something goes wrong
 
-                       ▼
+Everything the add-on writes is in the `BlenderAIAgent` folder in your home folder.
 
-                BlenderBridge
+| File | What it tells you |
+|---|---|
+| `logs/live_trace.txt` | Written live: every plan, AI request, tool call, error and check. If Blender seems stuck, the last lines show what was running. Panel: **Open Live Trace**. |
+| `logs/<time>_report.txt` | The readable report of one run: result, versions, AI use, where the time went, every error with its tool and arguments, and a timeline. Panel: **View Report**. |
+| `logs/<time>.json` | The same run as data, for bug reports. |
+| `checks/<time>_r<round>/` | One folder per check round: the pictures, `review.txt` (score, missing items, problems), `fix_prompt.txt` (what the AI was told to fix) and `errors.txt` (measured problems). Panel: **Check Images**. |
+| `errors/<time>_errors.txt` | Written by **Find Errors**: every problem with the objects involved, the measured numbers, why it is wrong and how to fix it. |
+| `usage.json` | AI requests and tokens per day. |
 
-                       │
+When you report a problem, please attach the `_report.txt` of that run, plus `errors.txt` and a screenshot if the
+scene looks wrong.
 
-                       ▼
+Common messages:
 
-                    Blender
+| Message | What to do |
+|---|---|
+| *No API key* | Paste the key for the selected provider in the key box and press **Submit Key**. |
+| *Waiting for … quota: resumes in …* | The provider's limit is used up. Wait, press **Stop**, or pick another provider and press **Continue**. |
+| *The API key is not valid any more* | Press **Change** next to the key and paste a new one. |
+| *Partly done* | The run hit its step limit. Press **Continue** to finish it. |
 
-\`\`\`
+---
 
-\| Component | File | Responsibility |
+## Settings
 
-\|---|---|---|
+Most people never need these. The check can be tuned in `~/BlenderAIAgent/autoverify.json`:
 
-\| \`ModelProvider\` (ABC) | \`providers/base.py\` | LLM-agnostic contract — real providers plug in without touching the Agent |
+| Key | Default | Meaning |
+|---|---|---|
+| `mode` | `full` | `full` = pictures + console + geometry, `console` = no pictures, `off` = no check. |
+| `deep` | `true` | Render all 9 angles and close-ups. `false` = a quick check from 2 angles. |
+| `closeups` | `10` | Most close-ups per check round. |
+| `resolution` | `384` | Size of the check pictures in pixels. |
+| `max_rounds` | `15` | Most fix rounds. |
+| `stall_rounds` | `3` | Stop after this many rounds without improvement. |
+| `pass_score` | `10` | The review score a result needs to pass. |
 
-\| \`MockProvider\` | \`providers/mock\_provider.py\` | Scripted, deterministic responses for testing without any API key |
+Environment variables (optional):
 
-\| \`ModelRequest\`/\`ModelResponse\` | \`agent/models.py\` | Typed LLM I/O — messages, tool definitions, tool calls, usage |
+| Variable | Meaning |
+|---|---|
+| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Keys from the system instead of the panel. A key saved in the panel wins. |
+| `BLENDER_AI_AUTOVERIFY` | `full`, `console` or `off`, overriding `mode`. |
+| `BLENDER_AI_LOG_DIR` | Where logs are written (default `~/BlenderAIAgent/logs`). |
+| `BLENDER_AI_MODELS_DIR` | Folder with your downloaded CC0 models (see `download_models.py`). |
+| `BLENDER_AI_DEBUG` | `1` prints timing details to the System Console. |
 
-\| \`ContextManager\` | \`agent/context.py\` | Compact scene summaries instead of dumping the entire scene to the LLM |
+---
 
-\| \`ToolCaller\` | \`agent/tool\_caller.py\` | Translates \`ToolRegistry\` ↔ LLM tool-call format; never crashes on unknown/hallucinated tools |
+## Safety
 
-\| \`Agent\` | \`agent/agent.py\` | Single-turn orchestration: one LLM call → optional tool execution |
+- **Checked tools.** The AI can only call the add-on's typed tools. Every argument is checked before anything runs.
+- **Sandboxed scripts.** Build scripts cannot import modules, open files or reach the network, and have limits on
+  loops and time. Free Python runs on Blender's main thread with a full checkpoint, so a failure is undone exactly.
+- **Undo on failure.** Failed work is rolled back. Objects are tracked by Blender's own ID, so a renamed object is
+  restored, never deleted.
+- **Your scene first.** Fix rounds are told to change only what the run made, and **Revert AI Changes** brings back
+  the scene exactly as it was before the run.
+- **Limits.** A run stops (keeping its work) after 300 tool calls, 30 repair retries, 20 minutes or 600 objects.
+- **Private keys.** Keys are stored only on your computer, in Blender's preferences and in
+  `~/BlenderAIAgent/keys.json` in your user folder. They are never written into `.blend` files, logs or reports.
 
-\| \`Planner\` | \`agent/planner.py\` | Breaks a model response into an ordered \`Plan\` of steps |
+---
 
-\| \`ExecutionLoop\` | \`agent/execution\_loop.py\` | Multi-turn loop: keeps calling the LLM until it returns a final answer, with a \`max\_iterations\` safety limit |
+## For developers
 
-\| \`ConversationState\` | \`agent/state.py\` | Remembers message history so "make it red" can refer to a previously created object |
+### Project layout
 
-**\*\*Definition of Done demo (verified by test):\*\***
+```
+blender_ai_agent/
+├── agent/          plan, checklist, placement, agent loop, prompts, build sandbox, checks
+├── bridge/         BlenderBridge - the only layer that changes the Blender scene
+├── copilot/        controller, quota waiting, Continue, progress
+├── diagnostics/    the error finder (scene audit)
+├── providers/      Gemini, Claude and OpenAI clients (plain HTTPS, no SDK)
+├── tools/          the 57 typed tools
+├── skills/         fast paths: ready props, characters, houses
+├── library/        the 51 ready-made models
+├── observability/  live trace, run reports, token meter
+├── reliability/    rollback, snapshots, friendly errors
+├── ui/             the Blender panel
+└── tests/          unit and integration tests
+```
 
-\> "Create a cube, move it to x=3, and rename it MainCube."
+### Run the tests
 
-produces the plan \`object.create → object.transform → object.rename\`, executed sequentially, ending in a scene with an object named \`MainCube\` at \`[3, 0, 0]\`.
+The tests do not need Blender: a fake Blender bridge and a mock AI provider stand in.
 
-**\*\*Architecture rule enforced:\*\*** the LLM only ever sees tool *\*names\** and *\*descriptions\** — never \`bpy\`. An unknown or hallucinated tool name fails gracefully as a \`ToolResult\`, it never crashes the loop.
+```powershell
+python run_tests.py
+```
 
-**### Phase 4 — Reliability**
+| Check | Result |
+|---|---|
+| Automated tests | **1,603 passed**, 0 failed (3 skipped on Windows: low-level console capture) |
+| Real-Blender check | **84 of 84 checks passed** on Blender 5.2.1 LTS |
 
-Phase 3's Agent could execute tools — but had no way to know if an operation *\*actually\** succeeded in the scene, no way to undo a partially-completed task, and no way to recover from a wrong object name without giving up.
+### Real-Blender check
 
-\> Tool response ≠ truth. The Blender scene is the source of truth.
+`scripts/real_blender_check.py` runs the add-on inside real Blender 5.2.1 (the `bpy` module from PyPI). It builds a
+campus, runs a full Generate flow with scripted AI answers (plan, build, placement, deep check, save), tests Stop
+during renders and while the AI is thinking, and Continue with another provider. GitHub runs it on every push.
 
-\`\`\`
+```bash
+python -m venv .bpyenv && .bpyenv/bin/pip install bpy==5.2.1
+.bpyenv/bin/python scripts/real_blender_check.py --render
+```
 
-                     USER
+### Quality benchmark
 
-                       │
+`real_benchmark.py` runs 20 fixed prompts through your real AI provider inside Blender and records success, time,
+floating objects, overlaps and a picture score for each. Run it before and after a change and compare.
 
-                       ▼
+```powershell
+blender --background --python real_benchmark.py -- --provider gemini --limit 5
+```
 
-                ┌─────────────────────────┐
+### Install from source
 
-                │ RepairableExecutionLoop │
+```powershell
+git clone https://github.com/Dsaini2002/Blender-AI-Agent.git
+Copy-Item .\Blender-AI-Agent\blender_ai_agent "$env:APPDATA\Blender Foundation\Blender\5.2\scripts\addons\" -Recurse
+```
 
-                └────────────┬────────────┘
+### Making a release
 
-                             │
+1. Build `blender_ai_agent.zip` with the `blender_ai_agent` folder at its root (no tests, no `__pycache__`) and put it
+   at the root of the repository, replacing the old one - this is the file the download link points to.
+2. Push a tag such as `v0.16.4`. The `release` workflow runs the tests, builds the same zip and attaches it to the
+   GitHub release.
 
-                ┌────────────┼─────────────┐
+### Design choices
 
-                ▼            ▼              ▼
+- **Typed tools, not free code.** Small tools with schemas are easier to check, test, undo and explain.
+- **Known work skips the AI.** Ready skills are faster, cheaper and the same every time.
+- **The AI decides, the agent measures.** The AI plans and chooses; the code measures, checks and executes.
+- **One bridge to Blender.** Only `BlenderBridge` touches the scene, so everything else can be tested without Blender.
+- **Pictures and numbers.** A scene can be wrong even when no code failed, so every run is checked both by
+  measurement and by looking.
 
-         TransactionManager  Validator   RecoveryManager
+---
 
-                │            │              │
+## Contributing
 
-                ▼            ▼              ▼
+Ideas, bug reports and pull requests are welcome.
 
-          SnapshotManager  (per-tool)   ToolCaller
+1. Fork the repository and create a branch.
+2. Make your change and add a test for it.
+3. Run `python run_tests.py`. It must end with `OK`.
+4. Open a pull request that explains *what* changed and *why*.
 
-                │                            │
+---
 
-                ▼                            ▼
+## Author
 
-          RollbackManager              ToolRegistry → Tools
+Made by **Dinesh Saini**, a student at **NIT Trichy**.
+GitHub: [@Dsaini2002](https://github.com/Dsaini2002)
 
-                                              │
+---
 
-                                              ▼
+## License
 
-                                       BlenderBridge
-
-                                              │
-
-                                              ▼
-
-                                           Blender
-
-\`\`\`
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`Validator\` (ABC) + \`ValidationResult\` | \`reliability/validator.py\` | Contract: cross-check scene state against what a tool claimed to do |
-
-\| \`ObjectExistsValidator\`, \`ObjectDeletedValidator\`, \`TransformValidator\`, \`MaterialAssignedValidator\` | \`reliability/tool\_validators.py\` | Concrete, per-operation validators that read the scene as source of truth |
-
-\| \`SceneSnapshot\` / \`SnapshotManager\` | \`reliability/snapshot.py\` | Captures a lightweight, point-in-time copy of relevant scene state |
-
-\| \`TransactionManager\` | \`reliability/transaction.py\` | \`begin() → commit() / rollback()\` lifecycle around a snapshot |
-
-\| \`RollbackManager\` | \`reliability/rollback.py\` | Restores the scene to a prior snapshot: deletes new objects, restores transforms, reports what couldn't be restored |
-
-\| \`ErrorCode\` / \`ToolError\` | \`reliability/errors.py\` | Classifies raw error strings into structured, typed errors with a \`recoverable\` flag |
-
-\| \`RetryPolicy\` | \`reliability/retry.py\` | Controlled retry limit — never retries blindly |
-
-\| \`RecoveryManager\` | \`reliability/recovery.py\` | For recoverable errors (e.g. a slightly wrong object name), inspects the scene and proposes a corrected tool call |
-
-\| \`Logger\` / \`LogEvent\` | \`observability/logger.py\` | Structured, queryable event log for every task, tool call, validation, and repair |
-
-\| \`RepairableExecutionLoop\` | \`agent/repair\_loop.py\` | The Phase 4 loop: execute → validate → (if failed) diagnose → repair → retry → (if still failed) rollback |
-
-**\*\*Self-repair example (verified by test):\*\***
-
-\> "Move the red cube to x=5" — but the object is actually named \`Red\_Cube\`.
-
-\`\`\`
-
-object.transform(name="RedCube") → OBJECT\_NOT\_FOUND
-
-        ↓
-
-RecoveryManager inspects the scene, finds "Red\_Cube"
-
-        ↓
-
-object.transform(name="Red\_Cube") → SUCCESS
-
-        ↓
-
-TransformValidator confirms location actually changed
-
-        ↓
-
-Transaction commits
-
-\`\`\`
-
-**\*\*Failure example (verified by test):\*\***
-
-An unrecoverable failure partway through a multi-step task (e.g. invalid input on the second tool call) rolls back *\*all\** changes made during that transaction — the scene ends up exactly as it was before the task started.
-
-\| Feature | Phase 3 | Phase 4 |
-
-\|---|---|---|
-
-\| Validation | Trusts \`ToolResult.success\` | Cross-checks the actual scene |
-
-\| Rollback | Not available | Complete Snapshot-based |
-
-\| Transactions | Not available | Complete begin/commit/rollback |
-
-\| Error classification | Raw strings | Complete Typed \`ErrorCode\` + \`recoverable\` flag |
-
-\| Recovery | Not available | Complete Auto-corrects recoverable errors (e.g. wrong object name) |
-
-\| Retry | Not available | Complete Controlled, policy-driven |
-
-\| Logging | Not available | Complete Structured event log per task |
-
-**### Phase 5 — Vision**
-
-The agent can now *\*see\** the scene — not just query its structured state — and combine both to reason about visual correctness (framing, missing objects, low-confidence detections) before committing to a result.
-
-\> Blender scene data tells us what is there. Vision tells us what it looks like.
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`VisionProvider\` (ABC) + \`MockVisionProvider\` | \`vision/providers/\` | Same abstraction pattern as \`ModelProvider\` — real vision APIs plug in without touching the Agent |
-
-\| \`VisualObservation\` | \`vision/models.py\` | Structured vision output: description, detected objects, composition, lighting, issues, confidence |
-
-\| \`Capture\` / \`RenderCapture\` / \`ViewportCapture\` / \`CameraCapture\` | \`vision/capture.py\` | Blender-specific screenshot/render logic, kept out of the vision provider |
-
-\| \`VisionAnalyzer\` | \`vision/analyzer.py\` | Wires a \`Capture\` strategy to a \`VisionProvider\` |
-
-\| \`VisionObserveTool\` (\`vision.observe\`) | \`vision/tool.py\` | Exposes the vision pipeline as a standard tool — the Agent calls it exactly like \`object.create\` |
-
-\| \`VisionContextManager\` | \`vision/context.py\` | Combines structured scene context with a visual observation into one payload |
-
-\| \`VisualValidator\` | \`vision/validator.py\` | Checks an observation against expectations (required objects, minimum confidence, no issues) |
-
-\| \`ObjectIdentifier\` | \`vision/identifier.py\` | Grounds a visual description ("red cube") to an actual scene object name ("Red\_Cube") |
-
-\| \`VisionError\` / \`classify\_vision\_exception\` | \`vision/errors.py\` | Structured vision-specific error codes, following the same pattern as \`reliability/errors.py\` |
-
-\| \`HumanInTheLoopGate\` | \`vision/human\_in\_loop.py\` | Vision-driven suggestions never auto-execute destructive tools — they require explicit confirmation |
-
-**\*\*Confidence is never treated as ground truth:\*\*** \`VisionObserveTool\` flags \`low\_confidence\_warning\` on uncertain observations instead of silently trusting them, and \`check\_confidence()\` can hard-stop a workflow before it acts on an unreliable observation.
-
-**\*\*Vision integrates with Phase 4's reliability loop\*\*** via \`RepairableExecutionLoop.validate\_visually()\` — an explicit, opt-in step (image analysis is expensive, so it's never run automatically after every tool call).
-
-**### Phase 6 — Copilot UX**
-
-The engine built across Phases 1–5 is now exposed through a Blender-native chat interface, without the UI layer ever containing business logic or touching \`bpy\` directly.
-
-\> UI → CopilotController → Agent → Tool System → Blender
-
-\`\`\`
-
-                USER
-
-                  │
-
-                  ▼
-
-        ┌──────────────────┐
-
-        │   AIAgentPanel   │  (Blender sidebar)
-
-        └────────┬─────────┘
-
-                  │
-
-                  ▼
-
-        ┌──────────────────┐
-
-        │ CopilotController│
-
-        └────────┬─────────┘
-
-                  │
-
-    ┌─────────────┼─────────────────┐
-
-    ▼             ▼                 ▼
-
-CopilotSession ProgressState ConfirmationManager
-
-    │             │                 │
-
-    ▼             ▼                 ▼
-
-SuggestionEngine TaskHistory     EventBus
-
-    │
-
-    ▼
-
-RepairableExecutionLoop (Phase 3 + 4)
-
-    │
-
-    ▼
-
-ToolRegistry → Tools (15) + vision.observe
-
-    │
-
-    ▼
-
-BlenderBridge → Blender
-
-\`\`\`
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`CopilotController\` | \`copilot/controller.py\` | The single entry point between UI and Agent. Accepts any object with a \`.run(text)\` method via dependency injection — works with \`Agent\`, \`ExecutionLoop\`, or \`RepairableExecutionLoop\` interchangeably |
-
-\| \`CopilotSession\` / \`CopilotMessage\` | \`copilot/session.py\`, \`copilot/messages.py\` | Structured, displayable chat history — kept separate from the LLM's internal \`ConversationState\` (Phase 3) |
-
-\| \`ProgressState\` | \`copilot/progress.py\` | Live per-step task progress: \`○ pending → ⟳ running → ✓ done / ✗ failed\` |
-
-\| \`ConfirmationManager\` | \`copilot/confirmations.py\` | Destructive-permission actions require explicit approval before executing |
-
-\| \`SuggestionEngine\` | \`copilot/suggestions.py\` | Scene-aware "what to do next" suggestions, derived live from \`scene.inspect\` — never a hardcoded list |
-
-\| \`CopilotContextBuilder\` | \`copilot/context.py\` | Selection / active object / active camera, always derived fresh from Blender state — never an independent source of truth |
-
-\| \`TaskHistory\` | \`copilot/history.py\` | In-memory recent-task log (session-scoped — permanent memory is Phase 7, intentionally not built here) |
-
-\| \`EventBus\` / \`CopilotEvent\` | \`copilot/events.py\` | Publish/subscribe so the UI never reaches into the Agent's internals |
-
-\| \`compute\_diff\` / \`SceneDiff\` | \`copilot/diff.py\` | Before/after scene comparison, built directly on Phase 4's \`SceneSnapshot\` |
-
-\| \`AIAgentPanel\`, \`copilot\_submit\` operator | \`ui/panel.py\` | The actual Blender sidebar UI — a thin shell that only forwards typed text to \`CopilotController.submit()\` |
-
-**\*\*Architecture rule enforced:\*\*** nothing under \`copilot/\` imports \`bpy\`, and \`ui/panel.py\` contains no tool logic — every action flows through \`CopilotController\`.
-
-**\*\*Definition of Done:\*\***
-
-\| Item | Status |
-
-\|---|---|
-
-\| Blender sidebar panel + chat input/output | Complete |
-
-\| Conversation session | Complete |
-
-\| Agent integration | Complete |
-
-\| Task progress | Complete |
-
-\| Tool execution visibility | Complete |
-
-\| Confirmation system + permission visibility | Complete |
-
-\| Cancel/stop | Complete |
-
-\| Error presentation | Complete |
-
-\| Context-aware suggestions | Complete |
-
-\| Selection awareness | Complete |
-
-\| Scene diff | Complete |
-
-\| Task history | Complete |
-
-\| Event-driven UI | Complete |
-
-\| Tests, docs, git history, GitHub push | Complete |
-
-**\*\*Known limitation:\*\*** the panel currently wires to a \`MockProvider\` with no scripted responses (\`get\_copilot\_controller()\` in the root \`\_\_init\_\_.py\`) — a real LLM provider (OpenAI/Anthropic) needs to be plugged in before the chat is usable inside real Blender with real natural-language input. Swapping it in is a one-line change, by design (Open/Closed Principle — \`ModelProvider\` abstraction from Phase 3).
-
-**### Phase 7 — Memory & Skills**
-
-The agent can now remember useful context across tasks and execute high-level, parameterized, multi-tool workflows — without ever treating memory as a replacement for the scene's source of truth.
-
-\> Memory is not a record of every conversation; it stores information that is useful for future task execution.
-
-\`\`\`
-
-                     USER
-
-                       ↓
-
-                    AGENT
-
-                       ↓
-
-          ┌────────────┴────────────┐
-
-          ↓                         ↓
-
-     Memory System             Skill System
-
-          ↓                         ↓
-
-  MemoryContextBuilder        SkillRegistry
-
-          ↓                         ↓
-
-          └────────────┬────────────┘
-
-                        ↓
-
-           MemorySkillOrchestrator
-
-                        ↓
-
-                Tools (via ToolCaller)
-
-                        ↓
-
-                    Blender
-
-\`\`\`
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`Memory\`, \`UserPreference\`, \`ProjectMemory\`, \`TaskMemory\` | \`memory/models.py\` | Typed memory records — polymorphic subclasses per category |
-
-\| \`MemoryStore\` (ABC) + \`InMemoryStore\` | \`memory/store.py\` | Storage abstraction — the Agent is never coupled to a specific backend (JSON/SQLite/vector DB can plug in later) |
-
-\| \`MemoryManager\` | \`memory/manager.py\` | The single interface the Agent uses: \`remember()\` / \`recall()\` / \`forget()\` |
-
-\| \`MemoryRetriever\` | \`memory/retriever.py\` | Scores every memory against a query and returns only what's relevant, not everything stored |
-
-\| \`MemoryPolicy\` | \`memory/policies.py\` | Decides what should be stored, retrieved, or expired — secrets (API keys, passwords, tokens) are never stored |
-
-\| \`MemoryContextBuilder\` | \`memory/context.py\` | Turns relevant memories into a compact, categorized summary instead of raw dumps |
-
-\| \`Skill\` (ABC) + \`SkillResult\` | \`skills/base.py\` | A reusable, multi-tool workflow — high-level, parameterized, and never touches \`bpy\` directly |
-
-\| \`SkillRegistry\` | \`skills/registry.py\` | Name-based lookup plus \`find\_best\_match()\` for skill selection, mirroring \`ToolRegistry\` |
-
-\| \`ProductShowcaseSkill\` | \`skills/builtins/product\_showcase.py\` | A working example skill: create → material → assign → camera, entirely through existing tools |
-
-\| \`SkillValidator\` | \`skills/validation.py\` | Reuses Phase 4's \`Validator\`s to confirm a skill's steps actually happened in the scene, not just that the skill reported success |
-
-\| \`MemorySkillOrchestrator\` | \`memory/orchestrator.py\` | The key integration point: retrieves relevant memory, selects a matching skill, and merges the two into a personalized execution |
-
-**\*\*Skill permissions:\*\*** every skill exposes \`required\_permissions()\`, so a skill involving \`object.delete\` (or any \`DESTRUCTIVE\` tool) can be flagged for confirmation before it runs — skills never get unrestricted access by default.
-
-**\*\*Scene remains the source of truth:\*\*** memory can help resolve references ("move it") and personalize workflows, but it never substitutes for \`scene.inspect\` — exactly the same principle carried forward from Phase 1.
-
-**### Phase 8 — Benchmarking**
-
-The agent no longer just "does things" — its performance can now be objectively measured. The core principle carries forward from Phase 4: an agent's own "Done ✓" is never trusted as truth. The Blender scene, read fresh through \`BlenderBridge\`, is the only source of truth an evaluation trusts.
-
-\> Agent Response ≠ truth. Blender Scene → Evaluator → Actual Result.
-
-\`\`\`
-
-BenchmarkTask
-
-     ↓
-
-BenchmarkRunner (fresh, isolated environment per task)
-
-     ↓
-
-Agent executes the instruction
-
-     ↓
-
-ValidationRules read the actual scene
-
-     ↓
-
-Evaluator → score (PASS / FAIL / partial)
-
-     ↓
-
-MetricCalculator → aggregate stats across a suite
-
-     ↓
-
-FailureAnalyzer / BenchmarkComparator / BenchmarkReporter
-
-\`\`\`
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`BenchmarkTask\`, \`ValidationResult\`, \`BenchmarkResult\` | \`benchmarks/models.py\` | Typed task definitions and results — instruction, expected state, rules, timeout, score, status |
-
-\| \`ValidationRule\` (ABC) + concrete rules | \`benchmarks/validation\_rules.py\` | \`ObjectExistsRule\`, \`ObjectTypeRule\`, \`TransformRule\`, \`MaterialRule\`, \`ModifierRule\` — each reads the scene directly through the bridge, never trusting the tool's own success flag |
-
-\| \`Evaluator\` | \`benchmarks/evaluator.py\` | Runs a task's rules against the actual scene; supports both equal-weight and weighted scoring |
-
-\| \`BenchmarkRunner\` | \`benchmarks/runner.py\` | Executes a task's full lifecycle with a fresh, isolated agent+bridge per task — one task's changes never leak into the next |
-
-\| \`MetricCalculator\` | \`benchmarks/metrics.py\` | Aggregates a suite's results into success rate, average score, duration, tool calls, retries, and rollbacks |
-
-\| \`DatasetLoader\` | \`benchmarks/dataset\_loader.py\` | Builds \`BenchmarkTask\` objects from task definitions (dict/JSON-shaped) |
-
-\| \`FailureAnalyzer\` | \`benchmarks/failure\_analysis.py\` | Classifies failures into categories (\`VALIDATION\_FAILURE\`, \`TOOL\_FAILURE\`, \`RECOVERY\_FAILURE\`, \`TIMEOUT\`, etc.) instead of a generic "failed" |
-
-\| \`BenchmarkComparator\` | \`benchmarks/comparator.py\` | Detects regressions and improvements between two benchmark runs, overall and per-category |
-
-\| \`BenchmarkReporter\` | \`benchmarks/reporter.py\` | Produces the human-readable summary report |
-
-\| \`benchmarks/tasks/basic\_tasks.py\` | — | A working example task ("Create a cube named Hero.") wired end-to-end through the runner |
-
-**\*\*Isolation guarantee (verified by test):\*\*** running the same task twice in a suite produces two independent PASS results — no state leaks between tasks, because each task gets its own fresh \`FakeBridge\`/\`BlenderBridge\` and agent instance.
-
-**\*\*Scoring is partial, not binary:\*\*** a task with 2 of 2 rules passing scores 100%, but a task with 1 of 2 scores 50% — this surfaces *\*how close\** a failing task got, not just that it failed.
-
-**### Phase 9 — Advanced Agents & Blender Capabilities**
-
-The agent moved from handling single, controlled operations to decomposing complex, high-level instructions into dependency-ordered sub-tasks, executing them with checkpoint-based recovery, and gaining new Blender capabilities (Geometry Nodes, animation, a tightly restricted Python escape hatch).
-
-\> Blender = Execution Environment. Agent = Intelligence. Tools = Actions. Vision = Observation. Validator = Truth Check.
-
-\`\`\`
-
-          Complex Instruction
-
-                   ↓
-
-            TaskDecomposer
-
-                   ↓
-
-        TaskGraph (dependency order)
-
-                   ↓
-
-          AdvancedOrchestrator
-
-                   ↓
-
-    ┌──────────────┼──────────────┐
-
-    ↓              ↓              ↓
-
-Checkpoint    Skill/Tool     AgentStateMachine
-
-(per subtask)  execution     (IDLE→PLANNING→
-
-    ↓              ↓          EXECUTING→...)
-
-    └──────────────┴──────────────┘
-
-                   ↓
-
-        Failure? → rollback to LATEST checkpoint
-
-                   (not a full restart)
-
-\`\`\`
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`TaskDecomposer\` | \`agent/advanced/decomposer.py\` | Breaks a high-level instruction into \`SubTask\`s with declared dependencies |
-
-\| \`TaskGraph\` | \`agent/advanced/task\_graph.py\` | Topologically sorts sub-tasks so dependencies always execute before dependents; detects cycles |
-
-\| \`CheckpointManager\` | \`agent/advanced/checkpoints.py\` | Named checkpoints built on Phase 4's \`SnapshotManager\`/\`RollbackManager\` — failure rolls back to the *\*latest\** checkpoint, not the start |
-
-\| \`AgentStateMachine\` | \`agent/advanced/state.py\` | Enforces valid lifecycle transitions (e.g. \`IDLE\` can't jump straight to \`COMPLETED\`) |
-
-\| \`AdvancedOrchestrator\` | \`agent/advanced/orchestrator.py\` | Ties decomposition + graph ordering + checkpointing + state machine together into one complex-task runner |
-
-\| \`SkillPermissionChecker\` | \`skills/advanced\_permissions.py\` | Determines a skill's overall risk level and whether it needs confirmation, based on the tools it composes |
-
-\| \`CreateGeometryNodesTool\` (\`geometry\_nodes.create\`) | \`tools/geometry\_node\_tools.py\` | Adds a Geometry Nodes modifier + node group to an object |
-
-\| \`InsertKeyframeTool\` (\`animation.keyframe\`) | \`tools/animation\_tools.py\` | Inserts a location keyframe at a given frame |
-
-\| \`PythonPowerTool\` (\`python.execute\`) | \`tools/python\_power\_tool.py\` | A deliberately restricted escape hatch — blocked keywords (\`import\`, \`exec\`, \`\_\_\`, etc.), a minimal builtins allowlist, and a new \`PYTHON\_EXECUTION\` permission level. Used only when no structured tool exists |
-
-\| \`Tracer\` | \`observability/tracer.py\` | Nested trace spans (\`Task → Modeling → Tool 1/2/3\`) instead of Phase 4's flat event log |
-
-\| \`VisualSimilarityComparator\` | \`vision/similarity.py\` | Compares two \`VisualObservation\`s by object overlap — a transparent, explainable score, not an unexplained ML number |
-
-**\*\*Recovery without full restart (verified by test):\*\*** when a sub-task fails partway through a multi-part task, the orchestrator rolls back only to the most recent checkpoint — earlier completed sub-tasks are not redone.
-
-**\*\*Python execution stays a last resort:\*\*** it carries the highest permission level (\`PYTHON\_EXECUTION\`), runs against a restricted builtins set, and only has access to the \`bridge\` object — never raw \`bpy\` or the filesystem.
-
-**### Phase 10 — Production & Community**
-
-The project moved from "a working system" to "a system others can install, configure, and extend."
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`AgentConfig\`, \`ProviderConfig\`, \`PermissionConfig\` | \`config/settings.py\` | Typed, structured configuration — API keys are read from an environment variable **\*\*name\*\*** at runtime, never stored or logged |
-
-\| \`ProviderRegistry\` | \`providers/registry.py\` | Register/create model providers by name — adding a new provider never requires touching the \`Agent\` |
-
-\| Tool SDK | \`sdk/tools.py\` | \`create\_tool()\` builds a fully-formed \`Tool\` subclass + input dataclass from a few arguments, reducing boilerplate for third-party contributors |
-
-\| \`CONTRIBUTING.md\`, \`SECURITY.md\` | repo root | Contribution workflow and the project's security principles |
-
-\| Issue/PR templates | \`.github/\` | Structured bug reports, feature requests, benchmark issues, and PR checklists |
-
-\| \`docs/tools.md\` | — | Step-by-step guide for authoring a new \`Tool\` |
-
-**\*\*Security guarantee carried through every phase:\*\*** no API key, secret, or credential is ever stored in code, config objects, logs, or \`.blend\` files — only environment variable *\*names\** are configured; values are read at runtime.
-
-**### Phase 11 — Scale, Autonomy & Intelligent Orchestration**
-
-The agent evolved from "execute a plan" to a long-horizon system that chooses between strategies, evaluates its own results, generates and ranks multiple repair candidates, routes work across model tiers, and can pause/resume long-running tasks — all while defaulting to conservative autonomy.
-
-\> Multi-agent ≠ automatically better. The main goal is long-horizon reliable task execution — multi-agent is just one possible implementation, benchmarked against single-agent, not assumed superior.
-
-\| Component | File | Responsibility |
-
-\|---|---|---|
-
-\| \`AutonomyMode\` / \`AutonomyPolicy\` | \`autonomy/modes.py\` | MANUAL / ASSISTED / AUTONOMOUS — defaults to \`ASSISTED\`, never \`AUTONOMOUS\`; \`PYTHON\_EXECUTION\` always requires confirmation regardless of mode |
-
-\| \`GuardrailMonitor\` | \`autonomy/guardrails.py\` | Hard limits (max steps, retries, runtime, scene changes) — violated limits stop execution rather than looping indefinitely |
-
-\| \`TaskGraph.parallel\_groups()\` | \`agent/advanced/task\_graph.py\` | Groups independent sub-tasks into levels that could run in parallel, while still respecting dependency order between levels |
-
-\| \`StrategySelector\` | \`agent/advanced/strategy.py\` | Scores competing approaches to the same goal (reliability + quality − cost) and picks the best, or ranks all for fallback |
-
-\| \`SelfEvaluator\` | \`agent/advanced/self\_evaluator.py\` | Combines structural (Phase 4) and visual (Phase 5) validation into one verdict — the agent checks its own "Done" |
-
-\| \`AdaptiveRepairPlanner\` | \`agent/advanced/adaptive\_repair.py\` | Generates *\*multiple\** repair candidates per failure and selects the highest-confidence one, instead of one fixed retry strategy |
-
-\| \`ModelRouter\` | \`routing/model\_router.py\` | Routes a task to a \`fast\`/\`strong\`/\`vision\` provider tier based on complexity and vision requirements |
-
-\| \`ContextOptimizer\` | \`agent/advanced/context\_optimizer.py\` | Sends only the selected/relevant objects to the LLM instead of the entire scene |
-
-\| \`TaskManager\` | \`orchestration/task\_manager.py\` | Full task lifecycle (\`QUEUED→RUNNING→PAUSED→...\`) with checkpoint-backed pause/resume |
-
-\| \`SupervisorAgent\` + \`ModelingAgent\`/\`MaterialAgent\`/\`CameraAgent\` | \`multi\_agent/\` | Domain-specialized agents, dispatched by a supervisor — built to be benchmark-comparable against single-agent execution |
-
-\| \`CriticAgent\` | \`multi\_agent/critic\_agent.py\` | Independently evaluates a creator agent's output against named checks, separate from execution |
-
-\| \`VisualQualityOptimizer\` | \`optimization/visual\_optimizer.py\` | Controlled render→score→improve loop with a hard \`max\_iterations\` — never an unbounded autonomous loop |
-
-\| \`AblationStudy\` | \`research/ablation.py\` | Compares two variants (e.g. with/without vision) on the same benchmark tasks to justify architecture decisions empirically |
-
-\| \`StressTest\` | \`benchmarks/stress\_test.py\` | Measures how duration scales as scene object count grows |
-
-\---
-
-**## Project Status: Phases 1–11 Complete**
-
-\| Phase | Title | Status |
-
-\|---|---|---|
-
-\| 1 | Blender Foundation — \`BlenderBridge\`, \`SceneInspector\`, first tool | Complete |
-
-\| 2 | Tool System — 15+ typed, validated, permissioned tools | Complete |
-
-\| 3 | Agent Core — LLM-agnostic Agent, Planner, multi-step \`ExecutionLoop\` | Complete |
-
-\| 4 | Reliability — Validation, transactions, rollback, recovery, retry | Complete |
-
-\| 5 | Vision — \`VisionProvider\`, capture, observation, validation | Complete |
-
-\| 6 | Copilot UX — Blender-native chat UI, progress, confirmations | Complete |
-
-\| 7 | Memory & Skills — Typed memory, reusable multi-tool skills | Complete |
-
-\| 8 | Benchmark — Objective, isolated, scored evaluation | Complete |
-
-\| 9 | Advanced Agents — Task decomposition, checkpoints, Geometry Nodes, animation | Complete |
-
-\| 10 | Production & Community — Configuration, SDK, docs, contribution workflow | Complete |
-
-\| 11 | Scale & Autonomy — Strategy selection, self-evaluation, multi-agent, guardrails | Complete |
-
-**\*\*479 tests\*\***, verified end-to-end in real Blender 5.2 for the core deterministic pipeline (Phases 1–2), with the full Agent/Reliability/Vision/Copilot/Memory/Skills/Benchmark/Advanced/Production/Autonomy stack tested against \`FakeBridge\`/\`MockProvider\`/\`MockVisionProvider\`.
-
-See \`CHANGELOG.md\` for the phase-by-phase history.
-
-**\*\*Known limitation carried forward:\*\*** the Copilot is currently wired to \`MockProvider\` with no scripted responses. To use it with real natural language, register a real provider via \`ProviderRegistry\` (Phase 10) — by design, this requires changing one line, not the Agent itself.
+GPL-3.0-or-later, the same license family as Blender.
